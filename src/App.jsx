@@ -138,9 +138,10 @@ export default function Estiba3D({ usuario }) {
     if (e.pallets) setPallets(e.pallets);
     if (e.reglas) setReglas(e.reglas);
     setTarifas(e.tarifas ?? []);
-    // Los escenarios viejos (v1) traían el maestro adentro; los nuevos ya no, porque el maestro
-    // es permanente del usuario. Si viene uno viejo, se respeta para no perder nada.
-    if (e.maestro) setMaestro((m) => ({ ...m, ...e.maestro, sucio: false, origen: { tipo: "nube" } }));
+    // Los escenarios viejos (v1) traían una copia del maestro adentro. Ya no se usa: el maestro
+    // permanente del usuario manda siempre. Solo se toma esa copia si todavía no hay maestro
+    // cargado, para no perder datos de alguien que solo tenga escenarios viejos.
+    if (e.maestro) setMaestro((m) => (m.productos.length ? m : { ...m, ...e.maestro, sucio: false, origen: { tipo: "nube" } }));
     invalidar();
   };
   const cargarDeNube = async (silencioso = false) => {
@@ -156,7 +157,7 @@ export default function Estiba3D({ usuario }) {
       if (e.veh) setVeh(e.veh);
       if (e.pallets) setPallets(e.pallets);
       if (e.reglas) setReglas(e.reglas);
-      if (e.maestro) setMaestro((m) => ({ ...m, ...e.maestro, sucio: false, origen: { tipo: "nube" } }));
+      if (e.maestro) setMaestro((m) => (m.productos.length ? m : { ...m, ...e.maestro, sucio: false, origen: { tipo: "nube" } }));
       setUltimoGuardado(new Date(r.actualizado));
       invalidar();
       if (!silencioso) setAviso("Se cargó tu progreso guardado.");
