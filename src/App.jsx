@@ -13,7 +13,7 @@ import { EJEMPLOS, PALLETS_INICIALES, VEHICULOS, nuevoItem } from "./ui/referenc
 import { PALETAS, generarColores } from "./ui/colores.js";
 import { T } from "./ui/tema.js";
 import { FS_DISPONIBLE, descargarArchivo, idb } from "./ui/navegador.js";
-import { guardarProyectoNube, cargarProyectoNube, cerrarSesion } from "./nube/nube.js";
+import { guardarProyectoNube, cargarProyectoNube, cerrarSesion, guardarMaestroNube, cargarMaestroNube } from "./nube/nube.js";
 import { fleteTotal, tarifaVacia, METODOS_FLETE } from "./archivos/flete.js";
 import { Escenarios } from "./nube/Escenarios.jsx";
 import { Visor } from "./visor/Visor.jsx";
@@ -38,7 +38,7 @@ export default function Estiba3D({ usuario }) {
   const [vehId, setVehId] = useState("53CS");
   const [veh, setVeh] = useState({ ...VEHICULOS[3], maxVolPct: 0, maxSkus: 0, maxPiezas: 0 });
   const [pallets, setPallets] = useState(PALLETS_INICIALES);
-  const [reglas, setReglas] = useState({ nivel: 2, limitarPeso: true, soporteMin: 75, usarOrden: true, agrupar: false, juntos: true, rigor: "estricto", separarGrupos: false, usarLista: false, apilamiento: "ninguna" });
+  const [reglas, setReglas] = useState({ nivel: 4, limitarPeso: true, soporteMin: 75, usarOrden: true, agrupar: false, juntos: true, rigor: "estricto", separarGrupos: false, usarLista: false, apilamiento: "ninguna" });
   const [items, setItems] = useState(EJEMPLOS.pallets.items);
   const [abierto, setAbierto] = useState(null);
   const [pegar, setPegar] = useState(false);
@@ -85,6 +85,7 @@ export default function Estiba3D({ usuario }) {
   const [ultimoGuardado, setUltimoGuardado] = useState(null);
   const [verEscenarios, setVerEscenarios] = useState(false);
   const [tarifas, setTarifas] = useState([]);   // tarifario de flete; vacío = la recomendación decide solo por espacio
+  const [anchoSku, setAnchoSku] = useState(200); // la columna SKU se ensancha arrastrando su borde
   const inputMaestro = useRef(null);
   const inputPedido = useRef(null);
   const [menuColor, setMenuColor] = useState(false);
@@ -116,8 +117,7 @@ export default function Estiba3D({ usuario }) {
 
   // ---------- Guardar y cargar en la nube (un proyecto por usuario) ----------
   const estadoParaGuardar = () => ({
-    v: 1, proyecto, items, vehId, veh, vehiculos, pallets, reglas, tarifas,
-    maestro: { productos: maestro.productos, tarimas: maestro.tarimas, conversiones: maestro.conversiones },
+    v: 2, proyecto, items, vehId, veh, vehiculos, pallets, reglas, tarifas,
   });
   const guardarEnNube = async () => {
     setGuardandoNube(true); setError("");
@@ -138,6 +138,8 @@ export default function Estiba3D({ usuario }) {
     if (e.pallets) setPallets(e.pallets);
     if (e.reglas) setReglas(e.reglas);
     setTarifas(e.tarifas ?? []);
+    // Los escenarios viejos (v1) traían el maestro adentro; los nuevos ya no, porque el maestro
+    // es permanente del usuario. Si viene uno viejo, se respeta para no perder nada.
     if (e.maestro) setMaestro((m) => ({ ...m, ...e.maestro, sucio: false, origen: { tipo: "nube" } }));
     invalidar();
   };
@@ -161,7 +163,16 @@ export default function Estiba3D({ usuario }) {
     } catch (err) { if (!silencioso) setError("No se pudo cargar: " + err.message); }
     setGuardandoNube(false);
   };
-  useEffect(() => { cargarDeNube(true); }, []); // al entrar, si ya había algo guardado, lo trae solo
+  // Al entrar: primero el maestro permanente del usuario, luego lo último que estaba trabajando.
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await cargarMaestroNube();
+        if (r?.maestro) setMaestro((m) => ({ ...m, ...r.maestro, sucio: false, origen: { tipo: "nube" } }));
+      } catch { /* si falla, se sigue sin maestro; la persona lo puede cargar a mano */ }
+      cargarDeNube(true);
+    })();
+  }, []);
 
   const elegirVehiculo = (id, extra = {}) => { setVehId(id); if (!id.startsWith("PAL:")) setVeh((p) => ({ ...p, ...vehiculos.find((v) => v.id === id), ...extra })); invalidar(); };
   const editarVeh = (k, v) => {
@@ -286,6 +297,13 @@ export default function Estiba3D({ usuario }) {
   };
   const guardarMaestro = async () => {
     setError("");
+    // Siempre queda en la cuenta del usuario: así lo tiene disponible en el próximo ingreso,
+    // sin importar qué escenario abra. Lo del archivo/carpeta es adicional, para quien lo quiera en Excel.
+    try {
+      await guardarMaestroNube({ productos: maestro.productos, tarimas: pallets, conversiones: maestro.conversiones });
+      setMaestro((m) => ({ ...m, sucio: false, guardado: new Date() }));
+      setAviso("Maestro guardado en tu cuenta. Está disponible cada vez que entres.");
+    } catch (e) { setError("No se pudo guardar el maestro en tu cuenta: " + e.message); }
     const buf = libroMaestro(maestro.productos, pallets, maestro.conversiones);
     const dir = dirRef.current;
     if (dir && maestro.origen?.tipo === "carpeta") {
@@ -603,7 +621,7 @@ export default function Estiba3D({ usuario }) {
       <header className="flex items-center gap-3 px-4 flex-none" style={{ height: 56, background: T.nav, color: "#fff" }}>
         <div className="flex items-center gap-2 mr-2">
           <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><path d="M13 2 L24 8 L24 19 L13 25 L2 19 L2 8 Z" fill="none" stroke={T.acento} strokeWidth="2" /><path d="M2 8 L13 14 L24 8 M13 14 L13 25" fill="none" stroke={T.acento} strokeWidth="2" /></svg>
-          <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 22, fontWeight: 700, letterSpacing: "0.01em" }}>Estiba 3D</span>
+          <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 22, fontWeight: 700, letterSpacing: "0.01em" }}>DarnelCube 3D</span>
         </div>
         <input value={proyecto} onChange={(e) => setProyecto(e.target.value)} aria-label="Nombre del proyecto"
           className="hidden md:block bg-transparent text-sm px-2 py-1 rounded-md outline-none" style={{ color: "#fff", border: "1px solid rgba(255,255,255,.15)", width: 240 }} />
@@ -817,12 +835,27 @@ export default function Estiba3D({ usuario }) {
                   <table className="w-full text-sm" style={{ minWidth: (verMedidas ? 640 : 400) + (reglas.usarLista ? 60 : 0), borderCollapse: "separate", borderSpacing: 0 }}>
                     <thead className="sticky top-0 z-10" style={{ background: "#F3F5F8" }}>
                       <tr className="text-left text-xs" style={{ color: T.suave }}>
-                        {["SKU", ...(verMedidas ? ["Largo", "Ancho", "Alto", "Kg"] : []), "Cajas", "m³", "Entrega", "Pedido", "Destino", ...(reglas.usarLista ? ["Orden"] : []), ""].map((h, i) => <th key={h || "x"} className="font-medium px-2 py-2 whitespace-nowrap" style={{ borderBottom: `1px solid ${T.linea}`, ...(i === 0 ? { position: "sticky", left: 0, background: "#F3F5F8", zIndex: 2 } : {}) }}>{h}</th>)}
+                        {["SKU", ...(verMedidas ? ["Largo", "Ancho", "Alto", "Kg"] : []), "Cajas", "m³", "Entrega", "Pedido", "Destino", ...(reglas.usarLista ? ["Orden"] : []), ""].map((h, i) => (
+                          <th key={h || "x"} className="font-medium px-2 py-2 whitespace-nowrap" style={{ borderBottom: `1px solid ${T.linea}`, textAlign: h === "m³" ? "center" : "left", position: "relative", ...(i === 0 ? { position: "sticky", left: 0, background: "#F3F5F8", zIndex: 2, width: anchoSku, minWidth: anchoSku } : {}) }}>
+                            {h}
+                            {i === 0 && (
+                              <span onMouseDown={(e) => {
+                                e.preventDefault();
+                                const x0 = e.clientX, w0 = anchoSku;
+                                const mover = (ev) => setAnchoSku(Math.max(120, Math.min(480, w0 + ev.clientX - x0)));
+                                const soltar = () => { window.removeEventListener("mousemove", mover); window.removeEventListener("mouseup", soltar); };
+                                window.addEventListener("mousemove", mover); window.addEventListener("mouseup", soltar);
+                              }} title="Arrastra para ensanchar la columna"
+                                style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 6, cursor: "col-resize" }} />
+                            )}
+                          </th>
+                        ))}
                       </tr>
                     </thead>
                     <tbody>
                       {items.map((it, i) => (
                         <FilaItem key={it.id} it={it} color={colores[i]} abierto={abierto === it.id} pallets={pallets} modoPallet={modoPallet} verMedidas={verMedidas}
+                          anchoSku={anchoSku}
                           difiere={difiereDeMaestro(it)} enMaestro={mapaMaestro.has(clave(it.nombre))} aMaestro={() => guardarEnMaestro(it)} deMaestro={() => volverAlMaestro(it)}
                           mover={reglas.usarLista ? (paso) => moverItem(it.id, paso) : null} primera={i === 0} ultima={i === items.length - 1}
                           onToggle={() => setAbierto(abierto === it.id ? null : it.id)} editar={(k, v) => editarItem(it.id, k, v)}

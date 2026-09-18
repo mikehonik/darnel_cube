@@ -19,7 +19,7 @@ export function ConfigNube({ onListo }) {
   return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#EEF1F5", fontFamily: "system-ui, sans-serif" }}>
       <form onSubmit={enviar} style={{ background: "#fff", borderRadius: 12, padding: 32, width: 420, boxShadow: "0 2px 12px rgba(0,0,0,.08)" }}>
-        <h1 style={{ fontSize: 20, margin: "0 0 4px" }}>Configurar Estiba 3D</h1>
+        <h1 style={{ fontSize: 20, margin: "0 0 4px" }}>Configurar DarnelCube 3D</h1>
         <p style={{ fontSize: 13, color: "#5B6B7B", margin: "0 0 20px" }}>
           Solo se hace una vez, en este navegador. Copia estos dos datos desde tu proyecto de Supabase:
           Settings → API.

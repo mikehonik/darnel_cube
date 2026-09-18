@@ -22,7 +22,7 @@ export function Login({ onEntrar }) {
   return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#EEF1F5", fontFamily: "system-ui, sans-serif" }}>
       <form onSubmit={enviar} style={{ background: "#fff", borderRadius: 12, padding: 32, width: 380, boxShadow: "0 2px 12px rgba(0,0,0,.08)" }}>
-        <h1 style={{ fontSize: 20, margin: "0 0 20px" }}>Estiba 3D</h1>
+        <h1 style={{ fontSize: 20, margin: "0 0 20px" }}>DarnelCube 3D</h1>
         <label style={{ display: "block", fontSize: 13, color: "#5B6B7B", marginBottom: 12 }}>
           <span style={{ display: "block", marginBottom: 4 }}>Correo</span>
           <input type="email" required value={correo} onChange={(e) => setCorreo(e.target.value)}

@@ -35,7 +35,7 @@ function SelUM({ etiqueta, valor, onChange }) {
   );
 }
 
-export function FilaItem({ it, color, abierto, pallets, modoPallet, verMedidas = true, onToggle, editar, quitar, difiere, enMaestro, aMaestro, deMaestro, mover, primera, ultima }) {
+export function FilaItem({ it, color, abierto, pallets, modoPallet, verMedidas = true, anchoSku = 200, onToggle, editar, quitar, difiere, enMaestro, aMaestro, deMaestro, mover, primera, ultima }) {
   const sinOri = !it.oris.some(Boolean);
   const num = (k) => (e) => editar(k, Math.max(0, Number(e.target.value) || 0));
   const td = { borderBottom: `1px solid ${T.linea}` };
@@ -43,7 +43,7 @@ export function FilaItem({ it, color, abierto, pallets, modoPallet, verMedidas =
   return (
     <>
       <tr className="fila">
-        <td className="px-1 py-1" style={{ ...td, position: "sticky", left: 0, background: T.sup, zIndex: 1 }}>
+        <td className="px-1 py-1" style={{ ...td, position: "sticky", left: 0, background: T.sup, zIndex: 1, width: anchoSku, minWidth: anchoSku, maxWidth: anchoSku }}>
           <div className="flex items-center gap-1.5">
             <button onClick={onToggle} aria-expanded={abierto} aria-label={`Reglas de ${it.nombre}`} className="flex-none flex items-center justify-center rounded" style={{ width: 18, height: 18 }}>
               <ChevronDown size={14} style={{ transform: abierto ? "none" : "rotate(-90deg)", transition: "transform .15s", color: sinOri ? T.error : T.suave }} />
@@ -59,7 +59,7 @@ export function FilaItem({ it, color, abierto, pallets, modoPallet, verMedidas =
         {[...(verMedidas ? ["L", "W", "H", "peso"] : []), "qty"].map((k) => (
           <td key={k} className="px-0.5" style={{ ...td, width: 56, minWidth: 56 }}><input type="number" value={it[k]} onChange={num(k)} className={celda} aria-label={{ L: "Largo", W: "Ancho", H: "Alto", peso: "Peso", qty: "Cantidad" }[k]} /></td>
         ))}
-        <td className="px-1 text-right whitespace-nowrap" style={{ ...td, width: 54, minWidth: 54, color: T.suave }}
+        <td className="px-1 text-center whitespace-nowrap" style={{ ...td, width: 54, minWidth: 54, color: T.suave }}
           title={it.umPedido ? `${it.qtyPedido.toLocaleString("es-MX")} ${it.umPedido} = ${it.qty.toLocaleString("es-MX")} cajas` : "Volumen de esta línea"}>
           {((it.L * it.W * it.H * it.qty) / 1e9).toLocaleString("es-MX", { maximumFractionDigits: 2 })}
           {it.umPedido && <span className="block" style={{ fontSize: 10 }}>{it.qtyPedido.toLocaleString("es-MX")} {it.umPedido}</span>}

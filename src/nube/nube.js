@@ -141,3 +141,19 @@ export async function borrarEscenario(id) {
   const { error } = await sb.from("escenarios").delete().eq("user_id", uid).eq("id", id);
   if (error) throw error;
 }
+
+// ---------- Maestro permanente (uno por usuario, vive aparte de los escenarios) ----------
+export async function guardarMaestroNube(maestro) {
+  const sb = clienteNube();
+  const uid = await uidActual(sb);
+  const { error } = await sb.from("maestro").upsert({ user_id: uid, datos: maestro, actualizado: new Date().toISOString() });
+  if (error) throw error;
+}
+
+export async function cargarMaestroNube() {
+  const sb = clienteNube();
+  const uid = await uidActual(sb);
+  const { data, error } = await sb.from("maestro").select("datos, actualizado").eq("user_id", uid).maybeSingle();
+  if (error) throw error;
+  return data ? { maestro: data.datos, actualizado: data.actualizado } : null;
+}
