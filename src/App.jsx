@@ -14,6 +14,8 @@ import { PALETAS, generarColores } from "./ui/colores.js";
 import { T } from "./ui/tema.js";
 import { FS_DISPONIBLE, descargarArchivo, idb } from "./ui/navegador.js";
 import { guardarProyectoNube, cargarProyectoNube, cerrarSesion } from "./nube/nube.js";
+import { fleteTotal, tarifaVacia, METODOS_FLETE } from "./archivos/flete.js";
+import { Escenarios } from "./nube/Escenarios.jsx";
 import { Visor } from "./visor/Visor.jsx";
 import { Confirmacion, Tarjeta, estInp, inp } from "./ui/controles.jsx";
 import { SeccionVehiculo } from "./ui/secciones/SeccionVehiculo.jsx";
@@ -81,6 +83,8 @@ export default function Estiba3D({ usuario }) {
   const [vehiculos, setVehiculos] = useState(VEHICULOS);   // los de fábrica más los que cree el usuario en esta sesión
   const [guardandoNube, setGuardandoNube] = useState(false);
   const [ultimoGuardado, setUltimoGuardado] = useState(null);
+  const [verEscenarios, setVerEscenarios] = useState(false);
+  const [tarifas, setTarifas] = useState([]);   // tarifario de flete; vacío = la recomendación decide solo por espacio
   const inputMaestro = useRef(null);
   const inputPedido = useRef(null);
   const [menuColor, setMenuColor] = useState(false);
@@ -112,7 +116,7 @@ export default function Estiba3D({ usuario }) {
 
   // ---------- Guardar y cargar en la nube (un proyecto por usuario) ----------
   const estadoParaGuardar = () => ({
-    v: 1, proyecto, items, vehId, veh, vehiculos, pallets, reglas,
+    v: 1, proyecto, items, vehId, veh, vehiculos, pallets, reglas, tarifas,
     maestro: { productos: maestro.productos, tarimas: maestro.tarimas, conversiones: maestro.conversiones },
   });
   const guardarEnNube = async () => {
@@ -123,6 +127,19 @@ export default function Estiba3D({ usuario }) {
       setAviso("Guardado en tu cuenta.");
     } catch (err) { setError("No se pudo guardar: " + err.message); }
     setGuardandoNube(false);
+  };
+  // Vuelca en pantalla un escenario guardado (el mismo formato que estadoParaGuardar).
+  const aplicarEstado = (e) => {
+    setProyecto(e.proyecto ?? "Carga sin título");
+    setItems(e.items ?? []);
+    setVehiculos(e.vehiculos ?? VEHICULOS);
+    setVehId(e.vehId ?? "53CS");
+    if (e.veh) setVeh(e.veh);
+    if (e.pallets) setPallets(e.pallets);
+    if (e.reglas) setReglas(e.reglas);
+    setTarifas(e.tarifas ?? []);
+    if (e.maestro) setMaestro((m) => ({ ...m, ...e.maestro, sucio: false, origen: { tipo: "nube" } }));
+    invalidar();
   };
   const cargarDeNube = async (silencioso = false) => {
     setGuardandoNube(true); setError("");
@@ -466,17 +483,34 @@ export default function Estiba3D({ usuario }) {
           const c = await correr({ items, vehiculo: v, tarimas: pallets, reglas: { ...reglas, nivel: 1 } }, { ejecutor, signal: ctrl.signal });
           const r = c.resultado, volV = v.L * v.W * v.H;
           const usados = r.contenedores.length, ocup = usados ? (r.contenedores.reduce((a, x) => a + x.vol, 0) / (volV * usados)) * 100 : 0;
+          // Flete de toda la corrida con ese vehículo: es lo que de verdad decide cuando dos opciones caben.
+          const destino = items.find((it) => it.destino)?.destino || "";
+          const f = tarifas.length ? fleteTotal(tarifas, v.id, destino, r.contenedores.map((x) => ({
+            ocupacion: (x.vol / volV) * 100, peso: x.peso, m3: x.vol / 1e9,
+          }))) : null;
           filas.push({ id: v.id, nombre: v.nombre, vehiculos: usados, sinCargar: r.sinCargar, ocupacion: ocup, m3: volV / 1e9,
-            pesoMax: v.maxKg ? v.maxKg - (v.tara || 0) : 0, peso: r.contenedores.reduce((a, x) => a + x.peso, 0) });
+            pesoMax: v.maxKg ? v.maxKg - (v.tara || 0) : 0, peso: r.contenedores.reduce((a, x) => a + x.peso, 0),
+            flete: f?.total ?? null, moneda: f?.moneda ?? "MXN" });
         } catch (e) {
           if (e instanceof ErrorCorrida && e.tipo === "cancelada") throw e;
           filas.push({ id: v.id, nombre: v.nombre, error: true });
         }
       }
-      // Menos vehículos primero; a igualdad, el que va más lleno
-      filas.sort((a, b) => (a.error ? 1 : 0) - (b.error ? 1 : 0) || a.sinCargar - b.sinCargar || a.vehiculos - b.vehiculos || b.ocupacion - a.ocupacion);
+      // Primero que quepa todo. Después, si hay tarifas configuradas, manda el flete más barato;
+      // si no hay tarifas (o falta la de algún vehículo), se decide como antes: menos unidades y más lleno.
+      filas.sort((a, b) =>
+        (a.error ? 1 : 0) - (b.error ? 1 : 0)
+        || a.sinCargar - b.sinCargar
+        || (a.flete != null && b.flete != null ? a.flete - b.flete : 0)
+        || (a.flete != null ? -1 : 0) - (b.flete != null ? -1 : 0)
+        || a.vehiculos - b.vehiculos
+        || b.ocupacion - a.ocupacion);
       setRecomendacion(filas);
-      setAviso(filas[0] && !filas[0].error ? `Mejor opción: ${filas[0].vehiculos} × ${filas[0].nombre} al ${filas[0].ocupacion.toFixed(0)}%.` : "Ningún vehículo de la lista acomodó esta carga.");
+      setSeccion("vehiculo");   // el cuadro comparativo vive en esa sección; sin esto el botón parecía no hacer nada
+      const g = filas[0];
+      setAviso(g && !g.error
+        ? `Mejor opción: ${g.vehiculos} × ${g.nombre} al ${g.ocupacion.toFixed(0)}%` + (g.flete != null ? ` · flete ${g.flete.toLocaleString("es-MX", { style: "currency", currency: g.moneda, maximumFractionDigits: 0 })}` : "") + "."
+        : "Ningún vehículo de la lista acomodó esta carga.");
     } catch (e) {
       if (!(e instanceof ErrorCorrida && e.tipo === "cancelada")) setError("La recomendación falló: " + (e.detalle?.original || e.message));
     }
@@ -575,11 +609,8 @@ export default function Estiba3D({ usuario }) {
           className="hidden md:block bg-transparent text-sm px-2 py-1 rounded-md outline-none" style={{ color: "#fff", border: "1px solid rgba(255,255,255,.15)", width: 240 }} />
         <div className="flex-1" />
         <span className="hidden lg:block text-xs" style={{ color: "rgba(255,255,255,.55)" }}>{usuario?.email}</span>
-        <button onClick={() => cargarDeNube(false)} disabled={guardandoNube} className="hidden sm:flex items-center gap-1.5 text-sm px-2.5 py-1.5 rounded-md" style={{ color: T.navTexto }} title="Trae lo último que guardaste">
-          <FolderOpen size={15} />Cargar
-        </button>
-        <button onClick={guardarEnNube} disabled={guardandoNube} className="hidden sm:flex items-center gap-1.5 text-sm px-2.5 py-1.5 rounded-md" style={{ color: T.navTexto }} title={ultimoGuardado ? `Guardado ${ultimoGuardado.toLocaleTimeString("es-MX")}` : "Guarda en tu cuenta"}>
-          <Save size={15} />{guardandoNube ? "…" : "Guardar"}
+        <button onClick={() => setVerEscenarios(true)} className="hidden sm:flex items-center gap-1.5 text-sm px-2.5 py-1.5 rounded-md" style={{ color: T.navTexto }} title="Guardar este escenario con un nombre, o abrir uno anterior">
+          <FolderOpen size={15} />Escenarios
         </button>
         <button onClick={cerrarSesion} className="hidden sm:flex items-center text-sm px-2.5 py-1.5 rounded-md" style={{ color: "rgba(255,255,255,.6)" }} title="Cerrar sesión">Salir</button>
         <button onClick={nuevo} className="hidden sm:flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md" style={{ color: T.navTexto }}><FilePlus size={16} />Nuevo</button>
@@ -605,6 +636,16 @@ export default function Estiba3D({ usuario }) {
             style={{ width: 36, height: 36, color: "#fff", border: "1px solid rgba(255,255,255,.3)", background: "transparent" }}><X size={16} /></button>
         )}
       </header>
+      {verEscenarios && (
+        <Escenarios
+          nombreActual={proyecto}
+          estadoParaGuardar={estadoParaGuardar}
+          onAbrir={(r) => { aplicarEstado(r.estado); setProyecto(r.nombre); setUltimoGuardado(new Date(r.actualizado)); setAviso(`Se abrió «${r.nombre}».`); }}
+          onCerrar={() => setVerEscenarios(false)}
+          onAviso={setAviso}
+          onError={setError}
+        />
+      )}
 
       <div className="flex flex-col lg:flex-row flex-1 min-h-0">
         {/* ============ Navegación ============ */}
@@ -805,7 +846,7 @@ export default function Estiba3D({ usuario }) {
                 <table className="w-full text-sm">
                   <thead className="sticky top-0" style={{ background: "#F3F5F8" }}>
                     <tr className="text-left text-xs" style={{ color: T.suave }}>
-                      {["Vehículo", "Cuántos", "Ocupación", "Capacidad", ""].map((h) => <th key={h} className="font-medium px-2 py-1.5 whitespace-nowrap">{h}</th>)}
+                      {["Vehículo", "Cuántos", "Ocupación", ...(recomendacion.some((f) => f.flete != null) ? ["Flete"] : []), "Capacidad", ""].map((h) => <th key={h} className="font-medium px-2 py-1.5 whitespace-nowrap">{h}</th>)}
                     </tr>
                   </thead>
                   <tbody>
@@ -814,6 +855,11 @@ export default function Estiba3D({ usuario }) {
                         <td className="px-2 py-1.5">{i === 0 && !f.error && <span className="mr-1" style={{ color: T.ok }}>★</span>}{f.nombre}</td>
                         <td className="px-2">{f.error ? "—" : f.vehiculos}{f.sinCargar > 0 && <span style={{ color: T.error }}> +{f.sinCargar} sin acomodar</span>}</td>
                         <td className="px-2">{f.error ? "—" : `${f.ocupacion.toFixed(0)}%`}</td>
+                        {recomendacion.some((x) => x.flete != null) && (
+                          <td className="px-2 whitespace-nowrap" style={{ fontWeight: i === 0 && f.flete != null ? 600 : 400 }}>
+                            {f.flete != null ? f.flete.toLocaleString("es-MX", { style: "currency", currency: f.moneda, maximumFractionDigits: 0 }) : <span style={{ color: T.suave }}>sin tarifa</span>}
+                          </td>
+                        )}
                         <td className="px-2 text-xs" style={{ color: T.suave }}>{f.error ? "no se pudo calcular" : `${f.m3.toFixed(1)} m³${f.pesoMax ? ` · ${(f.pesoMax / 1000).toFixed(1)} t` : ""}`}</td>
                         <td className="px-2 text-right">{!f.error && <button onClick={() => elegirVehiculo(f.id)} className="text-xs px-2 py-0.5 rounded" style={{ border: `1px solid ${T.linea}` }}>Usar</button>}</td>
                       </tr>
@@ -821,11 +867,58 @@ export default function Estiba3D({ usuario }) {
                   </tbody>
                 </table>
               </div>
-              <p className="text-xs px-3 py-2" style={{ color: T.suave }}>Calculado en nivel 1 para que sea rápido. El vehículo que elijas se recalcula con el nivel que tengas en Reglas.</p>
+              <p className="text-xs px-3 py-2" style={{ color: T.suave }}>
+                {recomendacion.some((f) => f.flete != null)
+                  ? "Ordenado por el flete más barato entre los que acomodan toda la carga. Calculado en nivel 1 para que sea rápido."
+                  : "Ordenado por menos unidades y mejor aprovechamiento. Si cargas tarifas de flete abajo, se ordena por costo. Calculado en nivel 1 para que sea rápido."}
+              </p>
             </div>
           )}
           {seccion === "vehiculo" && <SeccionVehiculo vehiculos={vehiculos} agregarVehiculo={agregarVehiculo} duplicarVehiculo={duplicarVehiculo} quitarVehiculo={quitarVehiculo} editarPallet={editarPallet} editarVeh={editarVeh} elegirVehiculo={elegirVehiculo} modoPallet={modoPallet} palIdx={palIdx} palSel={palSel} pallets={pallets} veh={veh} vehId={vehId}
             onImportarCatalogo={() => inputVehiculos.current?.click()} onDescargarCatalogo={() => descargarArchivo(libroVehiculos(vehiculos), "maestro_vehiculos.xlsx", MIME_XLSX)} onDescargarPlantillaCatalogo={() => descargarArchivo(plantillaVehiculos(), "plantilla_vehiculos.xlsx", MIME_XLSX)} />}
+
+          {seccion === "vehiculo" && !modoPallet && (
+            <Tarjeta titulo="Tarifas de flete (opcional)">
+              <p className="text-xs mb-2" style={{ color: T.suave }}>
+                Si las cargas, «Recomendar vehículo» elige el más barato entre los que acomodan toda la carga, en vez de solo el más lleno.
+                Déjalo vacío y todo sigue funcionando igual que antes.
+              </p>
+              {tarifas.map((t, i) => (
+                <div key={t.id} className="flex flex-wrap items-end gap-2 mb-2 pb-2" style={{ borderBottom: `1px solid ${T.linea}` }}>
+                  <label className="block text-xs" style={{ color: T.suave, width: 150 }}>
+                    <span className="block mb-1">Vehículo</span>
+                    <select value={t.vehiculo} onChange={(e) => setTarifas((a) => a.map((x, j) => (j === i ? { ...x, vehiculo: e.target.value } : x)))} className={inp} style={estInp}>
+                      <option value="">Elige…</option>
+                      {vehiculos.map((v) => <option key={v.id} value={v.id}>{v.nombre}</option>)}
+                    </select>
+                  </label>
+                  <label className="block text-xs" style={{ color: T.suave, width: 120 }}>
+                    <span className="block mb-1">Destino</span>
+                    <input value={t.destino} onChange={(e) => setTarifas((a) => a.map((x, j) => (j === i ? { ...x, destino: e.target.value } : x)))} placeholder="Cualquiera" className={inp} style={estInp} />
+                  </label>
+                  <label className="block text-xs" style={{ color: T.suave, width: 160 }}>
+                    <span className="block mb-1">Cómo se cobra</span>
+                    <select value={t.metodo} onChange={(e) => setTarifas((a) => a.map((x, j) => (j === i ? { ...x, metodo: e.target.value } : x)))} className={inp} style={estInp}>
+                      {METODOS_FLETE.map(([v, n]) => <option key={v} value={v}>{n}</option>)}
+                    </select>
+                  </label>
+                  <label className="block text-xs" style={{ color: T.suave, width: 110 }}>
+                    <span className="block mb-1">Tarifa</span>
+                    <input type="number" value={t.tarifa} onChange={(e) => setTarifas((a) => a.map((x, j) => (j === i ? { ...x, tarifa: Number(e.target.value) || 0 } : x)))} className={inp} style={estInp} />
+                  </label>
+                  <button onClick={() => setTarifas((a) => a.filter((_, j) => j !== i))} aria-label="Quitar esta tarifa" style={{ color: T.suave, paddingBottom: 6 }}><Trash2 size={15} /></button>
+                </div>
+              ))}
+              <button onClick={() => setTarifas((a) => [...a, tarifaVacia({ vehiculo: vehId })])} className="flex items-center gap-1 text-xs underline" style={{ color: T.suave }}>
+                <Plus size={13} />Agregar tarifa
+              </button>
+              {tarifas.length > 0 && (
+                <p className="text-xs mt-2" style={{ color: T.suave }}>
+                  El destino se compara con el de las líneas del pedido. Déjalo vacío para que la tarifa aplique a cualquier destino.
+                </p>
+              )}
+            </Tarjeta>
+          )}
 
           {seccion === "pallets" && <SeccionPaletizado colores={colores} editarItem={editarItem} editarPallet={editarPallet} items={items} nPalletizados={nPalletizados} pallets={pallets} setPallets={setPallets} />}
 

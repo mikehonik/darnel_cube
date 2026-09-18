@@ -90,3 +90,54 @@ export async function cargarProyectoNube() {
   if (error) throw error;
   return data ? { estado: data.datos, actualizado: data.actualizado } : null;
 }
+
+// ---------- Escenarios con nombre (varios por usuario) ----------
+async function uidActual(sb) {
+  const { data: sesion } = await sb.auth.getSession();
+  const uid = sesion.session?.user?.id;
+  if (!uid) throw new Error("No hay sesión activa.");
+  return uid;
+}
+
+// Lista para el menú: solo nombre y fecha, sin traer los datos completos de cada escenario.
+export async function listarEscenarios() {
+  const sb = clienteNube();
+  const uid = await uidActual(sb);
+  const { data, error } = await sb.from("escenarios").select("id, nombre, actualizado").eq("user_id", uid).order("actualizado", { ascending: false });
+  if (error) throw error;
+  return data ?? [];
+}
+
+// Guarda con ese nombre: si ya existía uno igual, lo actualiza en vez de duplicarlo.
+export async function guardarEscenario(nombre, estado) {
+  const sb = clienteNube();
+  const uid = await uidActual(sb);
+  const limpio = nombre.trim();
+  if (!limpio) throw new Error("Ponle un nombre al escenario.");
+  const { data: previos, error: eBusca } = await sb.from("escenarios").select("id").eq("user_id", uid).ilike("nombre", limpio);
+  if (eBusca) throw eBusca;
+  const fila = { user_id: uid, nombre: limpio, datos: estado, actualizado: new Date().toISOString() };
+  if (previos?.length) {
+    const { error } = await sb.from("escenarios").update(fila).eq("id", previos[0].id);
+    if (error) throw error;
+    return { id: previos[0].id, reemplazado: true };
+  }
+  const { data, error } = await sb.from("escenarios").insert(fila).select("id").single();
+  if (error) throw error;
+  return { id: data.id, reemplazado: false };
+}
+
+export async function abrirEscenario(id) {
+  const sb = clienteNube();
+  const uid = await uidActual(sb);
+  const { data, error } = await sb.from("escenarios").select("nombre, datos, actualizado").eq("user_id", uid).eq("id", id).single();
+  if (error) throw error;
+  return { nombre: data.nombre, estado: data.datos, actualizado: data.actualizado };
+}
+
+export async function borrarEscenario(id) {
+  const sb = clienteNube();
+  const uid = await uidActual(sb);
+  const { error } = await sb.from("escenarios").delete().eq("user_id", uid).eq("id", id);
+  if (error) throw error;
+}

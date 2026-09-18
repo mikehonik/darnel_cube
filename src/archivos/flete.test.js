@@ -46,3 +46,46 @@ describe("fleteTotal", () => {
     expect(fleteTotal(tarifas, "RAB", "CDMX", [{ ocupacion: 50, peso: 1, m3: 1 }])).toBeNull();
   });
 });
+
+describe("criterio de recomendación: espacio primero, luego costo", () => {
+  // Reproduce el orden que usa «Recomendar vehículo» en App.jsx.
+  const ordenar = (filas) => [...filas].sort((a, b) =>
+    (a.error ? 1 : 0) - (b.error ? 1 : 0)
+    || a.sinCargar - b.sinCargar
+    || (a.flete != null && b.flete != null ? a.flete - b.flete : 0)
+    || (a.flete != null ? -1 : 0) - (b.flete != null ? -1 : 0)
+    || a.vehiculos - b.vehiculos
+    || b.ocupacion - a.ocupacion);
+
+  it("con tarifas, gana el flete más barato aunque vaya menos lleno", () => {
+    const filas = [
+      { nombre: "Torton", sinCargar: 0, vehiculos: 2, ocupacion: 92, flete: 37000 },
+      { nombre: "Contenedor 40' HC", sinCargar: 0, vehiculos: 1, ocupacion: 53, flete: 24000 },
+    ];
+    expect(ordenar(filas)[0].nombre).toBe("Contenedor 40' HC");
+  });
+
+  it("sin tarifas, se decide como antes: menos unidades y más lleno", () => {
+    const filas = [
+      { nombre: "Torton", sinCargar: 0, vehiculos: 2, ocupacion: 92, flete: null },
+      { nombre: "Tráiler 53", sinCargar: 0, vehiculos: 1, ocupacion: 40, flete: null },
+    ];
+    expect(ordenar(filas)[0].nombre).toBe("Tráiler 53");
+  });
+
+  it("nunca recomienda uno que deje carga sin acomodar, por barato que sea", () => {
+    const filas = [
+      { nombre: "Rabón", sinCargar: 30, vehiculos: 1, ocupacion: 99, flete: 5000 },
+      { nombre: "Tráiler 53", sinCargar: 0, vehiculos: 1, ocupacion: 60, flete: 26000 },
+    ];
+    expect(ordenar(filas)[0].nombre).toBe("Tráiler 53");
+  });
+
+  it("los que sí tienen tarifa van antes que los que no", () => {
+    const filas = [
+      { nombre: "Sin tarifa", sinCargar: 0, vehiculos: 1, ocupacion: 90, flete: null },
+      { nombre: "Con tarifa", sinCargar: 0, vehiculos: 1, ocupacion: 50, flete: 20000 },
+    ];
+    expect(ordenar(filas)[0].nombre).toBe("Con tarifa");
+  });
+});
