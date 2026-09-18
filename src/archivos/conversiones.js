@@ -71,14 +71,17 @@ export function aCajas(cantidad, um, umCaja, tabla, piezasPorCaja) {
   if (!tabla) return { cajas: Math.ceil(cantidad), exacto: false, motivo: `no hay tabla de conversiones para pasar de ${u} a ${c}` };
   const fu = tabla[u];
   if (!(fu > 0)) return { cajas: Math.ceil(cantidad), exacto: false, motivo: `no tiene la equivalencia de ${u}` };
-  // Si la propia tabla trae piezas (UN) para este SKU, se prefiere pasar por piezas y dividir entre
-  // las que declara el maestro: es la definición más confiable de "cuántas piezas trae nuestra caja",
-  // en vez de asumir que el factor de caja del ERP corresponde al mismo tamaño de caja que embarcamos.
-  if (porPiezas && tabla.UN > 0 && u !== "UN") return porUnidades((cantidad * fu) / tabla.UN);
-  // Si la UM de la caja no existe para este SKU, se toma la primera unidad de bulto que sí exista.
+  // Manda el factor del ERP: si ese SKU tiene registrada la unidad de bulto (CJ, BL...), esa es la
+  // verdad. Antes se prefería "piezas por caja" del maestro y eso daba números disparatados cuando
+  // ese campo traía otro valor (por ejemplo 10 piezas cuando la caja real lleva 200).
   let destino = c, fc = tabla[c];
   if (!(fc > 0)) destino = UM_BULTO.find((x) => tabla[x] > 0);
-  if (!destino) return { cajas: Math.ceil(cantidad), exacto: false, motivo: `no tiene la equivalencia de ${c} ni de otra unidad de empaque` };
+  // Solo si el ERP no tiene ninguna unidad de bulto para este SKU se recurre a las piezas por caja
+  // del maestro (el caso de tejas, resinas o materiales que el ERP solo maneja en UN, ML o KG).
+  if (!destino) {
+    if (porPiezas && tabla.UN > 0) return porUnidades((cantidad * fu) / tabla.UN);
+    return { cajas: Math.ceil(cantidad), exacto: false, motivo: `no tiene la equivalencia de ${c} ni de otra unidad de empaque` };
+  }
   fc = tabla[destino];
   const exactas = (cantidad * fu) / fc;
   const cajas = entero(exactas) ? Math.round(exactas) : Math.ceil(exactas);
