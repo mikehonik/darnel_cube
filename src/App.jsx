@@ -295,15 +295,20 @@ export default function Estiba3D({ usuario }) {
     try { dirRef.current = null; aplicarMaestro(leerMaestro(await f.arrayBuffer()), { tipo: "archivo", nombre: f.name }); }
     catch (err) { setError("No se pudo leer el archivo: " + err.message); }
   };
+  // Guardar = a la cuenta del usuario, y nada más. Es lo que usa todo el mundo.
   const guardarMaestro = async () => {
     setError("");
-    // Siempre queda en la cuenta del usuario: así lo tiene disponible en el próximo ingreso,
-    // sin importar qué escenario abra. Lo del archivo/carpeta es adicional, para quien lo quiera en Excel.
     try {
       await guardarMaestroNube({ productos: maestro.productos, tarimas: pallets, conversiones: maestro.conversiones });
       setMaestro((m) => ({ ...m, sucio: false, guardado: new Date() }));
-      setAviso("Maestro guardado en tu cuenta. Está disponible cada vez que entres.");
+      setAviso("Maestro guardado en tu cuenta. Está disponible cada vez que entres, en cualquier computadora.");
     } catch (e) { setError("No se pudo guardar el maestro en tu cuenta: " + e.message); }
+  };
+
+  // Aparte y a propósito: bajar el maestro como Excel, o escribirlo en la carpeta conectada.
+  // Es para quien quiera una copia fuera de la nube; no se dispara al guardar.
+  const exportarMaestro = async () => {
+    setError("");
     const buf = libroMaestro(maestro.productos, pallets, maestro.conversiones);
     const dir = dirRef.current;
     if (dir && maestro.origen?.tipo === "carpeta") {
@@ -316,13 +321,11 @@ export default function Estiba3D({ usuario }) {
         } catch (e) { /* no había archivo anterior */ }
         const w = await (await dir.getFileHandle(ARCHIVO_MAESTRO, { create: true })).createWritable();
         await w.write(buf); await w.close();
-        setMaestro((m) => ({ ...m, sucio: false, guardado: new Date() }));
-        setAviso(`Guardado en «${dir.name}/${ARCHIVO_MAESTRO}».`);
-      } catch (e) { setError("No se pudo guardar en la carpeta: " + e.message); }
+        setAviso(`Copia escrita en «${dir.name}/${ARCHIVO_MAESTRO}».`);
+      } catch (e) { setError("No se pudo escribir en la carpeta: " + e.message); }
     } else {
       descargarArchivo(buf, ARCHIVO_MAESTRO, MIME_XLSX);
-      setMaestro((m) => ({ ...m, sucio: false, guardado: new Date() }));
-      setAviso(`Se descargó ${ARCHIVO_MAESTRO}. Reemplaza con él el archivo anterior en la carpeta de la herramienta.`);
+      setAviso(`Se descargó ${ARCHIVO_MAESTRO} como copia. Tu maestro en la cuenta no cambia por esto.`);
     }
   };
   const editarProducto = (pid, k, v) => setMaestro((m) => ({ ...m, sucio: true, productos: m.productos.map((p) => (p.pid === pid ? { ...p, [k]: v } : p)) }));
@@ -599,7 +602,7 @@ export default function Estiba3D({ usuario }) {
   const reglasActivas = [reglas.usarOrden && items.some((i) => i.orden > 0), reglas.agrupar, reglas.juntos, reglas.apilamiento !== "ninguna"].filter(Boolean).length;
 
   const NAV = [
-    { id: "maestro", icono: Database, t: "Maestro", d: maestro.productos.length ? `${maestro.productos.length} productos${maestro.sucio ? " · sin guardar" : ""}` : "Sin conectar" },
+    { id: "maestro", icono: Database, t: "Maestro", d: maestro.productos.length ? `${maestro.productos.length} productos${maestro.sucio ? " · sin guardar" : ""}` : "Vacío" },
     { id: "mercancia", icono: Package, t: "Mercancía", d: `${items.length} SKUs` },
     { id: "vehiculo", icono: Truck, t: modoPallet ? "Pallet" : "Vehículo", d: nombreVeh },
     { id: "pallets", icono: Layers, t: "Paletizado", d: nPalletizados ? `${nPalletizados} SKUs paletizados` : "Catálogo de tarimas" },
@@ -665,31 +668,26 @@ export default function Estiba3D({ usuario }) {
         />
       )}
 
-      <div className="flex flex-col lg:flex-row flex-1 min-h-0">
-        {/* ============ Navegación ============ */}
-        <nav className="flex lg:flex-col flex-none overflow-x-auto" style={{ background: T.nav, width: undefined }} aria-label="Secciones">
-          <div className="flex lg:flex-col lg:w-56 lg:py-3">
-            {NAV.map(({ id, icono: Icono, t, d }) => {
-              const act = seccion === id;
-              return (
-                <button key={id} onClick={() => setSeccion(id)} aria-current={act ? "page" : undefined}
-                  className="flex items-center gap-3 px-4 py-3 text-left relative flex-none"
-                  style={{ color: act ? "#fff" : T.navTexto, background: act ? "rgba(255,255,255,.07)" : "transparent" }}>
-                  <span className="absolute left-0 top-2 bottom-2 rounded-r hidden lg:block" style={{ width: 3, background: act ? T.acento : "transparent" }} />
-                  <Icono size={18} color={act ? T.acento : T.navTexto} />
-                  <span className="min-w-0">
-                    <span className="block text-sm font-medium">{t}</span>
-                    <span className="hidden lg:block text-xs truncate" style={{ color: act ? "#C9D3E0" : "#7F8EA3", maxWidth: 150 }}>{d}</span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-          <div className="hidden lg:block mt-auto px-4 py-3 text-xs" style={{ color: "#7F8EA3" }}>Prototipo 1.0</div>
-        </nav>
+      {/* ============ Navegación: pestañas arriba, para dejarle todo el ancho al contenido ============ */}
+      <nav className="flex-none flex items-stretch overflow-x-auto" style={{ background: T.nav, borderTop: "1px solid rgba(255,255,255,.08)" }} aria-label="Secciones">
+        {NAV.map(({ id, icono: Icono, t, d }) => {
+          const act = seccion === id;
+          return (
+            <button key={id} onClick={() => setSeccion(id)} aria-current={act ? "page" : undefined}
+              className="flex items-center gap-2 px-4 py-2.5 relative flex-none whitespace-nowrap" title={d}
+              style={{ color: act ? "#fff" : T.navTexto, background: act ? "rgba(255,255,255,.07)" : "transparent" }}>
+              <span className="absolute left-0 right-0 bottom-0" style={{ height: 3, background: act ? T.acento : "transparent" }} />
+              <Icono size={16} color={act ? T.acento : T.navTexto} />
+              <span className="text-sm font-medium">{t}</span>
+              <span className="hidden xl:inline text-xs" style={{ color: act ? "#C9D3E0" : "#7F8EA3" }}>{d}</span>
+            </button>
+          );
+        })}
+      </nav>
 
+      <div className="flex flex-col lg:flex-row flex-1 min-h-0">
         {/* ============ Panel de edición ============ */}
-        <section className="flex-none lg:w-2/5 xl:w-1/3 lg:overflow-y-auto p-4" style={{ borderRight: `1px solid ${T.linea}` }}>
+        <section className="flex-none lg:w-1/2 xl:w-2/5 lg:overflow-y-auto p-4" style={{ borderRight: `1px solid ${T.linea}` }}>
           <datalist id="categorias-existentes">{[...new Set(maestro.productos.map((p) => p.categoria).filter(Boolean))].map((c) => <option key={c} value={c} />)}</datalist>
           <input ref={inputMaestro} type="file" accept=".xlsx,.xls" className="hidden" onChange={abrirArchivoMaestro} />
           <input ref={inputPedido} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={cargarPedido} />
@@ -714,26 +712,21 @@ export default function Estiba3D({ usuario }) {
                   <div className="flex-1 min-w-0">
                     {maestro.origen ? (
                       <>
-                        <div className="font-medium truncate">{maestro.origen.tipo === "carpeta" ? `${maestro.origen.nombre} / ${ARCHIVO_MAESTRO}` : maestro.origen.nombre}</div>
+                        <div className="font-medium truncate">{maestro.origen.tipo === "nube" ? "Tu maestro guardado" : maestro.origen.tipo === "carpeta" ? `${maestro.origen.nombre} / ${ARCHIVO_MAESTRO}` : maestro.origen.nombre}</div>
                         <div className="text-xs" style={{ color: maestro.sucio ? T.aviso : T.suave }}>
                           {maestro.sucio ? "Cambios sin guardar" : maestro.guardado ? `Guardado a las ${maestro.guardado.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}` : "Sin cambios"}
-                          {maestro.origen.tipo === "carpeta" ? " · guardar reemplaza el archivo" : " · guardar descarga el archivo"}
                         </div>
                       </>
-                    ) : <div style={{ color: T.suave }}>Sin maestro conectado.</div>}
+                    ) : <div style={{ color: T.suave }}>Sin maestro todavía.</div>}
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {reconectar && <button onClick={volverAConectar} className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md font-medium" style={{ background: T.nav, color: "#fff" }}><RefreshCw size={15} />Reconectar «{reconectar}»</button>}
-                  {FS_DISPONIBLE && <button onClick={conectarCarpeta} className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md" style={{ border: `1px solid ${T.linea}`, background: T.sup }}><FolderOpen size={15} />Conectar carpeta</button>}
                   <button onClick={() => inputMaestro.current?.click()} className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md" style={{ border: `1px solid ${T.linea}`, background: T.sup }}><Upload size={15} />Abrir archivo</button>
                   <button onClick={guardarMaestro} disabled={!maestro.productos.length} className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md font-semibold"
                     style={{ background: maestro.sucio ? T.acento : T.sup, color: T.nav, border: `1px solid ${maestro.sucio ? T.acento : T.linea}`, opacity: maestro.productos.length ? 1 : 0.5 }}><Save size={15} />Guardar</button>
                 </div>
                 <p className="text-xs mt-3" style={{ color: T.suave }}>
-                  {FS_DISPONIBLE
-                    ? "Conecta la carpeta donde está la herramienta. Se lee maestro_productos.xlsx y cada vez que guardas se reemplaza, dejando una copia del anterior como respaldo."
-                    : "Este navegador no permite escribir en carpetas. Guardar descarga maestro_productos.xlsx para que reemplaces el anterior. Chrome o Edge en computadora permiten guardado directo."}
+                  Guardar deja tu maestro en tu cuenta: lo tienes cada vez que entres, desde cualquier computadora.
                 </p>
                 {maestro.errores?.length > 0 && <p className="text-xs mt-2" style={{ color: T.aviso }}>Revisar: {maestro.errores.slice(0, 4).join(" ")}{maestro.errores.length > 4 ? ` y ${maestro.errores.length - 4} más.` : ""}</p>}
               </Tarjeta>
@@ -784,6 +777,7 @@ export default function Estiba3D({ usuario }) {
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs" style={{ color: T.suave }}>
                 <button className="underline" onClick={pasarCargaAlMaestro}>Pasar SKUs de la carga actual al maestro</button>
                 <button className="underline" onClick={() => descargarArchivo(libroPlantilla(maestro.productos, vehiculos), "plantilla_carga.xlsx", MIME_XLSX)}>Descargar plantilla de carga</button>
+                <button className="underline" onClick={exportarMaestro} disabled={!maestro.productos.length} title="Baja una copia en Excel. Tu maestro en la cuenta no cambia">Descargar copia en Excel</button>
                 <button className="underline" onClick={() => descargarArchivo(plantillaDimensiones(maestro.productos), "plantilla_dimensiones.xlsx", MIME_XLSX)} title="Solo SKU, ID producto, descripción y medidas: lo que en el futuro podría venir del ERP">Descargar plantilla de dimensiones</button>
                 <button className="underline" onClick={() => inputDims.current?.click()} title="Actualiza SKU, descripción y medidas sin tocar las reglas de estiba ya configuradas">Actualizar dimensiones</button>
                 <button className="underline" onClick={() => inputCube.current?.click()}>Importar plantilla de CubeMaster</button>

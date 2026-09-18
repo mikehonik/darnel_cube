@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { X, Save, Trash2, FolderOpen, Loader2 } from "lucide-react";
+import { X, Save, Trash2, FolderOpen, Loader2, Search } from "lucide-react";
 import { T } from "../ui/tema.js";
 import { listarEscenarios, guardarEscenario, abrirEscenario, borrarEscenario } from "./nube.js";
 
@@ -10,6 +10,7 @@ export function Escenarios({ nombreActual, estadoParaGuardar, onAbrir, onCerrar,
   const [nombre, setNombre] = useState(nombreActual || "");
   const [ocupado, setOcupado] = useState(false);
   const [confirmarBorrar, setConfirmarBorrar] = useState(null);
+  const [filtro, setFiltro] = useState("");
 
   const refrescar = async () => {
     try { setLista(await listarEscenarios()); }
@@ -45,6 +46,8 @@ export function Escenarios({ nombreActual, estadoParaGuardar, onAbrir, onCerrar,
   };
 
   const fecha = (t) => new Date(t).toLocaleString("es-MX", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+  const norm = (t) => String(t ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const visibles = (lista ?? []).filter((e) => !filtro.trim() || norm(e.nombre).includes(norm(filtro)));
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(10,18,28,.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }} onClick={onCerrar}>
@@ -69,10 +72,18 @@ export function Escenarios({ nombreActual, estadoParaGuardar, onAbrir, onCerrar,
           <p className="text-xs mt-1" style={{ color: T.suave }}>Si usas un nombre que ya existe, se actualiza ese escenario.</p>
         </div>
 
+        {lista?.length > 6 && (
+          <div className="px-4 py-2 flex items-center gap-1.5" style={{ borderBottom: `1px solid ${T.linea}` }}>
+            <Search size={14} color={T.suave} />
+            <input value={filtro} onChange={(ev) => setFiltro(ev.target.value)} placeholder="Buscar por nombre…"
+              className="flex-1 text-sm outline-none" style={{ background: "transparent", color: T.tinta }} />
+          </div>
+        )}
         <div className="overflow-auto flex-1">
           {lista === null && <p className="text-sm px-4 py-3" style={{ color: T.suave }}>Cargando…</p>}
           {lista?.length === 0 && <p className="text-sm px-4 py-3" style={{ color: T.suave }}>Todavía no has guardado ningún escenario.</p>}
-          {lista?.map((e) => (
+          {lista?.length > 0 && visibles.length === 0 && <p className="text-sm px-4 py-3" style={{ color: T.suave }}>Ningún escenario coincide con «{filtro}».</p>}
+          {visibles.map((e) => (
             <div key={e.id} className="flex items-center gap-2 px-4 py-2" style={{ borderBottom: `1px solid ${T.linea}` }}>
               <div className="flex-1 min-w-0">
                 <p className="text-sm truncate">{e.nombre}</p>
