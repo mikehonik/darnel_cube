@@ -27,7 +27,33 @@ var incrPila = function (it, h) {
   if (it.anidado > 0 && Math.abs(h - it.H) < 0.01) return Math.max(1, Math.min(it.anidado, h));
   return altoComprimido(it, h);
 };
-var altoPila = function (it, h, n) { return (n - 1) * incrPila(it, h) + h; };
+// Alturas de cada pieza de una pila, de abajo hacia arriba. La compresión es escalonada: una caja
+// se aplasta según lo que lleva encima, no todas por igual. La de hasta arriba conserva su altura
+// completa y la de abajo aguanta toda la carga, así que es la que más cede. Con anidado no aplica:
+// ahí la altura la manda la geometría de las piezas, no el peso.
+var alturasPila = function (it, h, n) {
+  var anidado = it.anidado > 0 && Math.abs(h - it.H) < 0.01;
+  var alturas = [];
+  for (var i = 0; i < n; i++) {
+    if (anidado) { alturas.push(i === n - 1 ? h : Math.max(1, Math.min(it.anidado, h))); continue; }
+    if (!(it.compresion > 0) || n < 2) { alturas.push(h); continue; }
+    var encima = (n - 1 - i) / (n - 1);                 // 1 abajo del todo, 0 la de hasta arriba
+    alturas.push(Math.max(1, h * (1 - (it.compresion / 100) * encima)));
+  }
+  return alturas;
+};
+var altoPila = function (it, h, n) {
+  var a = alturasPila(it, h, n), t = 0;
+  for (var i = 0; i < a.length; i++) t += a[i];
+  return t;
+};
+// Cuántas piezas caben en una altura disponible, con la compresión escalonada ya considerada.
+var cabenEnAlto = function (it, h, sz) {
+  if (h > sz) return 0;
+  var n = 1;
+  while (n < 400 && altoPila(it, h, n + 1) <= sz + 1e-9) n++;
+  return n;
+};
 var tope = function (it, h) { return it.anidado > 0 && Math.abs(h - it.H) < 0.01 && it.maxAnidado > 0 ? it.maxAnidado : 0; };
 
 function llenarContenedor(tipos, veh, reglas, op) {
@@ -98,7 +124,7 @@ function llenarContenedor(tipos, veh, reglas, op) {
   };
 
   var intentarBloque = function (bl, ax, ay, az) {
-    var t = bl.t, it = t.it, o = bl.o, l = o.d[0], w = o.d[1], h = o.d[2], hc = incrPila(it, h);
+    var t = bl.t, it = t.it, o = bl.o, l = o.d[0], w = o.d[1], h = o.d[2], alturas = alturasPila(it, h, bl.nz);
     var extra = {}, bases = [];
     for (var ix = 0; ix < bl.nx; ix++) for (var iy = 0; iy < bl.ny; iy++) {
       var x = ax + ix * l, y = ay + iy * w, a = apoyoDe(x, y, az, l, w, it, t.k);
@@ -110,10 +136,12 @@ function llenarContenedor(tipos, veh, reglas, op) {
     for (var kx in extra) cajas[kx].carga += extra[kx];
     for (var bi = 0; bi < bases.length; bi++) {
       var bs = bases[bi], abajo = -1;
+      var zz = az;
       for (var iz = 0; iz < bl.nz; iz++) {
-        var c = { x: bs.x, y: bs.y, z: az + iz * hc, l: l, w: w, h: iz === bl.nz - 1 ? h : hc, idx: t.idx, k: t.k, pal: t.pal, it: it, ori: o.k + 1,
+        var c = { x: bs.x, y: bs.y, z: zz, l: l, w: w, h: alturas[iz], idx: t.idx, k: t.k, pal: t.pal, it: it, ori: o.k + 1,
           nivel: bs.a.nivel + iz, carga: it.peso * (bl.nz - 1 - iz),
           apoyos: iz === 0 ? bs.a.apoyos.map(function (s) { return { j: s.j, f: s.a / bs.a.area }; }) : [{ j: abajo, f: 1 }] };
+        zz += alturas[iz];
         abajo = cajas.length; agregarCaja(c);
       }
     }
@@ -195,8 +223,8 @@ function llenarContenedor(tipos, veh, reglas, op) {
               esx = Math.min(s.X, veh.deck.X + dxm) - ex0; esy = Math.min(s.Y, veh.deck.Y + dym) - ey0;
               if (l > esx || w > esy) continue;
             }
-            var hcb = incrPila(it, h), tp = tope(it, h);
-            var mx = Math.floor(esx / l), my = Math.floor(esy / w), mz = hcb < h ? Math.max(0, Math.floor((sz - h) / hcb + 1e-9) + 1) : Math.floor(sz / h);
+            var tp = tope(it, h);
+            var mx = Math.floor(esx / l), my = Math.floor(esy / w), mz = cabenEnAlto(it, h, sz);
             if (tp > 0) mz = Math.min(mz, tp);
             if (!it.soportaEncima || it.piso === "soloPiso") mz = 1;
             if (it.esPallet && !it.aceptaPallet) mz = 1;
@@ -209,7 +237,7 @@ function llenarContenedor(tipos, veh, reglas, op) {
               else if (formas[fo] === 1) { ny = Math.min(my, cap); nz = Math.min(mz, Math.floor(cap / ny)); nx = Math.min(mx, Math.floor(cap / (ny * nz))); }
               else { nx = 1; nz = Math.min(mz, cap); ny = Math.min(my, Math.floor(cap / nz)); }
               if (!(nx >= 1 && ny >= 1 && nz >= 1)) continue;
-              var bl = { t: t, o: o, nx: nx, ny: ny, nz: nz, n: nx * ny * nz, anc: veh.deck && s.z === 0 ? [ex0, ey0] : null, alto: (nz - 1) * hcb + h };
+              var bl = { t: t, o: o, nx: nx, ny: ny, nz: nz, n: nx * ny * nz, anc: veh.deck && s.z === 0 ? [ex0, ey0] : null, alto: altoPila(it, h, nz) };
               var bv = bl.n * l * w * h;
               var ajusteY = (ny * w) / sy, ajusteZ = bl.alto / sz;
               var fit = op.fitness === 0 ? bv : op.fitness === 1 ? bv * (0.6 + 0.4 * ajusteY * ajusteZ) : bv / Math.max(1, nx * l) * (0.5 + 0.5 * ajusteZ);
@@ -258,6 +286,53 @@ function llenarContenedor(tipos, veh, reglas, op) {
       if (!colocado) break;
     }
   }
+
+  // ---- Relleno final: caja por caja en lo que quedó ----
+  // La construcción por bloques deja huecos irregulares al final, y descarta un bloque completo
+  // aunque ahí quepan unidades sueltas. Esto es lo que hace un estibador al terminar: dejar de
+  // pensar en bloques e ir metiendo piezas donde quepan, en cualquier orientación y arrimadas a
+  // cualquier esquina del hueco. Solo agrega carga; nunca mueve lo ya colocado.
+  var huecoMasChico = Infinity;
+  tipos.forEach(function (t) {
+    if (t.rem > 0) t.oris.forEach(function (o) { var v = o.d[0] * o.d[1] * o.d[2]; if (v < huecoMasChico) huecoMasChico = v; });
+  });
+  var rondas = 0;
+  while (tipos.some(function (t) { return t.rem > 0; }) && rondas++ < 400) {
+    var metida = false;
+    var libres = espacios.slice().sort(function (a, b) { return (a.X - a.x) * (a.Y - a.y) * (a.Z - a.z) - (b.X - b.x) * (b.Y - b.y) * (b.Z - b.z); });
+    for (var li = 0; li < libres.length && !metida; li++) {
+      var h = libres[li], hx = h.X - h.x, hy = h.Y - h.y, hz = h.Z - h.z;
+      if (hx * hy * hz < huecoMasChico) continue;
+      for (var ti2 = 0; ti2 < tipos.length && !metida; ti2++) {
+        var t2 = tipos[ti2];
+        if (t2.rem <= 0) continue;
+        var it2 = t2.it;
+        if (it2.piso === "soloPiso" && h.z > 0) continue;
+        if (it2.piso === "noPiso" && h.z === 0) continue;
+        if (it2.peso > 0 && peso + it2.peso > cargaMax + 1e-9) continue;
+        if (veh.maxPiezas > 0 && cajas.length >= veh.maxPiezas) continue;
+        if (veh.maxSkus > 0 && !skus[t2.k] && nSkus >= veh.maxSkus) continue;
+        for (var oi2 = 0; oi2 < t2.oris.length && !metida; oi2++) {
+          var o2 = t2.oris[oi2], l2 = o2.d[0], w2 = o2.d[1], h2 = o2.d[2];
+          if (l2 > hx || w2 > hy || h2 > hz) continue;
+          if (h.z === 0 && o2.volteo && !it2.volteoPiso) continue;
+          // Las cuatro esquinas del hueco: arrimar a cualquiera puede ser lo que dé el apoyo necesario.
+          var esquinas = [[h.x, h.y], [h.X - l2, h.y], [h.x, h.Y - w2], [h.X - l2, h.Y - w2]];
+          for (var ei = 0; ei < esquinas.length && !metida; ei++) {
+            var bl1 = { t: t2, o: o2, nx: 1, ny: 1, nz: 1, n: 1, alto: h2 };
+            if (intentarBloque(bl1, esquinas[ei][0], esquinas[ei][1], h.z)) {
+              t2.rem -= 1; peso += it2.peso; vol += l2 * w2 * h2;
+              if (!skus[t2.k]) { skus[t2.k] = 1; nSkus++; }
+              actualizarEspacios(esquinas[ei][0], esquinas[ei][1], h.z, esquinas[ei][0] + l2, esquinas[ei][1] + w2, h.z + h2, 1);
+              metida = true;
+            }
+          }
+        }
+      }
+    }
+    if (!metida) break;
+  }
+
   return { cajas: cajas, peso: peso, vol: vol };
 }
 
@@ -368,8 +443,7 @@ function armarPalletUniforme(it, pal, objetivo, reglas) {
   Object.keys(porAltura).forEach(function (key) {
     var os = porAltura[key], h = Number(key), o0 = os[0], a = o0.d[0], b = o0.d[1], rot = os.length > 1 || a === b;
     if (!rot && a !== b) { /* solo un sentido */ }
-    var hc = incrPila(it, h);
-    var capas = hc < h ? Math.max(0, Math.floor((CZ - h) / hc + 1e-9) + 1) : Math.floor(CZ / h);
+    var capas = cabenEnAlto(it, h, CZ);
     if (it.maxNiveles > 0) capas = Math.min(capas, it.maxNiveles);
     if (it.capasPallet > 0) capas = Math.min(capas, it.capasPallet);   // niveles pedidos por el usuario
     if (tope(it, h) > 0) capas = Math.min(capas, tope(it, h));         // tope de piezas anidadas
@@ -406,8 +480,8 @@ function armarPalletUniforme(it, pal, objetivo, reglas) {
       var maxN = Math.min(pos.length * capas, capKg), n = Math.min(objetivo, maxN), nCapas = Math.ceil(n / pos.length);
       // menos cajas no; luego menor altura; luego tope plano (capas completas); luego más cajas por capa
       var bxp = 0, byp = 0; pos.forEach(function (p) { bxp = Math.max(bxp, p.x + p.l); byp = Math.max(byp, p.y + p.w); });
-      var sc = [-n, (nCapas - 1) * hc + h, n % pos.length ? 1 : 0, -pos.length, bxp * byp];
-      if (!mejor || mejorQue(sc, mejor.sc)) mejor = { sc: sc, pos: pos, h: h, hc: hc, n: n, nCapas: nCapas, os: os, a: a, b: b };
+      var sc = [-n, altoPila(it, h, nCapas), n % pos.length ? 1 : 0, -pos.length, bxp * byp];
+      if (!mejor || mejorQue(sc, mejor.sc)) mejor = { sc: sc, pos: pos, h: h, n: n, nCapas: nCapas, os: os, a: a, b: b };
     });
   });
   if (!mejor) return null;
@@ -431,6 +505,9 @@ function armarPalletUniforme(it, pal, objetivo, reglas) {
   var alternar = !!espejo;
   var cajas = [], quedan = mejor.n;
   var oriDe = function (o) { var hit = mejor.os.filter(function (q) { return (o ? q.d[0] === mejor.b : q.d[0] === mejor.a); })[0] || mejor.os[0]; return hit.k + 1; };
+  // Alturas escalonadas de las capas del pallet: la de abajo carga todas las de arriba.
+  var altCapa = alturasPila(it, mejor.h, mejor.nCapas), zCapa = [], zAcum = 0;
+  for (var ci = 0; ci < altCapa.length; ci++) { zCapa.push(zAcum); zAcum += altCapa[ci]; }
   for (var c = 0; c < mejor.nCapas && quedan > 0; c++) {
     var capa = alternar && c % 2 ? espejo : pos;
     // capa incompleta: primero las posiciones más cercanas al centro para no desbalancear
@@ -438,7 +515,7 @@ function armarPalletUniforme(it, pal, objetivo, reglas) {
     if (quedan < capa.length) orden.sort(function (i, j) { var pi = capa[i], pj = capa[j]; return (Math.abs(pi.x + pi.l / 2 - bx / 2) + Math.abs(pi.y + pi.w / 2 - by / 2)) - (Math.abs(pj.x + pj.l / 2 - bx / 2) + Math.abs(pj.y + pj.w / 2 - by / 2)); });
     for (var q = 0; q < orden.length && quedan > 0; q++, quedan--) {
       var p = capa[orden[q]];
-      cajas.push({ x: offX + p.x, y: offY + p.y, z: c * mejor.hc, l: p.l, w: p.w, h: c === mejor.nCapas - 1 ? mejor.h : mejor.hc, it: it, idx: it._idx, ori: oriDe(p.o) });
+      cajas.push({ x: offX + p.x, y: offY + p.y, z: zCapa[c], l: p.l, w: p.w, h: altCapa[c], it: it, idx: it._idx, ori: oriDe(p.o) });
     }
   }
   return { cajas: cajas, alternado: alternar, capas: mejor.nCapas, porCapa: pos.length };

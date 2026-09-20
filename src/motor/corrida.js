@@ -58,10 +58,33 @@ export function validarCarga({ items, vehiculo, tarimas, reglas }) {
 }
 
 // ---------- Normalización: de unidades de UI a lo que espera el motor ----------
+// Compresión por omisión según el empaque, en % de altura que cede la pieza de más abajo.
+// Lo que decide es quién recibe el peso, no de qué está hecho el producto:
+//   · Bolsa suelta (BL): la de abajo aguanta toda la columna y cede de verdad.
+//   · Rollo (RL): viaja paletizado, así que el peso lo toma la tarima y no la pieza de abajo. No cede.
+//   · Caja y demás: el cartón cede poco, y solo en columnas altas.
+// El número es el que cede la pieza de MÁS ABAJO; hacia arriba va cediendo menos, así que la
+// deformación promedio de la pila es cerca de la mitad del parámetro (BL 8% → ~4% promedio).
+//
+// A propósito NO están calibrados para reproducir la realidad al máximo. Comparando contra 1,185
+// contenedores reales, subirlos deja menos casos "cortos", pero ese ajuste extra estaría tapando
+// otras cosas con el nombre de compresión: que un estibador acomoda mejor que el algoritmo, y que
+// algunos SKUs traen medidas mal capturadas (tres de ellos causaban más de la mitad de los casos
+// geométricamente imposibles). Atribuirle eso al producto sería falso y, si el motor mejora,
+// pasaría a prometer de más. Estos valores se sostienen como deformación física y nada más;
+// el resto de la brecha queda a la vista, que es donde se puede trabajar de verdad.
+export const COMPRESION_POR_OMISION = { BL: 8, PQ: 4, CJ: 3, CS: 3, CJM: 3, PAC: 3, BLT: 3, RL: 0 };
+
 export function prepararEntrada({ items, vehiculo, tarimas, reglas }) {
   return {
     // El motor identifica cada caja por su posición en este arreglo (idx). Se quitan los campos que solo son de UI.
-    items: items.map(({ id, color, desc, ...x }) => x),
+    // Compresión por omisión: a un SKU que no la tenga capturada se le aplica la de su empaque
+    // (ver COMPRESION_POR_OMISION). Calibrada con 1,185 contenedores reales; se apaga con
+    // reglas.compresionAuto = false, y cualquier valor capturado en el SKU manda sobre esto.
+    items: items.map(({ id, color, desc, ...x }) => (
+      reglas.compresionAuto !== false && !(x.compresion > 0)
+        ? { ...x, compresion: COMPRESION_POR_OMISION[String(x.umCaja || "CJ").trim().toUpperCase()] ?? COMPRESION_POR_OMISION.CJ }
+        : x)),
     veh: vehiculo,
     reglas: { ...reglas, soporteMin: reglas.soporteMin / 100 },
     pallets: tarimas || [],
