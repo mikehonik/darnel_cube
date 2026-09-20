@@ -1,3 +1,4 @@
+import { useState } from "react";
 // ================= Controles =================
 // Piezas chicas de formulario y tarjetas que usa toda la interfaz.
 import { T } from "./tema.js";
@@ -22,17 +23,28 @@ export function Sel({ etiqueta, valor, onChange, opciones }) {
     </label>
   );
 }
+// El detalle no se muestra de entrada: la pantalla se satura y nadie lo lee. Va detrás del signo
+// de interrogación, y solo aparece si la persona lo pide.
 export function Interruptor({ etiqueta, detalle, valor, onChange }) {
+  const [verDetalle, setVerDetalle] = useState(false);
   return (
-    <button type="button" role="switch" aria-checked={valor} onClick={() => onChange(!valor)} className="w-full flex items-start justify-between gap-3 py-2 text-left">
-      <span>
-        <span className="block text-sm" style={{ color: T.tinta }}>{etiqueta}</span>
-        {detalle && <span className="block text-xs" style={{ color: T.suave }}>{detalle}</span>}
-      </span>
-      <span className="relative flex-none mt-0.5 rounded-full" style={{ width: 34, height: 20, background: valor ? T.nav : T.linea, transition: "background .15s" }}>
-        <span className="absolute rounded-full" style={{ width: 16, height: 16, top: 2, left: valor ? 16 : 2, background: valor ? T.acento : "#fff", transition: "left .15s" }} />
-      </span>
-    </button>
+    <div className="py-2">
+      <div className="w-full flex items-center justify-between gap-2">
+        <button type="button" role="switch" aria-checked={valor} onClick={() => onChange(!valor)} className="flex-1 text-left text-sm" style={{ color: T.tinta }}>
+          {etiqueta}
+        </button>
+        {detalle && (
+          <button type="button" onClick={() => setVerDetalle(!verDetalle)} aria-label={`Qué hace: ${etiqueta}`} aria-expanded={verDetalle}
+            className="flex-none rounded-full flex items-center justify-center"
+            style={{ width: 17, height: 17, border: `1px solid ${verDetalle ? T.nav : T.linea}`, color: verDetalle ? T.nav : T.suave, fontSize: 11, lineHeight: 1 }}>?</button>
+        )}
+        <button type="button" role="switch" aria-checked={valor} aria-label={etiqueta} onClick={() => onChange(!valor)}
+          className="relative flex-none rounded-full" style={{ width: 34, height: 20, background: valor ? T.nav : T.linea, transition: "background .15s" }}>
+          <span className="absolute rounded-full" style={{ width: 16, height: 16, top: 2, left: valor ? 16 : 2, background: valor ? T.acento : "#fff", transition: "left .15s" }} />
+        </button>
+      </div>
+      {detalle && verDetalle && <p className="text-xs mt-1 pr-12" style={{ color: T.suave }}>{detalle}</p>}
+    </div>
   );
 }
 export function Tarjeta({ titulo, children, accion }) {
@@ -64,6 +76,23 @@ export function Confirmacion({ texto, accion, onSi, onNo }) {
         <button onClick={onSi} className="px-3 py-1 rounded-md font-medium" style={{ background: T.error, color: "#fff" }}>{accion}</button>
         <button onClick={onNo} className="px-3 py-1 rounded-md" style={{ border: `1px solid ${T.linea}`, background: "#fff" }}>Cancelar</button>
       </div>
+    </div>
+  );
+}
+
+// Nota que solo aparece si la persona la pide. Para explicaciones que ayudan una vez y después
+// estorban: en vez de ocupar tres renglones siempre, se esconden tras el signo de interrogación.
+export function Nota({ children, titulo = "Cómo funciona" }) {
+  const [ver, setVer] = useState(false);
+  return (
+    <div className="mt-2">
+      <button type="button" onClick={() => setVer(!ver)} aria-expanded={ver}
+        className="flex items-center gap-1 text-xs" style={{ color: T.suave }}>
+        <span className="rounded-full flex items-center justify-center"
+          style={{ width: 15, height: 15, border: `1px solid ${ver ? T.nav : T.linea}`, color: ver ? T.nav : T.suave, fontSize: 10, lineHeight: 1 }}>?</span>
+        {titulo}
+      </button>
+      {ver && <p className="text-xs mt-1" style={{ color: T.suave }}>{children}</p>}
     </div>
   );
 }
