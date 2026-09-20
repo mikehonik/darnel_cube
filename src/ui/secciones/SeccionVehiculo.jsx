@@ -1,5 +1,5 @@
 import { T } from "../tema.js";
-import { Num, Tarjeta } from "../controles.jsx";
+import { Num, Tarjeta, Nota } from "../controles.jsx";
 import { Plus, Copy, Trash2 } from "lucide-react";
 import { FormPallet } from "../filas.jsx";
 
@@ -59,7 +59,7 @@ export function SeccionVehiculo({ editarPallet, editarVeh, elegirVehiculo, modoP
               <Num etiqueta="Tipos de carga" valor={veh.maxSkus} onChange={(v) => editarVeh("maxSkus", v)} />
               <Num etiqueta="Bultos máx" valor={veh.maxPiezas} onChange={(v) => editarVeh("maxPiezas", v)} />
             </div>
-            <p className="text-xs mt-2" style={{ color: T.suave }}>0 = sin límite. Medidas de referencia: ajústalas a tu unidad y a la normativa aplicable.</p>
+            <Nota>0 = sin límite. Las medidas que trae son de referencia: ajústalas a tu unidad y a la normativa aplicable.</Nota>
           </Tarjeta>
           <Tarjeta titulo="Carga por eje (opcional)">
             <div className="grid grid-cols-2 gap-2 mb-2">
@@ -83,7 +83,7 @@ export function SeccionVehiculo({ editarPallet, editarVeh, elegirVehiculo, modoP
               <Num etiqueta="Tara en eje delantero kg" valor={veh.taraDelantera} onChange={(v) => editarVeh("taraDelantera", v)} ayuda="0 y 0 = mitad y mitad" />
               <Num etiqueta="Tara en eje trasero kg" valor={veh.taraTrasera} onChange={(v) => editarVeh("taraTrasera", v)} />
             </div>
-            <p className="text-xs" style={{ color: T.suave }}>Es una estimación por reparto de palanca entre los dos ejes, igual que una báscula de reparto en patio. Avisa a tiempo, no sustituye pesar el vehículo. Déjalo en 0 si no lo necesitas: no calcula nada y no estorba.</p>
+            <Nota>Es una estimación por reparto de palanca entre los dos ejes, igual que una báscula de reparto en patio. Avisa a tiempo, no sustituye pesar el vehículo. Déjalo en 0 si no lo necesitas: no calcula nada y no estorba.</Nota>
           </Tarjeta>
         </>
       )}
