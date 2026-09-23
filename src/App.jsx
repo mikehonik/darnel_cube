@@ -15,7 +15,9 @@ import { PALETAS, generarColores } from "./ui/colores.js";
 import { T } from "./ui/tema.js";
 import { VERSION, VERSION_COMPLETA } from "./version.js";
 import { FS_DISPONIBLE, descargarArchivo, idb } from "./ui/navegador.js";
-import { guardarProyectoNube, cargarProyectoNube, cerrarSesion, guardarMaestroNube, cargarMaestroNube } from "./nube/nube.js";
+import { guardarProyectoNube, cargarProyectoNube, cerrarSesion, guardarMaestroNube, cargarMaestroNube, guardarPreferencias } from "./nube/nube.js";
+import { unidadesDe, SISTEMAS, UNIDADES_ARCHIVO } from "./unidades.js";
+import { ProveedorUnidades } from "./ui/unidadesContexto.jsx";
 import { fleteTotal, tarifaVacia, METODOS_FLETE } from "./archivos/flete.js";
 import { Escenarios } from "./nube/Escenarios.jsx";
 import { Visor } from "./visor/Visor.jsx";
@@ -39,6 +41,20 @@ const ejecutor = ejecutorWorker(() => new MotorWorker());
 
 // ================= Aplicación =================
 export default function Estiba3D({ usuario }) {
+  // Sistema de unidades del usuario: se guarda en su cuenta (lo sigue a cualquier computadora) y en este
+  // navegador, por si no hay conexión. Solo cambia cómo se ven y capturan las medidas: el motor sigue en mm y kg.
+  const [sistema, setSistema] = useState(() => {
+    try { return usuario?.user_metadata?.unidades || localStorage.getItem("darnelcube.unidades") || "metrico"; } catch { return usuario?.user_metadata?.unidades || "metrico"; }
+  });
+  const u = useMemo(() => unidadesDe(sistema), [sistema]);
+  const cambiarSistema = (id) => {
+    setSistema(id);
+    try { localStorage.setItem("darnelcube.unidades", id); } catch { /* sin almacenamiento local: no pasa nada */ }
+    guardarPreferencias({ unidades: id }).catch(() => {});
+  };
+  // Unidad de los archivos que se suben (maestro, dimensiones, Bundle, vehículos). "auto" = según el encabezado.
+  const [unidadesArchivo, setUnidadesArchivo] = useState("auto");
+  const conUnidades = (texto) => (texto && texto !== "milímetros y kilogramos" ? ` Medidas leídas en ${texto} y guardadas en mm y kg.` : "");
   const [proyecto, setProyecto] = useState("Carga sin título");
   const [seccion, setSeccion] = useState("mercancia");
   const [verMedidas, setVerMedidas] = useState(true); // columnas Largo/Ancho/Alto/Kg; se ocultan cuando el pedido viene del maestro
@@ -266,22 +282,22 @@ export default function Estiba3D({ usuario }) {
   const importar = () => {
     const filas = textoPegado.split(/\r?\n/).map((l) => l.split(/\t|;|,/).map((c) => c.trim())).filter((f) => f.length >= 6 && f[0]);
     const nuevos = filas.filter((f) => !isNaN(parseFloat(f[1]))).map((f) =>
-      nuevoItem({ nombre: f[0], L: +f[1] || 0, W: +f[2] || 0, H: +f[3] || 0, peso: +f[4] || 0, qty: Math.round(+f[5] || 0), grupo: f[6] || "", orden: Math.round(+f[7] || 0), porPallet: Math.round(+f[8] || 0), paletizar: +f[8] > 0 }));
+      nuevoItem({ nombre: f[0], L: u.aMm(+f[1] || 0), W: u.aMm(+f[2] || 0), H: u.aMm(+f[3] || 0), peso: u.aKg(+f[4] || 0), qty: Math.round(+f[5] || 0), grupo: f[6] || "", orden: Math.round(+f[7] || 0), porPallet: Math.round(+f[8] || 0), paletizar: +f[8] > 0 }));
     if (!nuevos.length) { setError("No se reconocieron filas. Columnas: Nombre, Largo, Ancho, Alto, Peso, Cantidad, Pedido, Entrega, Cajas por pallet."); return; }
     setItems(nuevos); setPegar(false); setTextoPegado(""); setError(""); setVerMedidas(true); invalidar();
   };
 
   // ----- Maestro -----
-  const aplicarMaestro = ({ productos, tarimas, errores, conversiones }, origen) => {
+  const aplicarMaestro = ({ productos, tarimas, errores, conversiones, unidades }, origen) => {
     setMaestro((m) => ({ productos, origen, sucio: false, guardado: null, errores, conversiones: conversiones || m.conversiones }));
     if (tarimas && tarimas.length) setPallets(tarimas);
     const nConv = conversiones ? Object.keys(conversiones).length : 0;
-    setAviso(`Maestro cargado: ${productos.length} productos${tarimas?.length ? `, ${tarimas.length} tarimas` : ""}${nConv ? ` y conversiones de ${nConv} SKUs` : ""}.`);
+    setAviso(`Maestro cargado: ${productos.length} productos${tarimas?.length ? `, ${tarimas.length} tarimas` : ""}${nConv ? ` y conversiones de ${nConv} SKUs` : ""}.${conUnidades(unidades)}`);
   };
   const cargarDeCarpeta = async (dir) => {
     try {
       const fh = await dir.getFileHandle(ARCHIVO_MAESTRO);
-      aplicarMaestro(leerMaestro(await (await fh.getFile()).arrayBuffer()), { tipo: "carpeta", nombre: dir.name });
+      aplicarMaestro(leerMaestro(await (await fh.getFile()).arrayBuffer(), unidadesArchivo), { tipo: "carpeta", nombre: dir.name });
     } catch (e) {
       if (e.name === "NotFoundError") {
         setMaestro((m) => ({ ...m, origen: { tipo: "carpeta", nombre: dir.name }, sucio: m.productos.length > 0 }));
@@ -319,7 +335,7 @@ export default function Estiba3D({ usuario }) {
     const f = e.target.files?.[0];
     e.target.value = "";
     if (!f) return;
-    try { dirRef.current = null; aplicarMaestro(leerMaestro(await f.arrayBuffer()), { tipo: "archivo", nombre: f.name }); }
+    try { dirRef.current = null; aplicarMaestro(leerMaestro(await f.arrayBuffer(), unidadesArchivo), { tipo: "archivo", nombre: f.name }); }
     catch (err) { setError("No se pudo leer el archivo: " + err.message); }
   };
   // Guardar = a la cuenta del usuario, y nada más. Es lo que usa todo el mundo.
@@ -336,7 +352,7 @@ export default function Estiba3D({ usuario }) {
   // Es para quien quiera una copia fuera de la nube; no se dispara al guardar.
   const exportarMaestro = async () => {
     setError("");
-    const buf = libroMaestro(maestro.productos, pallets, maestro.conversiones);
+    const buf = libroMaestro(maestro.productos, pallets, maestro.conversiones, SISTEMAS[sistema]);
     const dir = dirRef.current;
     if (dir && maestro.origen?.tipo === "carpeta") {
       try {
@@ -426,11 +442,11 @@ export default function Estiba3D({ usuario }) {
     if (!f) return;
     setError("");
     try {
-      const r = actualizarDimensiones(maestro.productos, await f.arrayBuffer());
+      const r = actualizarDimensiones(maestro.productos, await f.arrayBuffer(), unidadesArchivo);
       if (r.errores.length && !r.actualizados && !r.creados) { setError(r.errores.join(" ")); return; }
       setMaestro((m) => ({ ...m, productos: r.productos, sucio: true }));
       setAviso(`Dimensiones actualizadas: ${r.actualizados} producto${r.actualizados === 1 ? "" : "s"} existente${r.actualizados === 1 ? "" : "s"}`
-        + (r.creados ? `, ${r.creados} nuevo${r.creados === 1 ? "" : "s"} (con parámetros por configurar)` : "") + ". Falta presionar Guardar."
+        + (r.creados ? `, ${r.creados} nuevo${r.creados === 1 ? "" : "s"} (con parámetros por configurar)` : "") + "." + conUnidades(r.unidades) + " Falta presionar Guardar."
         + (r.errores.length ? ` ${r.errores.length} línea${r.errores.length === 1 ? "" : "s"} con problemas: ${r.errores.join(" ")}` : ""));
     } catch (err) { setError("No se pudo leer el archivo de dimensiones: " + err.message); }
   };
@@ -442,7 +458,7 @@ export default function Estiba3D({ usuario }) {
     if (!f) return;
     setError("");
     try {
-      const r = leerBundleMaestro(maestro.productos, await f.arrayBuffer());
+      const r = leerBundleMaestro(maestro.productos, await f.arrayBuffer(), unidadesArchivo);
       if (!r.actualizados) { setError(`No se importó ningún SKU. ${r.errores.join(" ")}`); return; }
       setMaestro((m) => ({ ...m, productos: r.productos, sucio: true }));
       setAviso(`Bundle importado: ${r.actualizados} SKU${r.actualizados === 1 ? "" : "s"} con Bundle activado. Falta capturar el % máximo de Bundle por SKU y presionar Guardar.`
@@ -455,7 +471,7 @@ export default function Estiba3D({ usuario }) {
     if (!f) return;
     setError("");
     try {
-      const r = leerVehiculos(await f.arrayBuffer());
+      const r = leerVehiculos(await f.arrayBuffer(), unidadesArchivo);
       if (!r.vehiculos.length) { setError("El archivo no tiene ningún vehículo con medidas completas."); return; }
       setVehiculos(r.vehiculos);
       const actual = r.vehiculos.find((v) => v.nombre === veh.nombre) || r.vehiculos[0];
@@ -779,7 +795,7 @@ export default function Estiba3D({ usuario }) {
 
   const cont = res?.contenedores[sel];
   // El reporte se arma una sola vez por corrida, con la carga exacta que usó el motor.
-  const reporte = useMemo(() => (corrida ? armarReporte(corrida) : null), [corrida]);
+  const reporte = useMemo(() => (corrida ? armarReporte(corrida, u) : null), [corrida, u]);
   const stats = reporte?.contenedores[sel] ?? null;
   // El último vehículo casi vacío (menos del 5%) es la señal de que tal vez todo cabía en uno solo.
   const ultimoCasiVacio = useMemo(() => {
@@ -797,7 +813,7 @@ export default function Estiba3D({ usuario }) {
   };
 
   const descargarResultados = () =>
-    descargarArchivo(libroResultados({ reporte, proyecto, nombreVeh, nivel: reglas.nivel }), `resultados_${nombreArchivo(proyecto)}.xlsx`, MIME_XLSX);
+    descargarArchivo(libroResultados({ reporte, proyecto, nombreVeh, nivel: reglas.nivel, u }), `resultados_${nombreArchivo(proyecto)}.xlsx`, MIME_XLSX);
 
   const descargarInstructivo = async () => {
     if (!cont || !apiVisor.current) return;
@@ -805,7 +821,7 @@ export default function Estiba3D({ usuario }) {
     await new Promise((r) => setTimeout(r, 60));
     const etapas = etapasDe(stats.pasos, stats.nBultos);
     const imagenes = apiVisor.current.capturar(etapas.map((e) => e[e.length - 1].fin));
-    const html = htmlInstructivo({ reporte, sel, modoPallet, proyecto, nombreVeh, etapas, imagenes });
+    const html = htmlInstructivo({ reporte, sel, modoPallet, proyecto, nombreVeh, etapas, imagenes, u });
     descargarArchivo(html, `instructivo_carga_${nombreArchivo(proyecto)}_${modoPallet ? "pallet" : "vehiculo"}_${sel + 1}.html`, "text/html;charset=utf-8");
     setGenerando(false);
     setAviso("Instructivo descargado. Ábrelo en el navegador y usa Imprimir → Guardar como PDF si lo quieres en PDF.");
@@ -828,7 +844,7 @@ export default function Estiba3D({ usuario }) {
         const imagenes = apiVisor.current.capturar(etapas.map((e) => e[e.length - 1].fin));
         secciones.push({ sel: i, etapas, imagenes });
       }
-      const html = htmlInstructivoCompleto({ reporte, secciones, modoPallet, proyecto, nombreVeh });
+      const html = htmlInstructivoCompleto({ reporte, secciones, modoPallet, proyecto, nombreVeh, u });
       descargarArchivo(html, `instructivo_carga_${nombreArchivo(proyecto)}_completo.html`, "text/html;charset=utf-8");
       setAviso(`Instructivo completo descargado (${res.contenedores.length} ${modoPallet ? "pallets" : "vehículos"}, uno por página).`);
     } finally {
@@ -861,6 +877,7 @@ export default function Estiba3D({ usuario }) {
   ];
 
   return (
+    <ProveedorUnidades value={u}>
     <div className="flex flex-col lg:h-screen" style={{ background: T.shell, color: T.tinta, fontFamily: "'Barlow', 'Segoe UI', sans-serif" }}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap');
         input:focus, select:focus, textarea:focus { border-color: ${T.nav} !important; box-shadow: 0 0 0 2px ${T.acento}55; }
@@ -880,6 +897,12 @@ export default function Estiba3D({ usuario }) {
         <input value={proyecto} onChange={(e) => setProyecto(e.target.value)} aria-label="Nombre del proyecto"
           className="hidden md:block bg-transparent text-sm px-2 py-1 rounded-md outline-none" style={{ color: "#fff", border: "1px solid rgba(255,255,255,.15)", width: 240 }} />
         <div className="flex-1" />
+        <div className="hidden sm:flex rounded-md overflow-hidden text-xs" role="group" aria-label="Sistema de unidades" style={{ border: "1px solid rgba(255,255,255,.25)" }}>
+          {Object.values(SISTEMAS).map((x) => (
+            <button key={x.id} onClick={() => cambiarSistema(x.id)} aria-pressed={sistema === x.id} title={`Ver y capturar en ${x.nombre.toLowerCase()} (${x.corto})`} className="px-2 py-1"
+              style={{ background: sistema === x.id ? T.acento : "transparent", color: sistema === x.id ? T.nav : "rgba(255,255,255,.8)", fontWeight: sistema === x.id ? 600 : 400 }}>{x.corto}</button>
+          ))}
+        </div>
         <span className="hidden lg:block text-xs" style={{ color: "rgba(255,255,255,.55)" }}>{usuario?.email}</span>
         <button onClick={() => setVerEscenarios(true)} className="hidden sm:flex items-center gap-1.5 text-sm px-2.5 py-1.5 rounded-md" style={{ color: T.navTexto }} title="Guardar este escenario con un nombre, o abrir uno anterior">
           <FolderOpen size={15} />Escenarios
@@ -998,7 +1021,7 @@ export default function Estiba3D({ usuario }) {
                   <table className="w-full text-sm" style={{ minWidth: 640, borderCollapse: "separate", borderSpacing: 0 }}>
                     <thead className="sticky top-0 z-10" style={{ background: "#F3F5F8" }}>
                       <tr className="text-left text-xs" style={{ color: T.suave }}>
-                        {["SKU", "Descripción", "Largo", "Ancho", "Alto", "Kg", "Pallet", ""].map((h, i) => <th key={i} className="font-medium px-2 py-2" style={{ borderBottom: `1px solid ${T.linea}` }}>{h}</th>)}
+                        {["SKU", "Descripción", `Largo ${u.l}`, `Ancho ${u.l}`, `Alto ${u.l}`, u.p, "Pallet", ""].map((h, i) => <th key={i} className="font-medium px-2 py-2" style={{ borderBottom: `1px solid ${T.linea}` }}>{h}</th>)}
                       </tr>
                     </thead>
                     <tbody>
@@ -1024,11 +1047,17 @@ export default function Estiba3D({ usuario }) {
                   {maestro.conversiones && <button className="underline ml-3" style={{ color: T.suave }} onClick={() => { setMaestro((m) => ({ ...m, conversiones: null, sucio: true })); setAviso("Conversiones borradas. Falta presionar Guardar."); }}>Borrar</button>}
                 </div>
               </div>
+              <label className="flex items-center gap-2 text-xs mb-2" style={{ color: T.suave }} title="Aplica al abrir un maestro, actualizar dimensiones, importar Bundle o importar el catálogo de vehículos. Los archivos que descargas llevan la unidad en el encabezado y se reconocen solos.">
+                Unidades de los archivos que subes:
+                <select value={unidadesArchivo} onChange={(e) => setUnidadesArchivo(e.target.value)} className="rounded-md px-1.5 py-1 text-xs border" style={{ borderColor: T.linea, background: T.sup, color: T.tinta }}>
+                  {UNIDADES_ARCHIVO.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
+                </select>
+              </label>
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs" style={{ color: T.suave }}>
                 <button className="underline" onClick={pasarCargaAlMaestro}>Pasar SKUs de la carga actual al maestro</button>
                 <button className="underline" onClick={() => descargarArchivo(libroPlantilla(maestro.productos, vehiculos), "plantilla_carga.xlsx", MIME_XLSX)}>Descargar plantilla de carga</button>
                 <button className="underline" onClick={exportarMaestro} disabled={!maestro.productos.length} title="Baja una copia en Excel. Tu maestro en la cuenta no cambia">Descargar copia en Excel</button>
-                <button className="underline" onClick={() => descargarArchivo(plantillaDimensiones(maestro.productos), "plantilla_dimensiones.xlsx", MIME_XLSX)} title="Solo SKU, ID producto, descripción y medidas: lo que en el futuro podría venir del ERP">Descargar plantilla de dimensiones</button>
+                <button className="underline" onClick={() => descargarArchivo(plantillaDimensiones(maestro.productos, SISTEMAS[sistema]), "plantilla_dimensiones.xlsx", MIME_XLSX)} title="Solo SKU, ID producto, descripción y medidas: lo que en el futuro podría venir del ERP">Descargar plantilla de dimensiones</button>
                 <button className="underline" onClick={() => inputDims.current?.click()} title="Actualiza SKU, descripción y medidas sin tocar las reglas de estiba ya configuradas">Actualizar dimensiones</button>
                 <button className="underline" onClick={() => inputCube.current?.click()}>Importar plantilla de CubeMaster</button>
                 <button className="underline" onClick={() => inputBundle.current?.click()} title="Excel con ID Artículo, UM, Rel, Factor, CS/BDL y medidas: enciende y configura el Bundle de los SKUs que ya existen">Importar Bundle (BDL)</button>
@@ -1042,7 +1071,7 @@ export default function Estiba3D({ usuario }) {
               <div className="flex items-center justify-between mb-3">
                 <div>
                   <h2 className="text-lg font-semibold leading-tight">Mercancía</h2>
-                  <p className="text-xs" style={{ color: T.suave }}>{items.length} SKUs · {totales.cajas.toLocaleString("es-MX")} cajas · <b style={{ color: T.tinta }}>{totales.m3.toLocaleString("es-MX", { maximumFractionDigits: 1 })} m³</b> · {Math.round(totales.kg).toLocaleString("es-MX")} kg</p>
+                  <p className="text-xs" style={{ color: T.suave }}>{items.length} SKUs · {totales.cajas.toLocaleString("es-MX")} cajas · <b style={{ color: T.tinta }}>{u.fV3(totales.m3, 1)}</b> · {u.fP(totales.kg)}</p>
                   {!modoPallet && vehCalc.L > 0 && <p className="text-xs" style={{ color: T.suave }}>Equivale a {(totales.m3 / (vehCalc.L * vehCalc.W * vehCalc.H / 1e9)).toLocaleString("es-MX", { maximumFractionDigits: 2 })} {nombreVeh} llenos al 100%</p>}
                 </div>
                 <div className="flex gap-1.5">
@@ -1066,7 +1095,7 @@ export default function Estiba3D({ usuario }) {
               )}
               {pegar && (
                 <Tarjeta titulo="Pegar desde Excel" accion={<button onClick={() => setPegar(false)} aria-label="Cerrar"><X size={16} /></button>}>
-                  <p className="text-xs mb-2" style={{ color: T.suave }}>Columnas: Nombre, Largo, Ancho, Alto, Peso, Cantidad y, opcionales, Pedido, Entrega y Cajas por pallet. Reemplaza la lista actual.</p>
+                  <p className="text-xs mb-2" style={{ color: T.suave }}>Columnas: Nombre, Largo, Ancho, Alto ({u.l}), Peso ({u.p}), Cantidad y, opcionales, Pedido, Entrega y Cajas por pallet. Reemplaza la lista actual.</p>
                   <textarea value={textoPegado} onChange={(e) => setTextoPegado(e.target.value)} rows={5} className={inp} style={estInp} placeholder={"Jeans\t600\t400\t400\t14\t80\tTienda 1\t1\t16"} />
                   <button onClick={importar} className="text-sm mt-2 px-3 py-1.5 rounded-md font-medium" style={{ background: T.nav, color: "#fff" }}>Importar filas</button>
                 </Tarjeta>
@@ -1080,8 +1109,8 @@ export default function Estiba3D({ usuario }) {
                   <table className="w-full text-sm" style={{ minWidth: (verMedidas ? 640 : 400) + (reglas.usarLista ? 60 : 0), borderCollapse: "separate", borderSpacing: 0 }}>
                     <thead className="sticky top-0 z-10" style={{ background: "#F3F5F8" }}>
                       <tr className="text-left text-xs" style={{ color: T.suave }}>
-                        {["SKU", ...(verMedidas ? ["Largo", "Ancho", "Alto", "Kg"] : []), "Cajas", "m³", "Entrega", "Pedido", "Destino", ...(reglas.usarLista ? ["Orden"] : []), ""].map((h, i) => (
-                          <th key={h || "x"} className="font-medium px-2 py-2 whitespace-nowrap" style={{ borderBottom: `1px solid ${T.linea}`, textAlign: h === "m³" ? "center" : "left", position: "relative", ...(i === 0 ? { position: "sticky", left: 0, background: "#F3F5F8", zIndex: 2, width: anchoSku, minWidth: anchoSku } : {}) }}>
+                        {["SKU", ...(verMedidas ? [`Largo ${u.l}`, `Ancho ${u.l}`, `Alto ${u.l}`, u.p] : []), "Cajas", u.v, "Entrega", "Pedido", "Destino", ...(reglas.usarLista ? ["Orden"] : []), ""].map((h, i) => (
+                          <th key={h || "x"} className="font-medium px-2 py-2 whitespace-nowrap" style={{ borderBottom: `1px solid ${T.linea}`, textAlign: h === u.v ? "center" : "left", position: "relative", ...(i === 0 ? { position: "sticky", left: 0, background: "#F3F5F8", zIndex: 2, width: anchoSku, minWidth: anchoSku } : {}) }}>
                             {h}
                             {i === 0 && (
                               <span onMouseDown={(e) => {
@@ -1138,7 +1167,7 @@ export default function Estiba3D({ usuario }) {
                             {f.flete != null ? f.flete.toLocaleString("es-MX", { style: "currency", currency: f.moneda, maximumFractionDigits: 0 }) : <span style={{ color: T.suave }}>sin tarifa</span>}
                           </td>
                         )}
-                        <td className="px-2 text-xs" style={{ color: T.suave }}>{f.error ? "no se pudo calcular" : `${f.m3.toFixed(1)} m³${f.pesoMax ? ` · ${(f.pesoMax / 1000).toFixed(1)} t` : ""}`}</td>
+                        <td className="px-2 text-xs" style={{ color: T.suave }}>{f.error ? "no se pudo calcular" : `${u.fV3(f.m3, 1)}${f.pesoMax ? ` · ${u.id === "metrico" ? `${(f.pesoMax / 1000).toFixed(1)} t` : u.fP(f.pesoMax)}` : ""}`}</td>
                         <td className="px-2 text-right">{!f.error && <button onClick={() => elegirVehiculo(f.id)} className="text-xs px-2 py-0.5 rounded" style={{ border: `1px solid ${T.linea}` }}>Usar</button>}</td>
                       </tr>
                     ))}
@@ -1155,7 +1184,7 @@ export default function Estiba3D({ usuario }) {
             </div>
           )}
           {seccion === "vehiculo" && <SeccionVehiculo vehiculos={vehiculos} agregarVehiculo={agregarVehiculo} duplicarVehiculo={duplicarVehiculo} quitarVehiculo={quitarVehiculo} editarPallet={editarPallet} editarVeh={editarVeh} elegirVehiculo={elegirVehiculo} modoPallet={modoPallet} palIdx={palIdx} palSel={palSel} pallets={pallets} veh={veh} vehId={vehId}
-            onImportarCatalogo={() => inputVehiculos.current?.click()} onDescargarCatalogo={() => descargarArchivo(libroVehiculos(vehiculos), "maestro_vehiculos.xlsx", MIME_XLSX)} onDescargarPlantillaCatalogo={() => descargarArchivo(plantillaVehiculos(), "plantilla_vehiculos.xlsx", MIME_XLSX)} />}
+            onImportarCatalogo={() => inputVehiculos.current?.click()} onDescargarCatalogo={() => descargarArchivo(libroVehiculos(vehiculos, SISTEMAS[sistema]), "maestro_vehiculos.xlsx", MIME_XLSX)} onDescargarPlantillaCatalogo={() => descargarArchivo(plantillaVehiculos(SISTEMAS[sistema]), "plantilla_vehiculos.xlsx", MIME_XLSX)} />}
 
           {seccion === "vehiculo" && !modoPallet && (
             <Tarjeta titulo="Tarifas de flete (opcional)">
@@ -1273,5 +1302,6 @@ export default function Estiba3D({ usuario }) {
         </main>
       </div>
     </div>
+    </ProveedorUnidades>
   );
 }

@@ -108,6 +108,16 @@ en cada versión, útil para avisarle al equipo.
 
 ---
 
+## Unidades de medida
+
+Cada usuario elige arriba **mm · kg** o **in · lb**, y la app lo recuerda en su cuenta. Por dentro todo se
+guarda y se calcula en milímetros y kilogramos, así que el maestro en la nube es el mismo para todos: el
+equipo de EE.UU. lo ve en pulgadas y el de México en milímetros. Los archivos que se suben pueden venir en
+cualquier unidad: se elige en Maestro («Unidades de los archivos que subes») o se detecta por el encabezado
+de cada columna, por ejemplo «Largo (in)» o «Peso (lb)».
+
+---
+
 ## 5. Si algo no prende
 
 - **"Failed to fetch" al entrar:** revisa `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY` en

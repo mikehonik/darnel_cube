@@ -4,10 +4,12 @@
 // Pantalla, Excel e instructivo son renderers de este reporte. Nadie más debe leer resultado.contenedores[].cajas[].idx.
 
 import { cargaPorEje } from "./ejes.js";
+import { unidadesDe } from "../unidades.js";
 
 export const ORIENTACIONES = ["De pie", "De pie girada", "Acostada", "Acostada girada", "De canto", "De canto girada"];
 
-const mts = (v) => (v / 1000).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// Distancias del paso a paso en la unidad del usuario: metros con 2 decimales, o pies con 1.
+const distancia = (u) => (v) => (v / u.mmPorD).toLocaleString("es-MX", { minimumFractionDigits: u.decD, maximumFractionDigits: u.decD });
 
 const ordenDe = (f) => (f.orden > 0 ? f.orden : 1e9);
 
@@ -42,7 +44,8 @@ function estadisticas(cont, resultado, items, veh) {
 }
 
 // Agrupa las cajas en pasos: bloques consecutivos del mismo SKU, forma y tipo de pallet
-function pasosDe(cont, resultado, items) {
+function pasosDe(cont, resultado, items, u) {
+  const mts = distancia(u), ud = u.d;
   const pasos = [];
   cont.cajas.forEach((c, i) => {
     const ult = pasos[pasos.length - 1];
@@ -56,12 +59,14 @@ function pasosDe(cont, resultado, items) {
     const nx = Math.round((p.x1 - p.x0) / p.l), ny = Math.round((p.y1 - p.y0) / p.w), nz = Math.round((p.z1 - p.z0) / p.h);
     const bloque = nx * ny * nz === p.n ? ` en bloque de ${nx} a lo largo × ${ny} a lo ancho × ${nz} de alto` : "";
     const que = d ? `${p.n} ${p.n === 1 ? "pallet" : "pallets"} «${d.nombre}» (${d.n} cajas c/u, tarima ${d.tipoPallet})` : `${p.n} ${p.n === 1 ? "caja" : "cajas"} de ${it.nombre}${it.desc ? ` (${it.desc})` : ""}, ${(ORIENTACIONES[(p.ori || 1) - 1] || "").toLowerCase()}`;
-    const donde = `a ${mts(p.x0)}–${mts(p.x1)} m del fondo, ${mts(p.y0)}–${mts(p.y1)} m del lado derecho (visto desde las puertas), ${p.z0 < 1 ? "sobre el piso" : `a ${mts(p.z0)} m de altura`}`;
+    const donde = `a ${mts(p.x0)}–${mts(p.x1)} ${ud} del fondo, ${mts(p.y0)}–${mts(p.y1)} ${ud} del lado derecho (visto desde las puertas), ${p.z0 < 1 ? "sobre el piso" : `a ${mts(p.z0)} ${ud} de altura`}`;
     return { num: k + 1, texto: `Coloca ${que}${bloque}, ${donde}.`, sku: d ? d.nombre : it.nombre, n: p.n, ini: p.ini, fin: p.fin, forma: d ? "Pallet" : ORIENTACIONES[(p.ori || 1) - 1], x0: p.x0, y0: p.y0, z0: p.z0 };
   });
 }
 
-export function armarReporte({ resultado, carga }) {
+// u: unidades del usuario (unidades.js). Solo cambia el texto del paso a paso; los números del reporte
+// siguen en mm, kg y m³ y cada pantalla o archivo los convierte al mostrarlos.
+export function armarReporte({ resultado, carga }, u = unidadesDe("metrico")) {
   const items = carga.items, veh = carga.vehiculo;
   const usos = resultado.pallets.map(() => 0);
   resultado.contenedores.forEach((c) => c.cajas.forEach((k) => { if (k.pal >= 0) usos[k.pal]++; }));
@@ -71,7 +76,7 @@ export function armarReporte({ resultado, carga }) {
     const idsPal = [...new Set(c.cajas.filter((k) => k.pal >= 0).map((k) => k.pal))];
     // Entregas: zona de cada parada medida desde las puertas (x = veh.L) y los bultos que estorban para descargarla
     const entregas = (c.entregas || []).map((e) => ({ ...e, pedidos: [...new Set(items.filter((it) => it.orden === e.orden && it.grupo).map((it) => it.grupo))], destinos: [...new Set(items.filter((it) => it.orden === e.orden && it.destino).map((it) => it.destino))], desdePuertas: veh.L - e.x1, hastaPuertas: veh.L - e.x0 }));
-    return { num: i + 1, ...estadisticas(c, resultado, items, veh), pasos: pasosDe(c, resultado, items), pallets: idsPal.map((p) => pallets.find((d) => d.i === p)), entregas, estorban: c.estorban || 0 };
+    return { num: i + 1, ...estadisticas(c, resultado, items, veh), pasos: pasosDe(c, resultado, items, u), pallets: idsPal.map((p) => pallets.find((d) => d.i === p)), entregas, estorban: c.estorban || 0 };
   });
 
   const totales = contenedores.reduce((a, t) => ({ cajas: a.cajas + t.nCajas, kg: a.kg + t.peso, m3: a.m3 + t.m3, m3Cap: a.m3Cap + t.m3Cap }), { cajas: 0, kg: 0, m3: 0, m3Cap: 0 });

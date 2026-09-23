@@ -8,18 +8,19 @@ import { T } from "./tema.js";
 import { UM_COMUNES } from "../archivos/conversiones.js";
 import { RESTOS } from "./referencia.js";
 import { Num, Sel, Interruptor } from "./controles.jsx";
+import { useUnidades } from "./unidadesContexto.jsx";
 
 export function FormPallet({ p, editar }) {
   return (
     <div className="grid grid-cols-4 gap-2">
-      <Num etiqueta="Largo mm" valor={p.L} onChange={(v) => editar("L", v)} />
-      <Num etiqueta="Ancho mm" valor={p.W} onChange={(v) => editar("W", v)} />
-      <Num etiqueta="Espesor mm" valor={p.esp} onChange={(v) => editar("esp", v)} />
-      <Num etiqueta="Peso kg" valor={p.peso} onChange={(v) => editar("peso", v)} />
-      <Num etiqueta="Altura máx. mm" valor={p.altMax} onChange={(v) => editar("altMax", v)} ayuda="Incluye la tarima" />
-      <Num etiqueta="Carga máx. kg" valor={p.maxKg} onChange={(v) => editar("maxKg", v)} ayuda="0 = sin límite" />
-      <Num etiqueta="Sobresale a lo largo mm" valor={p.ovL ?? 0} onChange={(v) => editar("ovL", v)} ayuda="Cuánto pueden salir las cajas por cada extremo del largo de la tarima" />
-      <Num etiqueta="Sobresale a lo ancho mm" valor={p.ovW ?? 0} onChange={(v) => editar("ovW", v)} ayuda="Cuánto pueden salir las cajas por cada costado del ancho de la tarima" />
+      <Num etiqueta="Largo" tipo="largo" valor={p.L} onChange={(v) => editar("L", v)} />
+      <Num etiqueta="Ancho" tipo="largo" valor={p.W} onChange={(v) => editar("W", v)} />
+      <Num etiqueta="Espesor" tipo="largo" valor={p.esp} onChange={(v) => editar("esp", v)} />
+      <Num etiqueta="Peso" tipo="peso" valor={p.peso} onChange={(v) => editar("peso", v)} />
+      <Num etiqueta="Altura máx." tipo="largo" valor={p.altMax} onChange={(v) => editar("altMax", v)} ayuda="Incluye la tarima" />
+      <Num etiqueta="Carga máx." tipo="peso" valor={p.maxKg} onChange={(v) => editar("maxKg", v)} ayuda="0 = sin límite" />
+      <Num etiqueta="Sobresale a lo largo" tipo="largo" valor={p.ovL ?? 0} onChange={(v) => editar("ovL", v)} ayuda="Cuánto pueden salir las cajas por cada extremo del largo de la tarima" />
+      <Num etiqueta="Sobresale a lo ancho" tipo="largo" valor={p.ovW ?? 0} onChange={(v) => editar("ovW", v)} ayuda="Cuánto pueden salir las cajas por cada costado del ancho de la tarima" />
     </div>
   );
 }
@@ -37,7 +38,11 @@ function SelUM({ etiqueta, valor, onChange }) {
 
 export function FilaItem({ it, color, abierto, pallets, modoPallet, verMedidas = true, anchoSku = 200, onToggle, editar, quitar, difiere, enMaestro, aMaestro, deMaestro, mover, primera, ultima }) {
   const sinOri = !it.oris.some(Boolean);
+  const u = useUnidades();
   const num = (k) => (e) => editar(k, Math.max(0, Number(e.target.value) || 0));
+  // Medidas y peso se muestran y capturan en la unidad del usuario; por dentro siguen en mm y kg.
+  const vista = (k, v) => (k === "peso" ? u.P(v) : ["L", "W", "H"].includes(k) ? u.L(v) : v);
+  const numU = (k) => (e) => { const x = Math.max(0, Number(e.target.value) || 0); editar(k, k === "peso" ? u.aKg(x) : ["L", "W", "H"].includes(k) ? u.aMm(x) : x); };
   const td = { borderBottom: `1px solid ${T.linea}` };
   const celda = "celda w-full rounded px-1 py-1 text-sm outline-none";
   return (
@@ -58,11 +63,11 @@ export function FilaItem({ it, color, abierto, pallets, modoPallet, verMedidas =
           </div>
         </td>
         {[...(verMedidas ? ["L", "W", "H", "peso"] : []), "qty"].map((k) => (
-          <td key={k} className="px-0.5" style={{ ...td, width: 56, minWidth: 56 }}><input type="number" value={it[k]} onChange={num(k)} className={celda} aria-label={{ L: "Largo", W: "Ancho", H: "Alto", peso: "Peso", qty: "Cantidad" }[k]} /></td>
+          <td key={k} className="px-0.5" style={{ ...td, width: 56, minWidth: 56 }}><input type="number" value={vista(k, it[k])} onChange={numU(k)} className={celda} aria-label={{ L: "Largo", W: "Ancho", H: "Alto", peso: "Peso", qty: "Cantidad" }[k]} /></td>
         ))}
         <td className="px-1 text-center whitespace-nowrap" style={{ ...td, width: 54, minWidth: 54, color: T.suave }}
           title={it.umPedido ? `${it.qtyPedido.toLocaleString("es-MX")} ${it.umPedido} = ${it.qty.toLocaleString("es-MX")} cajas` : "Volumen de esta línea"}>
-          {((it.L * it.W * it.H * it.qty) / 1e9).toLocaleString("es-MX", { maximumFractionDigits: 2 })}
+          {u.V(it.L * it.W * it.H * it.qty).toLocaleString("es-MX", { maximumFractionDigits: 2 })}
           {it.umPedido && <span className="block" style={{ fontSize: 10 }}>{it.qtyPedido.toLocaleString("es-MX")} {it.umPedido}</span>}
         </td>
         <td className="px-0.5" style={{ ...td, width: 52, minWidth: 52 }} title="Parada de la ruta: la 1 queda junto a las puertas. Vacío = se acomoda donde convenga, al fondo">
@@ -123,6 +128,7 @@ function SelectorOrientacion({ it, editar }) {
   const tapa = ["z", "z", "y", "x", "y", "x"];
   const sinOri = !it.oris.some(Boolean);
   const preset = PRESETS_ORI.find(([, o]) => o.every((v, i) => v === it.oris[i]));
+  const u = useUnidades();
   return (
     <div className="mb-3">
       <div className="flex items-center justify-between mb-1">
@@ -136,11 +142,11 @@ function SelectorOrientacion({ it, editar }) {
       </div>
       <div className="grid grid-cols-6 gap-1">
         {ORIENTACIONES.map((n, k) => (
-          <button key={k} onClick={() => editar("oris", it.oris.map((o, j) => (j === k ? !o : o)))} aria-pressed={it.oris[k]} title={`${n}: alto ${d[k][2]} mm`}
+          <button key={k} onClick={() => editar("oris", it.oris.map((o, j) => (j === k ? !o : o)))} aria-pressed={it.oris[k]} title={`${n}: alto ${u.fL(d[k][2])}`}
             className="flex flex-col items-center rounded-md px-0.5 py-1" style={{ border: `1.5px solid ${it.oris[k] ? T.nav : T.linea}`, background: it.oris[k] ? "#fff" : "#F7F9FB", opacity: it.oris[k] ? 1 : 0.7 }}>
             <IconoCaja dims={d[k]} tapa={tapa[k]} activa={it.oris[k]} />
             <span className="text-center leading-tight mt-0.5" style={{ fontSize: 10, color: it.oris[k] ? T.tinta : T.suave }}>{n}</span>
-            <span style={{ fontSize: 9, color: T.suave }}>alto {d[k][2]}</span>
+            <span style={{ fontSize: 9, color: T.suave }}>alto {u.L(d[k][2]).toLocaleString("es-MX", { maximumFractionDigits: 1 })}</span>
           </button>
         ))}
       </div>
@@ -201,9 +207,9 @@ function ReglasSku({ it, editar, pallets, modoPallet }) {
         <Sel etiqueta="Forma" valor={it.forma || "caja"} onChange={(v) => aplicarForma(it, v, editar)}
           opciones={[["caja", "Caja o bulto"], ["barril", "Barril o cilindro"], ["tubo", "Tubo o rollo"], ["teja", "Teja o placa"]]} />
         {(it.forma === "barril" || it.forma === "tubo") && (
-          <Num etiqueta="Diámetro mm" valor={it.diametro || 0} onChange={(v) => aplicarDiametro(it, v, editar)} ayuda="Ajusta las medidas de la caja que envuelve al cilindro" />
+          <Num etiqueta="Diámetro" tipo="largo" valor={it.diametro || 0} onChange={(v) => aplicarDiametro(it, v, editar)} ayuda="Ajusta las medidas de la caja que envuelve al cilindro" />
         )}
-        <Num etiqueta="Anidado: sube por pieza mm" valor={it.anidado || 0} onChange={(v) => editar("anidado", v)} ayuda="Cuánto crece la pila por cada pieza extra cuando una entra en la otra. 0 = no se anidan" />
+        <Num etiqueta="Anidado: sube por pieza" tipo="largo" valor={it.anidado || 0} onChange={(v) => editar("anidado", v)} ayuda="Cuánto crece la pila por cada pieza extra cuando una entra en la otra. 0 = no se anidan" />
         {it.anidado > 0 && <Num etiqueta="Máx. piezas anidadas" valor={it.maxAnidado || 0} onChange={(v) => editar("maxAnidado", v)} ayuda="Cuántas puede llevar una torre antes de empezar otra. 0 = las que quepan" />}
       </div>
       <SelectorOrientacion it={it} editar={editar} />
@@ -215,7 +221,7 @@ function ReglasSku({ it, editar, pallets, modoPallet }) {
       <div className="grid grid-cols-3 gap-2">
         <Num etiqueta="Máx. cajas apiladas" valor={it.maxNiveles} onChange={(v) => editar("maxNiveles", v)} ayuda="Cuántas cajas de este SKU pueden ir una sobre otra. 0 = sin límite" />
         <Num etiqueta="Prioridad de apilamiento" valor={it.valorApilar} onChange={(v) => editar("valorApilar", v)} ayuda="Mayor número = va más abajo. Una caja de 3 puede llevar encima cajas de 3, 2 o 1, nunca de 4. 0 = no usar" />
-        <Num etiqueta="Peso máx. encima kg" valor={it.pesoMaxEncima} onChange={(v) => editar("pesoMaxEncima", v)} ayuda="Resistencia de la caja. 0 = sin límite" />
+        <Num etiqueta="Peso máx. encima" tipo="peso" valor={it.pesoMaxEncima} onChange={(v) => editar("pesoMaxEncima", v)} ayuda="Resistencia de la caja. 0 = sin límite" />
         <Num etiqueta="Piezas por caja" valor={it.piezas} onChange={(v) => editar("piezas", v)} />
         <SelUM etiqueta="UM de la caja" valor={it.umCaja || "CJ"} onChange={(v) => editar("umCaja", v)} />
         <label className="block text-xs" style={{ color: T.suave }} title="Agrupa productos con reglas de apilamiento en común, por ejemplo «Tejas». Se usa con la regla «Solo sobre la misma categoría».">
@@ -253,10 +259,10 @@ function BloqueBundle({ p, editar }) {
             <div className="grid grid-cols-3 gap-2">
               <Num etiqueta="% máximo en Bundle" valor={p.bundlePct} onChange={(v) => editar("bundlePct", Math.min(99.99, v))} ayuda="Mayor a 0% y menor a 100%. Es la parte de lo pedido que se intenta convertir en Bundles completos" />
               <Num etiqueta="Cajas por Bundle" valor={p.bundleCantidadEstandar} onChange={(v) => editar("bundleCantidadEstandar", v)} ayuda="Cuántas cajas de este SKU entran en un Bundle completo" />
-              <Num etiqueta="Peso Bundle kg" valor={p.bundlePeso} onChange={(v) => editar("bundlePeso", v)} ayuda="0 = se calcula como el peso de la caja × cajas por Bundle" />
-              <Num etiqueta="Largo Bundle mm" valor={p.bundleL} onChange={(v) => editar("bundleL", v)} />
-              <Num etiqueta="Ancho Bundle mm" valor={p.bundleW} onChange={(v) => editar("bundleW", v)} />
-              <Num etiqueta="Alto Bundle mm" valor={p.bundleH} onChange={(v) => editar("bundleH", v)} />
+              <Num etiqueta="Peso Bundle" tipo="peso" valor={p.bundlePeso} onChange={(v) => editar("bundlePeso", v)} ayuda="0 = se calcula como el peso de la caja × cajas por Bundle" />
+              <Num etiqueta="Largo Bundle" tipo="largo" valor={p.bundleL} onChange={(v) => editar("bundleL", v)} />
+              <Num etiqueta="Ancho Bundle" tipo="largo" valor={p.bundleW} onChange={(v) => editar("bundleW", v)} />
+              <Num etiqueta="Alto Bundle" tipo="largo" valor={p.bundleH} onChange={(v) => editar("bundleH", v)} />
             </div>
           )}
         </>
@@ -266,7 +272,8 @@ function BloqueBundle({ p, editar }) {
 }
 
 export function FilaMaestro({ p, pallets, abierto, onToggle, editar, quitar, aCarga }) {
-  const num = (k) => (e) => editar(k, Math.max(0, Number(e.target.value) || 0));
+  const u = useUnidades();
+  const numU = (k) => (e) => { const x = Math.max(0, Number(e.target.value) || 0); editar(k, k === "peso" ? u.aKg(x) : u.aMm(x)); };
   const td = { borderBottom: `1px solid ${T.linea}` };
   const celda = "celda w-full rounded px-1.5 py-1 text-sm outline-none";
   const pi = Math.max(0, pallets.findIndex((t) => clave(t.nombre) === clave(p.tarima)));
@@ -286,7 +293,7 @@ export function FilaMaestro({ p, pallets, abierto, onToggle, editar, quitar, aCa
         </td>
         <td className="px-0.5" style={td}><input value={p.desc} onChange={(e) => editar("desc", e.target.value)} className={celda} style={{ minWidth: 110 }} placeholder="—" /></td>
         {["L", "W", "H", "peso"].map((k) => (
-          <td key={k} className="px-0.5" style={{ ...td, width: 60 }}><input type="number" value={p[k]} onChange={num(k)} className={celda} /></td>
+          <td key={k} className="px-0.5" style={{ ...td, width: 60 }}><input type="number" value={k === "peso" ? u.P(p[k]) : u.L(p[k])} onChange={numU(k)} className={celda} /></td>
         ))}
         <td className="px-1 text-xs whitespace-nowrap" style={{ ...td, color: p.paletizar ? T.aviso : T.suave }}>{p.paletizar === "mixto" ? "Mixto" : p.paletizar ? `×${p.porPallet || "máx"}` : "—"}</td>
         <td className="px-1 whitespace-nowrap" style={td}>

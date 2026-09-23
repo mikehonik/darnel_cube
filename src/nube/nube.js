@@ -64,6 +64,14 @@ export async function sesionActual() {
   return data.session?.user ?? null;
 }
 
+// Preferencias del usuario (por ejemplo, el sistema de unidades) guardadas en su propia cuenta de
+// Supabase, así lo siguen a cualquier computadora. Si falla (sin conexión), no pasa nada: queda la copia local.
+export async function guardarPreferencias(datos) {
+  const sb = clienteNube();
+  if (!sb) return;
+  await sb.auth.updateUser({ data: datos });
+}
+
 export function alCambiarSesion(cb) {
   const sb = clienteNube();
   if (!sb) return () => {};

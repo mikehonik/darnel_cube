@@ -5,6 +5,7 @@
 import * as XLSX from "xlsx";
 import { clave, siNo, numero, hojaAObjetos, buscarHoja } from "./celdas.js";
 import { VEHICULOS } from "../ui/referencia.js";
+import { factorColumna, encabezadoEn, SISTEMAS } from "../unidades.js";
 
 export const ARCHIVO_VEHICULOS = "maestro_vehiculos.xlsx";
 export const COLS_VEHICULOS = ["Nombre", "Placa", "Transportadora", "Largo interior (mm)", "Ancho interior (mm)", "Alto interior (mm)", "Tara (kg)", "Peso bruto máx. (kg)",
@@ -23,18 +24,20 @@ export const AYUDA_VEHICULOS = [
   ["Catálogo de vehículos", "El cálculo de eje es una estimación", "Reparte cada caja entre los dos ejes según qué tan cerca está de cada uno (el mismo principio que una báscula de reparto en patio). Sirve para avisar a tiempo, no sustituye pesar el vehículo.", "—", "—"],
 ];
 
-const num0 = (v) => Math.round(numero(v));
-
 export function vehiculoVacio(d = {}) {
   return { id: "V" + Math.random().toString(36).slice(2, 8), nombre: "", placa: "", transportadora: "", L: 0, W: 0, H: 0, tara: 0, maxKg: 0,
     ejeDelantero: 0, ejeTrasero: 0, xEjeDelantero: 0, xEjeTrasero: 0, taraDelantera: 0, taraTrasera: 0, propio: true, ...d };
 }
 
-// Lee maestro_vehiculos.xlsx. Devuelve { vehiculos, errores }.
-export function leerVehiculos(buf) {
+// Lee maestro_vehiculos.xlsx. Devuelve { vehiculos, errores }, siempre en mm y kg: cada columna se
+// convierte según la unidad de su encabezado ("Largo interior (in)", "Tara (lb)") o la elegida al subir.
+export function leerVehiculos(buf, unidades = "auto") {
   const wb = XLSX.read(buf, { type: "array" });
   const hv = buscarHoja(wb, ["vehiculos", "flota", "maestrodevehiculos"]) || wb.Sheets[wb.SheetNames[0]];
   const vehiculos = [], errores = [], vistos = new Set();
+  const cabeza = (XLSX.utils.sheet_to_json(hv, { header: 1, defval: "", blankrows: false }).find((f) => f.some((c) => ["sku", "nombre", "codigo"].includes(clave(c)))) || []).map(String);
+  const fac = {}; cabeza.forEach((h) => { fac[clave(h)] = factorColumna(h, /\(\s*(kg|lb|lbs|libras|g|t|ton)\b/i.test(h) || /tara|peso|eje(delantero|trasero)max/.test(clave(h)) ? "peso" : "largo", unidades); });
+  const num0 = (o, k) => Math.round(numero(o[k]) * (fac[k] ?? 1));
   hojaAObjetos(hv).forEach((o) => {
     const nombre = String(o.nombre ?? o.tipo ?? "").trim();
     if (!nombre) return;
@@ -44,10 +47,10 @@ export function leerVehiculos(buf) {
     vistos.add(llave);
     const v = vehiculoVacio({
       nombre, placa, transportadora: String(o.transportadora ?? "").trim(),
-      L: num0(o.largointerior), W: num0(o.anchointerior), H: num0(o.altointerior), tara: num0(o.tara), maxKg: num0(o.pesobrutomax),
-      ejeDelantero: num0(o.ejedelanteromax), ejeTrasero: num0(o.ejetraseromax),
-      xEjeDelantero: num0(o.ejedelanterodesdeelfrentedelacaja), xEjeTrasero: num0(o.ejedelanterodesdeelfrentedelacaja) + num0(o.distanciaentreejes),
-      taraDelantera: num0(o.taraenejedelantero), taraTrasera: num0(o.taraenejetrasero),
+      L: num0(o, "largointerior"), W: num0(o, "anchointerior"), H: num0(o, "altointerior"), tara: num0(o, "tara"), maxKg: num0(o, "pesobrutomax"),
+      ejeDelantero: num0(o, "ejedelanteromax"), ejeTrasero: num0(o, "ejetraseromax"),
+      xEjeDelantero: num0(o, "ejedelanterodesdeelfrentedelacaja"), xEjeTrasero: num0(o, "ejedelanterodesdeelfrentedelacaja") + num0(o, "distanciaentreejes"),
+      taraDelantera: num0(o, "taraenejedelantero"), taraTrasera: num0(o, "taraenejetrasero"),
     });
     if (!(v.L > 0 && v.W > 0 && v.H > 0)) errores.push(`${nombre}: faltan medidas interiores (largo, ancho o alto).`);
     vehiculos.push(v);
@@ -55,10 +58,11 @@ export function leerVehiculos(buf) {
   return { vehiculos, errores };
 }
 
-export function libroVehiculos(vehiculos = []) {
+export function libroVehiculos(vehiculos = [], sis = SISTEMAS.metrico) {
   const wb = XLSX.utils.book_new();
-  const filas = [COLS_VEHICULOS, ...vehiculos.map((v) => [v.nombre, v.placa, v.transportadora, v.L, v.W, v.H, v.tara, v.maxKg,
-    v.ejeDelantero, v.ejeTrasero, v.xEjeTrasero - v.xEjeDelantero, v.xEjeDelantero, v.taraDelantera, v.taraTrasera])];
+  const L = (v) => Math.round(((+v || 0) / sis.mmPorL) * 100) / 100, P = (v) => Math.round(((+v || 0) / sis.kgPorP) * 10) / 10;
+  const filas = [COLS_VEHICULOS.map((h) => encabezadoEn(h, sis)), ...vehiculos.map((v) => [v.nombre, v.placa, v.transportadora, L(v.L), L(v.W), L(v.H), P(v.tara), P(v.maxKg),
+    P(v.ejeDelantero), P(v.ejeTrasero), L(v.xEjeTrasero - v.xEjeDelantero), L(v.xEjeDelantero), P(v.taraDelantera), P(v.taraTrasera)])];
   const ws = XLSX.utils.aoa_to_sheet(filas);
   ws["!cols"] = COLS_VEHICULOS.map((h) => ({ wch: Math.max(12, h.length) }));
   ws["!autofilter"] = { ref: `A1:N${Math.max(2, vehiculos.length + 1)}` };
@@ -71,6 +75,6 @@ export function libroVehiculos(vehiculos = []) {
 }
 
 // Catálogo de ejemplo: los vehículos que ya trae la herramienta por omisión.
-export function plantillaVehiculos() {
-  return libroVehiculos(VEHICULOS.map((v) => vehiculoVacio(v)));
+export function plantillaVehiculos(sis = SISTEMAS.metrico) {
+  return libroVehiculos(VEHICULOS.map((v) => vehiculoVacio(v)), sis);
 }

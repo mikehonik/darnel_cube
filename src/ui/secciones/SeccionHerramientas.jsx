@@ -9,6 +9,7 @@ import { capacidadSuelta, configuracionPallet, capacidadPalletCompleto } from ".
 import { prepararEntrada } from "../../motor/corrida.js";
 import { T } from "../tema.js";
 import { Sel, Tarjeta } from "../controles.jsx";
+import { useUnidades } from "../unidadesContexto.jsx";
 
 const vehParaCalculo = (v) => ({ ...v, maxVolPct: v.maxVolPct || 0, maxSkus: v.maxSkus || 0, maxPiezas: v.maxPiezas || 0 });
 // El motor espera la entrada ya normalizada (soporte mínimo como fracción, compresión por omisión según
@@ -20,7 +21,6 @@ const paraMotor = (p, reglas) => {
   return { it: e.items[0], reglas: e.reglas };
 };
 const pct = (n) => `${(n * 100).toLocaleString("es-MX", { maximumFractionDigits: 1 })}%`;
-const m3 = (mm3) => (mm3 / 1e9).toLocaleString("es-MX", { maximumFractionDigits: 2 });
 
 function Resultado({ filas }) {
   return (
@@ -35,6 +35,7 @@ function Resultado({ filas }) {
 }
 
 export function SeccionHerramientas({ maestro, vehiculos, pallets, reglas }) {
+  const u = useUnidades();
   const [skuSel, setSkuSel] = useState(maestro.productos[0]?.sku || "");
   const [vehSel, setVehSel] = useState(vehiculos[0]?.id || "");
   const [tarimaSel, setTarimaSel] = useState(0);
@@ -67,9 +68,9 @@ export function SeccionHerramientas({ maestro, vehiculos, pallets, reglas }) {
             <Resultado filas={[
               ["Cantidad máxima (unidades)", rSuelta.cajas.toLocaleString("es-MX")],
               ["Piezas totales", rSuelta.piezas.toLocaleString("es-MX")],
-              ["Volumen ocupado", `${m3(rSuelta.vol)} m³`],
+              ["Volumen ocupado", u.fV(rSuelta.vol)],
               ["% de ocupación del vehículo", pct(rSuelta.vol / rSuelta.volV)],
-              ["Peso total", `${Math.round(rSuelta.peso).toLocaleString("es-MX")} kg`],
+              ["Peso total", u.fP(rSuelta.peso)],
             ]} />
           ) : <p className="text-sm mt-2" style={{ color: T.error }}>Este SKU no cabe suelto en este vehículo (o excede el peso máximo).</p>
         )}
@@ -84,8 +85,8 @@ export function SeccionHerramientas({ maestro, vehiculos, pallets, reglas }) {
             ["Niveles", rConfig.capas.toLocaleString("es-MX")],
             ["Total de cajas por pallet", rConfig.n.toLocaleString("es-MX")],
             ["Unidades totales por pallet", rConfig.piezas.toLocaleString("es-MX")],
-            ["Altura del pallet cargado", `${Math.round(rConfig.alto).toLocaleString("es-MX")} mm`],
-            ["Peso del pallet cargado", `${Math.round(rConfig.peso).toLocaleString("es-MX")} kg`],
+            ["Altura del pallet cargado", u.fL(rConfig.alto, 1)],
+            ["Peso del pallet cargado", u.fP(rConfig.peso)],
             ["% de utilización de la superficie", pct((rConfig.L * rConfig.W) / (pal.L * pal.W))],
           ]} />
         ) : <p className="text-sm mt-2" style={{ color: T.error }}>Este SKU no arma ni un pallet en esta tarima (revisa medidas y orientaciones).</p>}
@@ -103,7 +104,7 @@ export function SeccionHerramientas({ maestro, vehiculos, pallets, reglas }) {
               ["Total de cajas", rPallets.cajasTotales.toLocaleString("es-MX")],
               ["Unidades totales", rPallets.piezasTotales.toLocaleString("es-MX")],
               ["% de ocupación del vehículo", pct(rPallets.vol / rPallets.volV)],
-              ["Peso total transportado", `${Math.round(rPallets.peso).toLocaleString("es-MX")} kg`],
+              ["Peso total transportado", u.fP(rPallets.peso)],
             ]} />
           ) : <p className="text-sm mt-2" style={{ color: T.error }}>Ni un pallet completo de este SKU cabe en este vehículo.</p>
         )}

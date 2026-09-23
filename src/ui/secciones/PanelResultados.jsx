@@ -3,6 +3,7 @@ import { Download, AlertTriangle, Loader2, FileSpreadsheet, ChevronDown, PanelBo
 import { T } from "../tema.js";
 import { ORIENTACIONES } from "../../motor/reporte.js";
 import { Dato } from "../controles.jsx";
+import { useUnidades } from "../unidadesContexto.jsx";
 
 const nVeh = (n) => `${n} ${n === 1 ? "vehículo" : "vehículos"}`;
 
@@ -43,6 +44,7 @@ function AvisoConsolidar({ ultimoCasiVacio, consolidar, intentarConsolidar, apli
 
 export function PanelResultados({ colores, descargarInstructivo, descargarInstructivoCompleto, descargarResultados, generando, modoPallet, palVista, pestana, reporte, res, resaltado, sel, setPestana, setResaltado, stats, verPallet, vista, editarOris, oculto, setOculto,
   espacios, calculandoEspacios, completarEspacios, aplicarRelleno, ultimoCasiVacio, consolidar, intentarConsolidar, aplicarConsolidacion, aplicarReduccionConsolidar }) {
+  const u = useUnidades();
   // Altura del panel: se arrastra desde el borde superior y crece sola cuando la pestaña activa es una tabla
   const [alto, setAlto] = useState(250);
   const [abierta, setAbierta] = useState(null);   // línea desplegada en la lista de carga
@@ -108,32 +110,32 @@ export function PanelResultados({ colores, descargarInstructivo, descargarInstru
             {pestana === "resumen" && (palVista ? (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 <Dato t="Cajas" v={palVista.n} s={`${palVista.piezas.toLocaleString("es-MX")} piezas`} />
-                <Dato t="Altura total" v={`${palVista.alto.toLocaleString("es-MX")} mm`} s="con tarima" />
-                <Dato t="Peso total" v={`${palVista.peso.toLocaleString("es-MX")} kg`} s="con tarima" />
+                <Dato t="Altura total" v={u.fL(palVista.alto, 1)} s="con tarima" />
+                <Dato t="Peso total" v={u.fP(palVista.peso, 1)} s="con tarima" />
                 <Dato t="Tope" v={palVista.techoPlano ? "Plano" : "Irregular"} s={palVista.techoPlano ? "puede recibir carga" : "no recibe carga encima"} />
                 <Dato t="Utilización del pallet" v={`${(palVista.utilVol * 100).toFixed(0)}%`} s="del espacio permitido sobre la tarima" />
-                <Dato t="Huella" v={`${Math.round(palVista.L)} × ${Math.round(palVista.W)} mm`} s={`tarima ${palVista.palL} × ${palVista.palW}`} />
-                <Dato t="Sobresale" v={palVista.sobraL || palVista.sobraW ? `${Math.round(palVista.sobraL)} / ${Math.round(palVista.sobraW)} mm` : "Nada"} s={`por lado, a lo largo / ancho · permitido ${palVista.ovL} / ${palVista.ovW}`} />
+                <Dato t="Huella" v={u.fLL(palVista.L, palVista.W)} s={`tarima ${u.fLL(palVista.palL, palVista.palW)}`} />
+                <Dato t="Sobresale" v={palVista.sobraL || palVista.sobraW ? `${u.fL(palVista.sobraL).replace(` ${u.l}`, "")} / ${u.fL(palVista.sobraW)}` : "Nada"} s={`por lado, a lo largo / ancho · permitido ${palVista.ovL} / ${palVista.ovW}`} />
                 <Dato t="Armado" v={palVista.capas ? `${palVista.capas} × ${palVista.porCapa}` : "Por bloques"} s={palVista.capas ? `capas × cajas por capa${palVista.alternado ? " · entrelazadas" : ""}` : "pallet mixto"} />
               </div>
             ) : stats && (
               <>
                 <div className={`grid grid-cols-2 gap-2 mb-3 ${reporte.conEntregas ? "md:grid-cols-6" : "md:grid-cols-5"}`}>
                   <Dato t={modoPallet ? "Pallets" : "Vehículos"} v={reporte.contenedores.length} s={`mejor de ${reporte.estrategiasProbadas} intentos`} />
-                  <Dato t="Utilización volumétrica" v={`${stats.ocupacion.toFixed(1)}%`} s={`${stats.m3.toLocaleString("es-MX", { maximumFractionDigits: 1 })} de ${stats.m3Cap.toLocaleString("es-MX", { maximumFractionDigits: 1 })} m³`} />
-                  <Dato t="Utilización de peso" v={stats.utilPeso != null ? `${stats.utilPeso.toFixed(1)}%` : "—"} s={`${Math.round(stats.peso).toLocaleString("es-MX")} kg de carga${reporte.vehiculo.maxKg ? ` · bruto ${Math.round(stats.pesoBruto).toLocaleString("es-MX")} / ${reporte.vehiculo.maxKg.toLocaleString("es-MX")}` : ""}`} />
+                  <Dato t="Utilización volumétrica" v={`${stats.ocupacion.toFixed(1)}%`} s={`${u.fV3(stats.m3, 1).replace(` ${u.v}`, "")} de ${u.fV3(stats.m3Cap, 1)}`} />
+                  <Dato t="Utilización de peso" v={stats.utilPeso != null ? `${stats.utilPeso.toFixed(1)}%` : "—"} s={`${u.fP(stats.peso)} de carga${reporte.vehiculo.maxKg ? ` · bruto ${u.fP(stats.pesoBruto).replace(` ${u.p}`, "")} / ${u.fP(reporte.vehiculo.maxKg)}` : ""}`} />
                   <Dato t="Bultos" v={stats.nBultos.toLocaleString("es-MX")} s={stats.nPallets ? `${stats.nPallets} pallets · ${stats.nCajas.toLocaleString("es-MX")} cajas` : `${stats.piezas.toLocaleString("es-MX")} piezas`} />
-                  <Dato t="Centro de gravedad" v={`${stats.cgLargo.toFixed(0)}%`} s={`del fondo · ${Math.round(stats.cgLateral)} mm lateral`} />
+                  <Dato t="Centro de gravedad" v={`${stats.cgLargo.toFixed(0)}%`} s={`del fondo · ${u.fL(stats.cgLateral, 0)} lateral`} />
                   {reporte.conEntregas && <Dato t="Bultos que estorban" v={stats.estorban || 0} s={stats.estorban ? "hay que moverlos al descargar" : "descarga limpia por entrega"} />}
                 </div>
                 <div className="grid grid-cols-2 gap-2 mb-3 md:grid-cols-3">
-                  <Dato t="Metros lineales libres" v={`${stats.mLibres.toLocaleString("es-MX", { maximumFractionDigits: 2 })} m`} s={`de ${stats.mTotal.toLocaleString("es-MX", { maximumFractionDigits: 1 })} m · usados ${stats.mUsados.toLocaleString("es-MX", { maximumFractionDigits: 2 })} m`} />
+                  <Dato t={u.id === "metrico" ? "Metros lineales libres" : "Pies lineales libres"} v={u.fD(stats.mLibres * 1000)} s={`de ${u.fD(stats.mTotal * 1000, 1)} · usados ${u.fD(stats.mUsados * 1000)}`} />
                   {stats.ejes && (
                     <>
-                      <Dato t="Eje delantero" v={`${stats.ejes.delantero.carga.toLocaleString("es-MX")} kg`}
-                        s={<span style={{ color: stats.ejes.delantero.alerta ? T.error : T.suave }}>{stats.ejes.delantero.pct}% de {stats.ejes.delantero.maximo.toLocaleString("es-MX")} kg{stats.ejes.delantero.alerta ? " · excedido" : ""}</span>} />
-                      <Dato t="Eje trasero" v={`${stats.ejes.trasero.carga.toLocaleString("es-MX")} kg`}
-                        s={<span style={{ color: stats.ejes.trasero.alerta ? T.error : T.suave }}>{stats.ejes.trasero.pct}% de {stats.ejes.trasero.maximo.toLocaleString("es-MX")} kg{stats.ejes.trasero.alerta ? " · excedido" : ""}</span>} />
+                      <Dato t="Eje delantero" v={u.fP(stats.ejes.delantero.carga)}
+                        s={<span style={{ color: stats.ejes.delantero.alerta ? T.error : T.suave }}>{stats.ejes.delantero.pct}% de {u.fP(stats.ejes.delantero.maximo)}{stats.ejes.delantero.alerta ? " · excedido" : ""}</span>} />
+                      <Dato t="Eje trasero" v={u.fP(stats.ejes.trasero.carga)}
+                        s={<span style={{ color: stats.ejes.trasero.alerta ? T.error : T.suave }}>{stats.ejes.trasero.pct}% de {u.fP(stats.ejes.trasero.maximo)}{stats.ejes.trasero.alerta ? " · excedido" : ""}</span>} />
                     </>
                   )}
                 </div>
@@ -166,13 +168,13 @@ export function PanelResultados({ colores, descargarInstructivo, descargarInstru
                         </td>
                         <td>{f.orden || <span style={{ color: T.suave }}>Libre</span>}</td><td>{f.sueltas}</td><td>{f.enPallet}</td><td className="font-medium">{f.total}</td>
                         <td>{f.m3.toLocaleString("es-MX", { maximumFractionDigits: 2 })}</td>
-                        <td>{Math.round(f.peso).toLocaleString("es-MX")} kg</td>
+                        <td>{u.fP(f.peso)}</td>
                       </tr>
                       {abierta === f.idx && (
                         <tr>
                           <td colSpan={7} className="px-3 pb-3" style={{ background: "#F7F9FB" }}>
                             <p className="text-xs mt-2 mb-1" style={{ color: T.suave }}>
-                              Caja de {f.L} × {f.W} × {f.H} mm · {f.m3.toLocaleString("es-MX", { maximumFractionDigits: 3 })} m³ en total · quedó acomodada así:
+                              Caja de {u.fLLL(f.L, f.W, f.H)} · {u.fV3(f.m3, 3)} en total · quedó acomodada así:
                             </p>
                             <div className="flex flex-wrap gap-1.5 mb-2">
                               {f.orientaciones.map((o) => (
@@ -213,8 +215,8 @@ export function PanelResultados({ colores, descargarInstructivo, descargarInstru
                   <tbody>
                     {stats.entregas.map((e) => (
                       <tr key={e.orden} style={{ borderTop: `1px solid ${T.linea}` }}>
-                        <td className="py-1.5 font-medium">{e.orden}</td><td>{e.destinos.join(", ") || <span style={{ color: T.suave }}>—</span>}</td><td style={{ color: T.suave }}>{e.pedidos.join(", ") || "—"}</td><td>{e.n}</td><td>{(e.vol / 1e9).toFixed(1)} m³</td>
-                        <td>{(e.desdePuertas / 1e3).toFixed(1)} – {(e.hastaPuertas / 1e3).toFixed(1)} m</td><td style={{ color: e.estorban ? T.aviso : T.ok }}>{e.estorban || "ninguno"}</td>
+                        <td className="py-1.5 font-medium">{e.orden}</td><td>{e.destinos.join(", ") || <span style={{ color: T.suave }}>—</span>}</td><td style={{ color: T.suave }}>{e.pedidos.join(", ") || "—"}</td><td>{e.n}</td><td>{u.fV(e.vol, 1)}</td>
+                        <td>{u.fD(e.desdePuertas, 1).replace(` ${u.d}`, "")} – {u.fD(e.hastaPuertas, 1)}</td><td style={{ color: e.estorban ? T.aviso : T.ok }}>{e.estorban || "ninguno"}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -228,7 +230,7 @@ export function PanelResultados({ colores, descargarInstructivo, descargarInstru
                   {reporte.pallets.map((d) => (
                     <tr key={d.i} style={{ borderTop: `1px solid ${T.linea}`, background: vista === d.i ? T.shell : "transparent" }}>
                       <td className="py-1.5">{d.nombre}<span className="block text-xs" style={{ color: T.suave }}>{d.tipoPallet} · tope {d.techoPlano ? "plano" : "irregular"}{d.alternado ? " · capas entrelazadas" : ""}</span></td>
-                      <td>{d.n}</td><td>{Math.round(d.alto).toLocaleString("es-MX")} mm</td><td>{Math.round(d.peso).toLocaleString("es-MX")} kg</td><td>× {d.usos}</td>
+                      <td>{d.n}</td><td>{u.fL(d.alto, 1)}</td><td>{u.fP(d.peso)}</td><td>× {d.usos}</td>
                       <td className="text-right"><button onClick={() => verPallet(d.i)} className="text-xs px-2 py-1 rounded-md" style={{ border: `1px solid ${T.linea}` }}>Ver armado</button></td>
                     </tr>
                   ))}

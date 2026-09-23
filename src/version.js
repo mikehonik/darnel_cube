@@ -16,6 +16,15 @@ export const VERSION_COMPLETA = `v${VERSION}${BUILD ? ` · ${BUILD}` : ""}${FECH
 // escrito para quien usa la herramienta (no para programadores).
 export const NOVEDADES = [
   {
+    version: "1.2.0", fecha: "23/09/2026",
+    cambios: [
+      "Unidades americanas: arriba eliges mm · kg o in · lb. Toda la pantalla, la captura, el Excel de resultados y el instructivo cambian a pulgadas, libras, pies³ y pies. Se recuerda en tu usuario.",
+      "Al subir un maestro, dimensiones, Bundle o catálogo de vehículos puedes elegir en qué unidades viene (mm, cm, m o pulgadas y libras), o dejar que la herramienta lo detecte por el encabezado, por ejemplo «Largo (in)».",
+      "Los archivos que descargas salen en tu unidad, con la unidad en el encabezado, y se reconocen solos al volver a subirlos.",
+      "El cálculo no cambia: por dentro todo se sigue calculando en milímetros y kilogramos.",
+    ],
+  },
+  {
     version: "1.1.2", fecha: "23/09/2026",
     cambios: [
       "El guion en el SKU ahora cuenta: 852-10 y 85210 son productos distintos. Antes el maestro los tomaba como repetidos y se quedaba solo con uno.",

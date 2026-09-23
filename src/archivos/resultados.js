@@ -5,6 +5,16 @@
 import * as XLSX from "xlsx";
 import { clave } from "./celdas.js";
 import { NOMBRE_VERSION, BUILD } from "../version.js";
+import { unidadesDe, encabezadoEn } from "../unidades.js";
+
+// Conversores numéricos para los archivos, en la unidad del usuario (u = unidadesDe(...)).
+const conv = (u) => ({
+  kg: (v, dec = 0) => +((+v || 0) / u.kgPorP).toFixed(dec),
+  m3: (v, dec = 2) => +(((+v || 0) * 1e9) / u.mm3PorV).toFixed(dec),     // recibe m³
+  mm3: (v, dec = 2) => +((+v || 0) / u.mm3PorV).toFixed(dec),            // recibe mm³
+  d: (v, dec = 2) => +((+v || 0) / u.mmPorD).toFixed(dec),                // recibe mm, da m o ft
+  l: (v, dec = 0) => +((+v || 0) / u.mmPorL).toFixed(u.id === "metrico" ? dec : Math.max(dec, 1)),  // recibe mm, da mm o in
+});
 
 // Libro de una sola hoja, para listados simples (revisión del pedido)
 export function libroSimple(filas, hoja, anchos) {
@@ -19,30 +29,31 @@ const esc = (t) => String(t ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<
 const hoja = (wb, nombre, filas, anchos) => { const ws = XLSX.utils.aoa_to_sheet(filas); ws["!cols"] = anchos.map((wch) => ({ wch })); XLSX.utils.book_append_sheet(wb, ws, nombre); };
 
 // Excel con Resumen, Lista de carga, Pallets (si hay) y Pasos de carga. Devuelve el archivo como bytes.
-export function libroResultados({ reporte: R, proyecto, nombreVeh, nivel, fecha = new Date().toLocaleString("es-MX") }) {
+export function libroResultados({ reporte: R, proyecto, nombreVeh, nivel, fecha = new Date().toLocaleString("es-MX"), u = unidadesDe("metrico") }) {
   const wb = XLSX.utils.book_new();
+  const c = conv(u), H = (fila) => fila.map((h) => encabezadoEn(h, u));
   const r1 = [[`${NOMBRE_VERSION} · Resultados`], ["Carga", proyecto], ["Fecha", fecha], ["Vehículo", nombreVeh], ["Nivel de optimización", nivel], [],
-    ["Vehículo", "Bultos", "Cajas", "Pallets", "Peso carga (kg)", "Peso bruto (kg)", "Utilización de peso (%)", "Volumen cargado (m³)", "Capacidad (m³)", "Utilización volumétrica (%)", "Centro de gravedad (% del fondo)"]];
-  R.contenedores.forEach((t) => r1.push([t.num, t.nBultos, t.nCajas, t.nPallets, Math.round(t.peso), Math.round(t.pesoBruto), t.utilPeso == null ? "" : +t.utilPeso.toFixed(1), +t.m3.toFixed(2), +t.m3Cap.toFixed(2), +t.ocupacion.toFixed(1), +t.cgLargo.toFixed(0)]));
+    H(["Vehículo", "Bultos", "Cajas", "Pallets", "Peso carga (kg)", "Peso bruto (kg)", "Utilización de peso (%)", "Volumen cargado (m³)", "Capacidad (m³)", "Utilización volumétrica (%)", "Centro de gravedad (% del fondo)"])];
+  R.contenedores.forEach((t) => r1.push([t.num, t.nBultos, t.nCajas, t.nPallets, c.kg(t.peso), c.kg(t.pesoBruto), t.utilPeso == null ? "" : +t.utilPeso.toFixed(1), c.m3(t.m3), c.m3(t.m3Cap), +t.ocupacion.toFixed(1), +t.cgLargo.toFixed(0)]));
   const tot = R.totales;
-  r1.push(["Total", "", tot.cajas, "", Math.round(tot.kg), "", "", +tot.m3.toFixed(2), +tot.m3Cap.toFixed(2), +((tot.m3 / tot.m3Cap) * 100).toFixed(1), ""]);
+  r1.push(["Total", "", tot.cajas, "", c.kg(tot.kg), "", "", c.m3(tot.m3), c.m3(tot.m3Cap), +((tot.m3 / tot.m3Cap) * 100).toFixed(1), ""]);
   R.avisos.forEach((a) => { if (a.tipo === "sinCargar") r1.push([], ["Bultos sin cargar", a.n]); if (a.tipo === "noCaben") r1.push(["No caben", a.nombres.join(", ")]); });
   hoja(wb, "Resumen", r1, [22, 10, 10, 10, 16, 16, 22, 20, 16, 24, 28]);
-  const r2 = [["Vehículo", "Entrega", "SKU", "Descripción", "Cajas sueltas", "Cajas en pallet", "Total cajas", "Piezas", "Peso (kg)", "Volumen (m³)"]];
-  R.contenedores.forEach((t) => t.lista.forEach((f) => r2.push([t.num, f.ordenTxt, f.nombre, f.desc, f.sueltas, f.enPallet, f.total, f.piezas, +f.peso.toFixed(1), +f.m3.toFixed(3)])));
+  const r2 = [H(["Vehículo", "Entrega", "SKU", "Descripción", "Cajas sueltas", "Cajas en pallet", "Total cajas", "Piezas", "Peso (kg)", "Volumen (m³)"])];
+  R.contenedores.forEach((t) => t.lista.forEach((f) => r2.push([t.num, f.ordenTxt, f.nombre, f.desc, f.sueltas, f.enPallet, f.total, f.piezas, c.kg(f.peso, 1), c.m3(f.m3, 3)])));
   hoja(wb, "Lista de carga", r2, [9, 7, 16, 34, 12, 14, 11, 9, 10, 12]);
   if (R.pallets.length) {
-    const r3 = [["Pallet", "Tipo", "Tarima", "Cajas", "Capas × cajas por capa", "Alto total (mm)", "Peso total (kg)", "Huella (mm)", "Sobresale largo / ancho (mm)", "Utilización del pallet (%)", "Cantidad"]];
-    R.pallets.forEach((d) => r3.push([d.nombre, d.mixto ? "Mixto" : "Un SKU", d.tipoPallet, d.n, d.capas ? `${d.capas} × ${d.porCapa}` : "Por bloques", Math.round(d.alto), Math.round(d.peso), `${Math.round(d.L)} × ${Math.round(d.W)}`, `${Math.round(d.sobraL)} / ${Math.round(d.sobraW)}`, +(d.utilVol * 100).toFixed(1), d.usos]));
+    const r3 = [H(["Pallet", "Tipo", "Tarima", "Cajas", "Capas × cajas por capa", "Alto total (mm)", "Peso total (kg)", "Huella (mm)", "Sobresale largo / ancho (mm)", "Utilización del pallet (%)", "Cantidad"])];
+    R.pallets.forEach((d) => r3.push([d.nombre, d.mixto ? "Mixto" : "Un SKU", d.tipoPallet, d.n, d.capas ? `${d.capas} × ${d.porCapa}` : "Por bloques", c.l(d.alto), c.kg(d.peso), `${c.l(d.L)} × ${c.l(d.W)}`, `${c.l(d.sobraL)} / ${c.l(d.sobraW)}`, +(d.utilVol * 100).toFixed(1), d.usos]));
     hoja(wb, "Pallets", r3, [24, 8, 22, 7, 20, 14, 14, 14, 24, 22, 9]);
   }
   if (R.conEntregas) {
-    const r5 = [["Vehículo", "Entrega", "Pedidos", "Bultos", "Volumen (m³)", "Desde las puertas (m)", "Hasta (m)", "Bultos que estorban"]];
-    R.contenedores.forEach((t) => t.entregas.forEach((e) => r5.push([t.num, e.orden, e.pedidos.join(", "), e.n, +(e.vol / 1e9).toFixed(2), +(e.desdePuertas / 1e3).toFixed(2), +(e.hastaPuertas / 1e3).toFixed(2), e.estorban])));
+    const r5 = [H(["Vehículo", "Entrega", "Pedidos", "Bultos", "Volumen (m³)", "Desde las puertas (m)", "Hasta (m)", "Bultos que estorban"])];
+    R.contenedores.forEach((t) => t.entregas.forEach((e) => r5.push([t.num, e.orden, e.pedidos.join(", "), e.n, c.mm3(e.vol), c.d(e.desdePuertas), c.d(e.hastaPuertas), e.estorban])));
     hoja(wb, "Entregas", r5, [9, 9, 26, 9, 13, 22, 12, 20]);
   }
-  const r4 = [["Vehículo", "Paso", "Qué y dónde", "SKU / pallet", "Bultos", "Forma", "Desde el fondo (m)", "Desde el lado derecho (m)", "Altura (m)"]];
-  R.contenedores.forEach((t) => t.pasos.forEach((p) => r4.push([t.num, p.num, p.texto, p.sku, p.n, p.forma, +(p.x0 / 1000).toFixed(2), +(p.y0 / 1000).toFixed(2), +(p.z0 / 1000).toFixed(2)])));
+  const r4 = [H(["Vehículo", "Paso", "Qué y dónde", "SKU / pallet", "Bultos", "Forma", "Desde el fondo (m)", "Desde el lado derecho (m)", "Altura (m)"])];
+  R.contenedores.forEach((t) => t.pasos.forEach((p) => r4.push([t.num, p.num, p.texto, p.sku, p.n, p.forma, c.d(p.x0), c.d(p.y0), c.d(p.z0)])));
   hoja(wb, "Pasos de carga", r4, [9, 6, 110, 18, 8, 14, 16, 22, 10]);
   return XLSX.write(wb, { type: "array", bookType: "xlsx" });
 }
@@ -57,19 +68,19 @@ export function etapasDe(pasos, total) {
 
 // Sección de un contenedor (título, datos, entregas, lista, pallets y pasos con imágenes). La usan tanto el
 // instructivo de un solo vehículo como el instructivo completo (todos los vehículos en un solo documento).
-function seccionInstructivo({ reporte, sel, modoPallet, proyecto, nombreVeh, fecha, etapas, imagenes }) {
+function seccionInstructivo({ reporte, sel, modoPallet, proyecto, nombreVeh, fecha, etapas, imagenes, u = unidadesDe("metrico") }) {
   const t = reporte.contenedores[sel], palsAqui = t.pallets;
-  const filasLista = t.lista.map((f) => `<tr><td>${esc(f.ordenTxt)}</td><td><b>${esc(f.nombre)}</b> ${esc(f.desc)}</td><td>${f.sueltas}</td><td>${f.enPallet}</td><td><b>${f.total}</b></td><td>${Math.round(f.peso)} kg</td></tr>`).join("");
+  const filasLista = t.lista.map((f) => `<tr><td>${esc(f.ordenTxt)}</td><td><b>${esc(f.nombre)}</b> ${esc(f.desc)}</td><td>${f.sueltas}</td><td>${f.enPallet}</td><td><b>${f.total}</b></td><td>${u.fP(f.peso)}</td></tr>`).join("");
   return `<section class="contenedor">
 <h1>Instructivo de carga · ${esc(modoPallet ? "Pallet" : "Vehículo")} ${sel + 1} de ${reporte.contenedores.length}</h1>
 <p class="sub">${esc(proyecto)} · ${esc(nombreVeh)} · ${fecha}</p>
-<div class="datos"><div class="dato">Utilización volumétrica<b>${t.ocupacion.toFixed(1)}%</b></div><div class="dato">Volumen<b>${t.m3.toFixed(1)} de ${t.m3Cap.toFixed(1)} m³</b></div>
-<div class="dato">Peso de la carga<b>${Math.round(t.peso).toLocaleString("es-MX")} kg${t.utilPeso != null ? ` (${t.utilPeso.toFixed(0)}%)` : ""}</b></div><div class="dato">Bultos<b>${t.nBultos}${t.nPallets ? ` (${t.nPallets} pallets)` : ""}</b></div>
+<div class="datos"><div class="dato">Utilización volumétrica<b>${t.ocupacion.toFixed(1)}%</b></div><div class="dato">Volumen<b>${u.fV3(t.m3, 1).replace(` ${u.v}`, "")} de ${u.fV3(t.m3Cap, 1)}</b></div>
+<div class="dato">Peso de la carga<b>${u.fP(t.peso)}${t.utilPeso != null ? ` (${t.utilPeso.toFixed(0)}%)` : ""}</b></div><div class="dato">Bultos<b>${t.nBultos}${t.nPallets ? ` (${t.nPallets} pallets)` : ""}</b></div>
 <div class="dato">Cajas<b>${t.nCajas.toLocaleString("es-MX")}</b></div><div class="dato">Centro de gravedad<b>${t.cgLargo.toFixed(0)}% del fondo</b></div></div>
 <p class="nota">Referencias: el fondo es el extremo de la cabina (se carga primero); «lado derecho» es visto desde las puertas; alturas desde el piso del vehículo.</p>
-${t.entregas.length ? `<h2>Orden de descarga</h2><p class="nota">Se descarga de las puertas hacia el fondo, empezando por la entrega 1.</p><table><tr><th>Entrega</th><th>Pedidos</th><th>Bultos</th><th>Volumen</th><th>Zona desde las puertas</th><th>Bultos que estorban</th></tr>${t.entregas.map((e) => `<tr><td><b>${e.orden}</b></td><td>${esc(e.pedidos.join(", ") || "—")}</td><td>${e.n}</td><td>${(e.vol / 1e9).toFixed(1)} m³</td><td>${(e.desdePuertas / 1e3).toFixed(1)} – ${(e.hastaPuertas / 1e3).toFixed(1)} m</td><td>${e.estorban || "ninguno"}</td></tr>`).join("")}</table>` : ""}
+${t.entregas.length ? `<h2>Orden de descarga</h2><p class="nota">Se descarga de las puertas hacia el fondo, empezando por la entrega 1.</p><table><tr><th>Entrega</th><th>Pedidos</th><th>Bultos</th><th>Volumen</th><th>Zona desde las puertas</th><th>Bultos que estorban</th></tr>${t.entregas.map((e) => `<tr><td><b>${e.orden}</b></td><td>${esc(e.pedidos.join(", ") || "—")}</td><td>${e.n}</td><td>${u.fV(e.vol, 1)}</td><td>${u.fD(e.desdePuertas, 1).replace(` ${u.d}`, "")} – ${u.fD(e.hastaPuertas, 1)}</td><td>${e.estorban || "ninguno"}</td></tr>`).join("")}</table>` : ""}
 <h2>Qué se carga</h2><table><tr><th>Entrega</th><th>SKU</th><th>Sueltas</th><th>En pallet</th><th>Total cajas</th><th>Peso</th></tr>${filasLista}</table>
-${palsAqui.length ? `<h2>Armado de pallets (antes de cargar)</h2><table><tr><th>Pallet</th><th>Tarima</th><th>Cómo se arma</th><th>Alto</th><th>Peso</th></tr>${palsAqui.map((d) => `<tr><td><b>${esc(d.nombre)}</b></td><td>${esc(d.tipoPallet)}</td><td>${d.capas ? `${d.capas} capas de ${d.porCapa} cajas${d.alternado ? "; alterna cada capa en espejo para amarrar" : ""}` : `${d.n} cajas de ${d.nSkus} SKUs, lo más pesado abajo`}${d.sobraL || d.sobraW ? `; sobresale hasta ${Math.round(d.sobraL)} mm a lo largo y ${Math.round(d.sobraW)} mm a lo ancho` : ""}</td><td>${Math.round(d.alto)} mm</td><td>${Math.round(d.peso)} kg</td></tr>`).join("")}</table>` : ""}
+${palsAqui.length ? `<h2>Armado de pallets (antes de cargar)</h2><table><tr><th>Pallet</th><th>Tarima</th><th>Cómo se arma</th><th>Alto</th><th>Peso</th></tr>${palsAqui.map((d) => `<tr><td><b>${esc(d.nombre)}</b></td><td>${esc(d.tipoPallet)}</td><td>${d.capas ? `${d.capas} capas de ${d.porCapa} cajas${d.alternado ? "; alterna cada capa en espejo para amarrar" : ""}` : `${d.n} cajas de ${d.nSkus} SKUs, lo más pesado abajo`}${d.sobraL || d.sobraW ? `; sobresale hasta ${u.fL(d.sobraL, 1)} a lo largo y ${u.fL(d.sobraW, 1)} a lo ancho` : ""}</td><td>${u.fL(d.alto, 1)}</td><td>${u.fP(d.peso)}</td></tr>`).join("")}</table>` : ""}
 <h2>Pasos de carga</h2>
 ${etapas.map((e, i) => `<div class="etapa"><img src="${imagenes[i]}" alt="Etapa ${i + 1}"><div><b>Etapa ${i + 1} de ${etapas.length}</b> · bultos ${e[0].ini + 1} a ${e[e.length - 1].fin}<ol start="${e[0].num}">${e.map((p) => `<li>${esc(p.texto)}</li>`).join("")}</ol></div></div>`).join("")}
 </section>`;
@@ -89,16 +100,16 @@ ${cuerpo}
 <p class="nota">Generado con ${NOMBRE_VERSION}${BUILD ? ` (${BUILD})` : ""}.</p></body></html>`;
 
 // Instructivo de un solo contenedor. `imagenes[i]` es la captura del visor al terminar la etapa i (data URL).
-export function htmlInstructivo({ reporte, sel, modoPallet, proyecto, nombreVeh, etapas, imagenes, fecha = new Date().toLocaleString("es-MX") }) {
-  return docInstructivo(proyecto, seccionInstructivo({ reporte, sel, modoPallet, proyecto, nombreVeh, fecha, etapas, imagenes }));
+export function htmlInstructivo({ reporte, sel, modoPallet, proyecto, nombreVeh, etapas, imagenes, fecha = new Date().toLocaleString("es-MX"), u }) {
+  return docInstructivo(proyecto, seccionInstructivo({ reporte, sel, modoPallet, proyecto, nombreVeh, fecha, etapas, imagenes, u }));
 }
 
 // Instructivo completo: todos los vehículos (o pallets) en un solo documento, cada uno en su propia página al
 // imprimir. `secciones` es un arreglo de { sel, etapas, imagenes } en el orden en que se quieren ver.
-export function htmlInstructivoCompleto({ reporte, secciones, modoPallet, proyecto, nombreVeh, fecha = new Date().toLocaleString("es-MX") }) {
+export function htmlInstructivoCompleto({ reporte, secciones, modoPallet, proyecto, nombreVeh, fecha = new Date().toLocaleString("es-MX"), u }) {
   const indice = secciones.length > 1
     ? `<h2>${esc(modoPallet ? "Pallets" : "Vehículos")} incluidos (${secciones.length})</h2><ol>${secciones.map((s) => { const t = reporte.contenedores[s.sel]; return `<li>${esc(modoPallet ? "Pallet" : "Vehículo")} ${s.sel + 1}: ${t.ocupacion.toFixed(1)}% de ocupación, ${t.nBultos} bultos.</li>`; }).join("")}</ol>`
     : "";
-  const cuerpo = indice + secciones.map((s) => seccionInstructivo({ reporte, sel: s.sel, modoPallet, proyecto, nombreVeh, fecha, etapas: s.etapas, imagenes: s.imagenes })).join("");
+  const cuerpo = indice + secciones.map((s) => seccionInstructivo({ reporte, sel: s.sel, modoPallet, proyecto, nombreVeh, fecha, etapas: s.etapas, imagenes: s.imagenes, u })).join("");
   return docInstructivo(proyecto, cuerpo);
 }

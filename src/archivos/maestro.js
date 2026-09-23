@@ -5,6 +5,32 @@
 import * as XLSX from "xlsx";
 import { clave, claveSku, indiceSku, buscarSku, siNo, numero, hojaAObjetos, buscarHoja } from "./celdas.js";
 import { HOJA_CONVERSIONES, UM_CAJA_DEF, normalizaUM, filasConversiones, conversionesDeHoja } from "./conversiones.js";
+import { factorColumna, describirUnidades, encabezadoEn, SISTEMAS } from "../unidades.js";
+
+// ---------- Unidades al leer y escribir ----------
+// Columnas de medida (se pasan a mm) y de peso (se pasan a kg), por su encabezado ya normalizado con clave().
+const COL_LARGO = ["largo", "ancho", "alto", "anidadosubeporpieza", "largobundle", "anchobundle", "altobundle", "espesor", "alturamax", "sobresalealolargo", "sobresalealoancho", "sobresaliente", "diametro"];
+const COL_PESO = ["peso", "pesomaxencima", "pesobundle", "cargamax"];
+// Factor de cada columna de medida o peso de una hoja, según su encabezado y la unidad elegida al subir.
+function factoresDeHoja(ws, elegida) {
+  if (!ws) return { factores: {}, encabezados: [] };
+  const filas = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", blankrows: false });
+  const hi = filas.findIndex((f) => f.some((c) => ["sku", "nombre", "codigo"].includes(clave(c))));
+  const encabezados = hi < 0 ? [] : filas[hi].map((h) => String(h));
+  const factores = {};
+  encabezados.forEach((h) => {
+    const k = clave(h);
+    if (COL_LARGO.includes(k)) factores[k] = factorColumna(h, "largo", elegida);
+    else if (COL_PESO.includes(k)) factores[k] = factorColumna(h, "peso", elegida);
+  });
+  return { factores, encabezados: encabezados.filter((h) => COL_LARGO.includes(clave(h)) || COL_PESO.includes(clave(h))) };
+}
+// Pasa a mm y kg las columnas de un renglón leído con hojaAObjetos (solo las que traen número).
+function aMetrico(o, factores) {
+  for (const k in factores) if (factores[k] !== 1 && String(o[k] ?? "").trim() !== "") o[k] = numero(o[k]) * factores[k];
+  return o;
+}
+
 
 export const ARCHIVO_MAESTRO = "maestro_productos.xlsx";
 export const ARCHIVO_RESPALDO = "maestro_productos_respaldo.xlsx";
@@ -136,9 +162,10 @@ function productoDeFilas(dOne, pOne) {
   });
 }
 
-function leerHojaTarimas(wb) {
+function leerHojaTarimas(wb, elegida = "auto") {
   const ht = buscarHoja(wb, ["tarimas", "pallets"]);
-  return ht ? hojaAObjetos(ht).filter((o) => String(o.nombre ?? "").trim()).map((o) => ({
+  const { factores } = factoresDeHoja(ht, elegida);
+  return ht ? hojaAObjetos(ht).map((o) => aMetrico(o, factores)).filter((o) => String(o.nombre ?? "").trim()).map((o) => ({
     nombre: String(o.nombre).trim(), L: numero(o.largo, 1200), W: numero(o.ancho, 1000), esp: numero(o.espesor, 150), peso: numero(o.peso, 25),
     altMax: numero(o.alturamax, 1800), maxKg: numero(o.cargamax, 0), ovL: numero(o.sobresalealolargo ?? o.sobresaliente, 0), ovW: numero(o.sobresalealoancho ?? o.sobresaliente, 0),
   })) : null;
@@ -147,9 +174,11 @@ function leerHojaTarimas(wb) {
 // Lee maestro_productos.xlsx. Devuelve { productos, tarimas (null si no hay hoja), errores: string[] }.
 // Acepta el formato nuevo, en dos hojas (Datos + Parámetros), y por compatibilidad el formato viejo
 // de una sola hoja (Productos), típico de archivos hechos antes de esta separación.
-export function leerMaestro(buf) {
+// unidades: la que eligió el usuario al subirlo ("auto" = según los encabezados; ver unidades.js).
+// Todo se devuelve en mm y kg, y en `unidades` el texto de lo que se leyó ("pulgadas y libras").
+export function leerMaestro(buf, unidades = "auto") {
   const wb = XLSX.read(buf, { type: "array" });
-  const tarimas = leerHojaTarimas(wb);
+  const tarimas = leerHojaTarimas(wb, unidades);
   const conversiones = conversionesDeHoja(buscarHoja(wb, [clave(HOJA_CONVERSIONES)]));
   const hd = buscarHoja(wb, ["datos", "medidas", "dimensiones"]);
   const hpar = buscarHoja(wb, ["parametros", "parámetros", "reglas"]);
@@ -157,9 +186,10 @@ export function leerMaestro(buf) {
 
   if (hd) {
     // Formato nuevo: Datos trae la identidad y medidas; Parámetros (si existe) las reglas, por SKU.
+    const fd = factoresDeHoja(hd, unidades), fp = factoresDeHoja(hpar, unidades);
     const porSku = new Map();
-    if (hpar) hojaAObjetos(hpar).forEach((o) => { const sku = String(o.sku ?? "").trim(); if (sku && !porSku.has(claveSku(sku))) porSku.set(claveSku(sku), o); });
-    hojaAObjetos(hd).forEach((o) => {
+    if (hpar) hojaAObjetos(hpar).map((o) => aMetrico(o, fp.factores)).forEach((o) => { const sku = String(o.sku ?? "").trim(); if (sku && !porSku.has(claveSku(sku))) porSku.set(claveSku(sku), o); });
+    hojaAObjetos(hd).map((o) => aMetrico(o, fd.factores)).forEach((o) => {
       const sku = String(o.sku ?? o.codigo ?? "").trim();
       if (!sku) return;
       if (vistos.has(claveSku(sku))) { errores.push(`${sku} está repetido; se usa la primera fila.`); return; }
@@ -169,12 +199,13 @@ export function leerMaestro(buf) {
       if (!(p.L > 0 && p.W > 0 && p.H > 0)) errores.push(`${sku}: faltan medidas (largo, ancho o alto).`);
       productos.push(p);
     });
-    return { productos, tarimas, errores, conversiones };
+    return { productos, tarimas, errores, conversiones, unidades: describirUnidades([...fd.encabezados, ...fp.encabezados], unidades) };
   }
 
   // Formato anterior: todo en una sola hoja (Productos, o la primera de la libreta).
   const hp = buscarHoja(wb, ["productos", "maestro", "maestrodeproductos"]) || wb.Sheets[wb.SheetNames[0]];
-  hojaAObjetos(hp).forEach((o) => {
+  const fv = factoresDeHoja(hp, unidades);
+  hojaAObjetos(hp).map((o) => aMetrico(o, fv.factores)).forEach((o) => {
     const sku = String(o.sku ?? o.codigo ?? "").trim();
     if (!sku) return;
     if (vistos.has(claveSku(sku))) { errores.push(`${sku} está repetido; se usa la primera fila.`); return; }
@@ -184,31 +215,42 @@ export function leerMaestro(buf) {
     if (!(p.L > 0 && p.W > 0 && p.H > 0)) errores.push(`${sku}: faltan medidas (largo, ancho o alto).`);
     productos.push(p);
   });
-  return { productos, tarimas, errores, conversiones };
+  return { productos, tarimas, errores, conversiones, unidades: describirUnidades(fv.encabezados, unidades) };
 }
 
 // Escribe maestro_productos.xlsx en dos hojas (Datos y Parámetros, ver COLS_DATOS/COLS_PARAMETROS
 // arriba), más Tarimas e Instrucciones. Devuelve el archivo como bytes.
-export function libroMaestro(productos, tarimas, conversiones = null) {
+// sis: el sistema de unidades del usuario (SISTEMAS de unidades.js). Por omisión, mm y kg. Los encabezados
+// dicen la unidad ("Largo (in)"), así que el archivo se vuelve a leer bien sin elegir nada al subirlo.
+const enL = (v, sis) => Math.round(((+v || 0) / sis.mmPorL) * 1000) / 1000;
+const enP = (v, sis) => Math.round(((+v || 0) / sis.kgPorP) * 10000) / 10000;
+const volFormula = (r, sis) => (sis.id === "metrico" ? `ROUND(D${r}*E${r}*F${r}/1000000000,4)` : `ROUND(D${r}*E${r}*F${r}/1728,4)`);
+function hojaDatos(productos, sis) {
+  const filas = [COLS_DATOS.map((h) => encabezadoEn(h, sis)), ...productos.map((p) => [p.sku, p.idProducto, p.desc, enL(p.L, sis), enL(p.W, sis), enL(p.H, sis), enP(p.peso, sis), null])];
+  const ws = XLSX.utils.aoa_to_sheet(filas);
+  productos.forEach((p, i) => { const r = i + 2; ws["H" + r] = { t: "n", f: volFormula(r, sis), v: Math.round(((p.L * p.W * p.H) / sis.mm3PorV) * 1e4) / 1e4 }; });
+  ws["!cols"] = COLS_DATOS.map((h, i) => ({ wch: i === 2 ? 32 : Math.max(10, h.length + 2) }));
+  return ws;
+}
+export function libroMaestro(productos, tarimas, conversiones = null, sis = SISTEMAS.metrico) {
   const wb = XLSX.utils.book_new();
 
-  const filasDatos = [COLS_DATOS, ...productos.map((p) => [p.sku, p.idProducto, p.desc, p.L, p.W, p.H, p.peso, null])];
-  const wd = XLSX.utils.aoa_to_sheet(filasDatos);
-  productos.forEach((p, i) => { const r = i + 2; wd["H" + r] = { t: "n", f: `ROUND(D${r}*E${r}*F${r}/1000000000,4)`, v: Math.round((p.L * p.W * p.H) / 1e5) / 1e4 }; });
+  const wd = hojaDatos(productos, sis);
   wd["!cols"] = COLS_DATOS.map((h, i) => ({ wch: i === 2 ? 32 : Math.max(10, h.length + 2) }));
   wd["!autofilter"] = { ref: `A1:H${Math.max(2, productos.length + 1)}` };
   XLSX.utils.book_append_sheet(wb, wd, "Datos");
 
-  const filasParam = [COLS_PARAMETROS, ...productos.map((p) => [p.sku, p.categoria, FORMA_TXT[p.forma] || "Caja", p.piezas, orisTxt(p.oris), p.volteoPiso ? "Sí" : "No", p.compresion, p.anidado, p.maxAnidado, p.maxNiveles,
-    p.valorApilar, p.pesoMaxEncima, PISO_TXT[p.piso], p.soportaEncima ? "Sí" : "No", p.umCaja || UM_CAJA_DEF, paletizarTxt(p.paletizar), p.tarima, p.porPallet, p.porCapa, p.capasPallet, RESTO_TXT[p.resto],
+  const filasParam = [COLS_PARAMETROS.map((h) => encabezadoEn(h, sis)), ...productos.map((p) => [p.sku, p.categoria, FORMA_TXT[p.forma] || "Caja", p.piezas, orisTxt(p.oris), p.volteoPiso ? "Sí" : "No", p.compresion, enL(p.anidado, sis), p.maxAnidado, p.maxNiveles,
+    p.valorApilar, enP(p.pesoMaxEncima, sis), PISO_TXT[p.piso], p.soportaEncima ? "Sí" : "No", p.umCaja || UM_CAJA_DEF, paletizarTxt(p.paletizar), p.tarima, p.porPallet, p.porCapa, p.capasPallet, RESTO_TXT[p.resto],
     p.aceptaCajas ? "Sí" : "No", p.aceptaPallet ? "Sí" : "No", p.color ? p.color.replace("#", "") : "",
-    p.bundleActivo ? "Sí" : "No", p.manufacturaPropia ? "Sí" : "No", p.bundlePct, p.bundleCantidadEstandar, p.bundleL, p.bundleW, p.bundleH, p.bundlePeso])];
+    p.bundleActivo ? "Sí" : "No", p.manufacturaPropia ? "Sí" : "No", p.bundlePct, p.bundleCantidadEstandar, enL(p.bundleL, sis), enL(p.bundleW, sis), enL(p.bundleH, sis), enP(p.bundlePeso, sis)])];
   const wp = XLSX.utils.aoa_to_sheet(filasParam);
   wp["!cols"] = COLS_PARAMETROS.map((h, i) => ({ wch: i === 4 ? 16 : Math.max(10, h.length + 2) }));
   wp["!autofilter"] = { ref: `A1:AF${Math.max(2, productos.length + 1)}` };
   XLSX.utils.book_append_sheet(wb, wp, "Parámetros");
 
-  const wt = XLSX.utils.aoa_to_sheet([COLS_TARIMAS.map((c) => c[0]), ...tarimas.map((t) => COLS_TARIMAS.map((c) => t[c[1]]))]);
+  const TARIMA_PESO = ["peso", "maxKg"];
+  const wt = XLSX.utils.aoa_to_sheet([COLS_TARIMAS.map((c) => encabezadoEn(c[0], sis)), ...tarimas.map((t) => COLS_TARIMAS.map(([, k]) => (k === "nombre" ? t[k] : TARIMA_PESO.includes(k) ? enP(t[k], sis) : enL(t[k], sis))))]);
   wt["!cols"] = COLS_TARIMAS.map(([h], i) => ({ wch: i === 0 ? 26 : Math.max(12, h.length + 2) }));
   XLSX.utils.book_append_sheet(wb, wt, "Tarimas");
   const fc = filasConversiones(conversiones, productos);
@@ -228,15 +270,12 @@ export function libroMaestro(productos, tarimas, conversiones = null) {
 // Plantilla mínima: SKU, ID producto, Descripción, medidas y peso. Nada de reglas de estiba.
 // Sirve tanto para dar de alta productos nuevos desde el ERP como para refrescar después las
 // medidas de los que ya existen, sin tocar los parámetros logísticos que ya se configuraron.
-export function plantillaDimensiones(productos = []) {
+export function plantillaDimensiones(productos = [], sis = SISTEMAS.metrico) {
   const wb = XLSX.utils.book_new();
-  const filas = [COLS_DATOS, ...productos.map((p) => [p.sku, p.idProducto, p.desc, p.L, p.W, p.H, p.peso, null])];
-  const ws = XLSX.utils.aoa_to_sheet(filas);
-  productos.forEach((p, i) => { const r = i + 2; ws["H" + r] = { t: "n", f: `ROUND(D${r}*E${r}*F${r}/1000000000,4)`, v: Math.round((p.L * p.W * p.H) / 1e5) / 1e4 }; });
-  ws["!cols"] = COLS_DATOS.map((h, i) => ({ wch: i === 2 ? 32 : Math.max(10, h.length + 2) }));
-  XLSX.utils.book_append_sheet(wb, ws, "Datos");
+  XLSX.utils.book_append_sheet(wb, hojaDatos(productos, sis), "Datos");
   const wi = XLSX.utils.aoa_to_sheet([["Plantilla de dimensiones · DarnelCube 3D"], [],
-    ["Solo identidad y medidas: SKU, ID producto, Descripción, Largo, Ancho, Alto (mm) y Peso (kg). Volumen se calcula solo."],
+    [`Solo identidad y medidas: SKU, ID producto, Descripción, Largo, Ancho, Alto (${sis.l}) y Peso (${sis.p}). Volumen se calcula solo.`],
+    ["La unidad va en el encabezado de cada columna: si cambias (mm) por (in), (cm) o (m), o (kg) por (lb), la herramienta convierte sola."],
     ["Es lo que en teoría podría entregar un ERP. No lleva ninguna regla de estiba, paletizado ni apilamiento:"],
     ["esas se configuran aparte, en DarnelCube 3D, y no se pierden cuando actualizas medidas con este archivo."], [],
     ["Cómo usarla:"],
@@ -253,14 +292,15 @@ export function plantillaDimensiones(productos = []) {
 // un maestro completo) y actualiza identidad y medidas sobre los productos actuales, por SKU o por ID
 // producto. Nunca toca las reglas de estiba: un producto que ya existía conserva sus parámetros tal
 // cual; uno nuevo se crea con los valores por omisión, para configurarse después.
-export function actualizarDimensiones(productosActuales, buf) {
+export function actualizarDimensiones(productosActuales, buf, unidades = "auto") {
   const wb = XLSX.read(buf, { type: "array" });
   const hd = buscarHoja(wb, ["datos", "medidas", "dimensiones"]) || wb.Sheets[wb.SheetNames[0]];
+  const fd = factoresDeHoja(hd, unidades);
   const porSku = new Map(), porId = new Map();
   productosActuales.forEach((p) => { if (p.sku) porSku.set(claveSku(p.sku), p); if (p.idProducto) porId.set(claveSku(p.idProducto), p); });
   const productos = [...productosActuales], errores = [], vistos = new Set();
   let actualizados = 0, creados = 0;
-  hojaAObjetos(hd).forEach((o) => {
+  hojaAObjetos(hd).map((o) => aMetrico(o, fd.factores)).forEach((o) => {
     const sku = String(o.sku ?? o.codigo ?? "").trim();
     if (!sku) return;
     if (vistos.has(claveSku(sku))) { errores.push(`${sku} está repetido en el archivo; se usa la primera fila.`); return; }
@@ -270,7 +310,9 @@ export function actualizarDimensiones(productosActuales, buf) {
     if (!(datos.L > 0 && datos.W > 0 && datos.H > 0)) { errores.push(`${sku}: faltan medidas (largo, ancho o alto); no se actualizó.`); return; }
     const existente = porSku.get(claveSku(sku)) || (idProducto && porId.get(claveSku(idProducto)));
     if (existente) {
-      Object.assign(existente, { sku, idProducto: idProducto || existente.idProducto, ...datos });
+      // Copia nueva (nunca mutar el producto que ya está en el estado de React)
+      const pos = productos.indexOf(existente), nuevo = { ...existente, sku, idProducto: idProducto || existente.idProducto, ...datos };
+      productos[pos] = nuevo; porSku.set(claveSku(sku), nuevo); if (nuevo.idProducto) porId.set(claveSku(nuevo.idProducto), nuevo);
       actualizados++;
     } else {
       const nuevo = productoVacio({ sku, idProducto, ...datos });
@@ -278,7 +320,7 @@ export function actualizarDimensiones(productosActuales, buf) {
       creados++;
     }
   });
-  return { productos, actualizados, creados, errores };
+  return { productos, actualizados, creados, errores, unidades: describirUnidades(fd.encabezados, unidades) };
 }
 
 // Importa los parámetros de Bundle desde un Excel de referencia (formato "CS-BDL": ID Artículo, UM,
@@ -288,7 +330,7 @@ export function actualizarDimensiones(productosActuales, buf) {
 // viene en el archivo; si no, se calcula como Rel ÷ Factor (la misma fórmula del documento funcional,
 // ya resuelta a cajas). El % máximo de Bundle NO se toca aquí: es una decisión operativa por SKU que
 // se captura o ajusta a mano en el maestro.
-export function leerBundleMaestro(productosActuales, buf) {
+export function leerBundleMaestro(productosActuales, buf, unidades = "auto") {
   const wb = XLSX.read(buf, { type: "array" });
   const ws = buscarHoja(wb, ["csbdl", "bundle", "maestrobundle"]) || wb.Sheets[wb.SheetNames[0]];
   const filas = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", blankrows: false });
@@ -304,6 +346,8 @@ export function leerBundleMaestro(productosActuales, buf) {
   const iLargo = heads.findIndex((h) => h === "largo");
   const iAncho = heads.findIndex((h) => h === "ancho");
   if (iAlto < 0 || iLargo < 0 || iAncho < 0) throw new Error("Faltan las columnas de dimensiones del Bundle (Alto, Largo, Ancho).");
+  // El archivo CS-BDL dice su unidad en el encabezado ("Alto (mm)"); si no dice nada, se asume mm.
+  const fL = factorColumna(filas[hi][iLargo], "largo", unidades), fW = factorColumna(filas[hi][iAncho], "largo", unidades), fH = factorColumna(filas[hi][iAlto], "largo", unidades);
 
   const indice = indiceSku(productosActuales);
   const productos = [...productosActuales], errores = [], noEncontrados = [];
@@ -315,7 +359,7 @@ export function leerBundleMaestro(productosActuales, buf) {
     if (!existente) { noEncontrados.push(sku); continue; }
     const cantidadEstandar = iCsBdl >= 0 && numero(f[iCsBdl]) > 0 ? numero(f[iCsBdl])
       : (iRel >= 0 && iFactor >= 0 && numero(f[iFactor]) > 0 ? numero(f[iRel]) / numero(f[iFactor]) : 0);
-    const bundleL = numero(f[iLargo]), bundleW = numero(f[iAncho]), bundleH = numero(f[iAlto]);
+    const bundleL = numero(f[iLargo]) * fL, bundleW = numero(f[iAncho]) * fW, bundleH = numero(f[iAlto]) * fH;
     if (!(cantidadEstandar > 0) || !(bundleL > 0 && bundleW > 0 && bundleH > 0)) { errores.push(`${sku}: fila incompleta (cantidad estándar o dimensiones); no se importó.`); continue; }
     // Copia nueva del producto (nunca mutar el que ya está en el estado de React)
     const pos = productos.findIndex((p) => p.pid === existente.pid), nuevo = { ...productos[pos], bundleActivo: true, manufacturaPropia: true, bundleCantidadEstandar: cantidadEstandar, bundleL, bundleW, bundleH };

@@ -2,14 +2,23 @@ import { useState } from "react";
 // ================= Controles =================
 // Piezas chicas de formulario y tarjetas que usa toda la interfaz.
 import { T } from "./tema.js";
+import { useUnidades } from "./unidadesContexto.jsx";
 
 export const inp = "w-full rounded-md px-2 py-1.5 text-sm border outline-none";
 export const estInp = { borderColor: T.linea, background: T.sup, color: T.tinta };
-export function Num({ etiqueta, valor, onChange, ayuda }) {
+// tipo "largo" o "peso": el valor llega y se devuelve en mm o kg, pero se muestra y se captura en la
+// unidad del usuario (pulgadas o libras si trabaja en americano), con la unidad al final de la etiqueta.
+// tipo "distancia" es igual que "largo" pero admite negativos (por ejemplo, la posición de un eje).
+export function Num({ etiqueta, valor, onChange, ayuda, tipo }) {
+  const u = useUnidades();
+  const aVista = tipo === "peso" ? u.P : tipo ? u.L : (v) => v;
+  const aBase = tipo === "peso" ? u.aKg : tipo ? u.aMm : (v) => v;
+  const unidad = tipo === "peso" ? u.p : tipo ? u.l : "";
+  const minimo = tipo === "distancia" ? -Infinity : 0;
   return (
     <label className="block text-xs" style={{ color: T.suave }} title={ayuda}>
-      <span className="block mb-1">{etiqueta}</span>
-      <input type="number" value={valor} onChange={(e) => onChange(Math.max(0, Number(e.target.value) || 0))} className={inp} style={estInp} />
+      <span className="block mb-1">{etiqueta}{unidad ? ` ${unidad}` : ""}</span>
+      <input type="number" value={aVista(valor)} onChange={(e) => onChange(Math.max(minimo, aBase(Number(e.target.value) || 0)))} className={inp} style={estInp} />
     </label>
   );
 }

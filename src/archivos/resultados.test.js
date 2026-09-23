@@ -115,3 +115,21 @@ describe("nombreArchivo", () => {
     expect(nombreArchivo("")).toBe("carga");
   });
 });
+
+describe("reportes en unidades americanas", async () => {
+  const { unidadesDe } = await import("../unidades.js");
+  const u = unidadesDe("americano");
+  it("el paso a paso dice pies, y el Excel lleva libras y pies³ en encabezados y valores", async () => {
+    const corrida = await correr({ items: [caja({ qty: 6 })], vehiculo, tarimas, reglas }, { ejecutor: ejecutorEnProceso(optimizar) });
+    const R = armarReporte(corrida, u), Rm = armarReporte(corrida);
+    expect(R.contenedores[0].pasos[0].texto).toMatch(/ ft del fondo/);
+    expect(Rm.contenedores[0].pasos[0].texto).toMatch(/ m del fondo/);
+    const wb = XLSX.read(libroResultados({ reporte: R, proyecto: "P", nombreVeh: "V", nivel: 1, u }), { type: "array" });
+    const res = filas(wb, "Resumen");
+    expect(res[5]).toContain("Peso carga (lb)");
+    expect(res[5]).toContain("Volumen cargado (ft³)");
+    const t = R.contenedores[0];
+    expect(res[6][4]).toBe(+(t.peso / 0.45359237).toFixed(0));
+    expect(filas(wb, "Pasos de carga")[0]).toContain("Desde el fondo (ft)");
+  });
+});
