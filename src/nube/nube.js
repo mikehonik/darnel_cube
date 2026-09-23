@@ -6,6 +6,7 @@
 // navegador. Lo que protege los datos de cada usuario es la regla de la base de datos (RLS), no
 // que la llave esté oculta. Ver INSTRUCCIONES_NUBE.md para cómo se configura esa regla.
 import { createClient } from "@supabase/supabase-js";
+import { empacarParaNube, abrirDeNube } from "./comprimir.js";
 
 const CLAVE_CONFIG = "estiba3d_nube_config";
 
@@ -154,7 +155,8 @@ export async function borrarEscenario(id) {
 export async function guardarMaestroNube(maestro) {
   const sb = clienteNube();
   const uid = await uidActual(sb);
-  const { error } = await sb.from("maestro").upsert({ user_id: uid, datos: maestro, actualizado: new Date().toISOString() });
+  // Se guarda comprimido (~20 veces menos): ver comprimir.js
+  const { error } = await sb.from("maestro").upsert({ user_id: uid, datos: await empacarParaNube(maestro), actualizado: new Date().toISOString() });
   if (error) throw error;
 }
 
@@ -163,5 +165,5 @@ export async function cargarMaestroNube() {
   const uid = await uidActual(sb);
   const { data, error } = await sb.from("maestro").select("datos, actualizado").eq("user_id", uid).maybeSingle();
   if (error) throw error;
-  return data ? { maestro: data.datos, actualizado: data.actualizado } : null;
+  return data ? { maestro: await abrirDeNube(data.datos), actualizado: data.actualizado } : null;
 }
