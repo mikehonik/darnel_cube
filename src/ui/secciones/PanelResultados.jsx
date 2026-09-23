@@ -1,10 +1,48 @@
 import { Fragment, useRef, useState } from "react";
-import { Download, AlertTriangle, Loader2, FileSpreadsheet, ChevronDown, PanelBottomClose, PanelBottomOpen } from "lucide-react";
+import { Download, AlertTriangle, Loader2, FileSpreadsheet, ChevronDown, PanelBottomClose, PanelBottomOpen, PackagePlus, Merge } from "lucide-react";
 import { T } from "../tema.js";
 import { ORIENTACIONES } from "../../motor/reporte.js";
 import { Dato } from "../controles.jsx";
 
-export function PanelResultados({ colores, descargarInstructivo, descargarResultados, generando, modoPallet, palVista, pestana, reporte, res, resaltado, sel, setPestana, setResaltado, stats, verPallet, vista, editarOris, oculto, setOculto }) {
+const nVeh = (n) => `${n} ${n === 1 ? "vehículo" : "vehículos"}`;
+
+function AvisoConsolidar({ ultimoCasiVacio, consolidar, intentarConsolidar, aplicarConsolidacion, aplicarReduccionConsolidar, nContenedores }) {
+  if (!ultimoCasiVacio && !consolidar) return null;
+  const objetivo = consolidar?.objetivo ?? nContenedores - 1;
+  return (
+    <div className="flex-none px-3 py-2 text-sm flex flex-col gap-1.5" style={{ background: "#FFF8E6", borderBottom: `1px solid ${T.linea}` }}>
+      {!consolidar && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <AlertTriangle size={15} className="flex-none" style={{ color: T.aviso }} />
+          <span>El último vehículo va casi vacío ({ultimoCasiVacio.toFixed(1)}%). Tal vez todo cabe en {nVeh(objetivo)}.</span>
+          <button onClick={intentarConsolidar} className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md font-medium ml-auto" style={{ background: T.nav, color: "#fff" }}><Merge size={13} />Intentar consolidar en {nVeh(objetivo)}</button>
+        </div>
+      )}
+      {consolidar?.intentando && <div className="flex items-center gap-2" style={{ color: T.suave }}><Loader2 size={14} className="animate-spin" />Probando más esfuerzo, reglas más flexibles, «simular la carga real» y rotaciones…</div>}
+      {consolidar?.exito && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span>Sí cabe en {nVeh(consolidar.exito.corrida.resultado.contenedores.length)}, al {consolidar.ocupacion.toFixed(0)}%, {consolidar.exito.descripcion}.</span>
+          <button onClick={aplicarConsolidacion} className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md font-medium" style={{ background: T.ok, color: "#fff" }}>Aplicar y ver</button>
+        </div>
+      )}
+      {consolidar && !consolidar.intentando && !consolidar.exito && (
+        <div>
+          <p>No se logró cambiando reglas, esfuerzo, «simular la carga real» ni rotaciones. Para quedar en {nVeh(objetivo)}, habría que reducir lo que va en el último vehículo:</p>
+          <ul className="text-xs my-1 flex flex-wrap gap-x-3 gap-y-0.5" style={{ color: T.suave }}>
+            {consolidar.reduccion.map((r) => <li key={r.id}><b style={{ color: T.tinta }}>-{r.cantidad.toLocaleString("es-MX")}</b> {r.umCaja || "cajas"} de {r.nombre}</li>)}
+          </ul>
+          <p className="text-xs mb-1" style={{ color: consolidar.verificada ? T.ok : T.aviso }}>
+            {consolidar.verificada ? `Comprobado: con esta reducción la carga queda en ${nVeh(objetivo)}.` : "Ojo: al recalcular con esta reducción el motor no logró bajar un vehículo por sí solo; tómalo como punto de partida y ajusta."}
+          </p>
+          {consolidar.reduccion.length > 0 && <button onClick={aplicarReduccionConsolidar} className="text-xs px-2.5 py-1 rounded-md font-medium" style={{ border: `1px solid ${T.linea}` }}>Aplicar esta reducción</button>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function PanelResultados({ colores, descargarInstructivo, descargarInstructivoCompleto, descargarResultados, generando, modoPallet, palVista, pestana, reporte, res, resaltado, sel, setPestana, setResaltado, stats, verPallet, vista, editarOris, oculto, setOculto,
+  espacios, calculandoEspacios, completarEspacios, aplicarRelleno, ultimoCasiVacio, consolidar, intentarConsolidar, aplicarConsolidacion, aplicarReduccionConsolidar }) {
   // Altura del panel: se arrastra desde el borde superior y crece sola cuando la pestaña activa es una tabla
   const [alto, setAlto] = useState(250);
   const [abierta, setAbierta] = useState(null);   // línea desplegada en la lista de carga
@@ -38,7 +76,7 @@ export function PanelResultados({ colores, descargarInstructivo, descargarResult
         <span className="rounded-full mt-1" style={{ width: 44, height: 4, background: T.linea }} />
       </div>
       <div className="flex items-center gap-1 px-3 flex-none" style={{ borderBottom: `1px solid ${T.linea}` }} role="tablist">
-        {[["resumen", "Resumen"], ["lista", "Lista de carga"], ...(reporte?.conEntregas ? [["entregas", `Entregas${stats?.estorban ? " ⚠" : ""}`]] : []), ["pallets", `Pallets armados${reporte?.pallets.length ? ` (${reporte.pallets.length})` : ""}`], ["avisos", `Avisos${reporte?.avisos.length ? ` (${reporte.avisos.length})` : ""}`]].map(([k, t]) => (
+        {[["resumen", "Resumen"], ["lista", "Lista de carga"], ...(reporte?.conEntregas ? [["entregas", `Entregas${stats?.estorban ? " ⚠" : ""}`]] : []), ["pallets", `Pallets armados${reporte?.pallets.length ? ` (${reporte.pallets.length})` : ""}`], ["avisos", `Avisos${reporte?.avisos.length ? ` (${reporte.avisos.length})` : ""}`], ["espacios", "Completar espacios"]].map(([k, t]) => (
           <button key={k} role="tab" aria-selected={pestana === k} onClick={() => setPestana(k)} className="text-sm px-3 py-2.5 relative whitespace-nowrap"
             style={{ color: pestana === k ? T.tinta : T.suave, fontWeight: pestana === k ? 600 : 400 }}>
             {t}
@@ -55,9 +93,15 @@ export function PanelResultados({ colores, descargarInstructivo, descargarResult
             <button onClick={descargarInstructivo} disabled={generando || !!palVista} className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md font-medium whitespace-nowrap" style={{ background: T.nav, color: "#fff", opacity: generando || palVista ? 0.6 : 1 }} title="Pasos con imágenes para el equipo de carga">
               {generando ? <Loader2 size={14} className="animate-spin" /> : <FileSpreadsheet size={14} />}Instructivo {sel + 1}
             </button>
+            {res.contenedores.length > 1 && !palVista && (
+              <button onClick={descargarInstructivoCompleto} disabled={generando} className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md font-medium whitespace-nowrap" style={{ border: `1px solid ${T.linea}`, opacity: generando ? 0.6 : 1 }} title="Un solo documento con el diagrama de pasos de cada vehículo, uno por página">
+                {generando ? <Loader2 size={14} className="animate-spin" /> : <FileSpreadsheet size={14} />}Instructivo completo ({res.contenedores.length})
+              </button>
+            )}
           </div>
         )}
       </div>
+      <AvisoConsolidar nContenedores={res?.contenedores.length || 0} ultimoCasiVacio={ultimoCasiVacio} consolidar={consolidar} intentarConsolidar={intentarConsolidar} aplicarConsolidacion={aplicarConsolidacion} aplicarReduccionConsolidar={aplicarReduccionConsolidar} />
       <div className="flex-1 overflow-auto p-3">
         {!res ? <p className="text-sm" style={{ color: T.suave }}>Los resultados aparecerán aquí.</p> : (
           <>
@@ -196,6 +240,56 @@ export function PanelResultados({ colores, descargarInstructivo, descargarResult
                 {reporte.avisos.map((a, i) => <li key={i} className="flex gap-2" style={{ color: a.tipo === "motor" ? T.aviso : T.error }}><AlertTriangle size={16} className="flex-none mt-0.5" />{a.texto}</li>)}
               </ul>
             ))}
+            {pestana === "espacios" && (
+              <div>
+                <p className="text-xs mb-2" style={{ color: T.suave }}>
+                  Busca aprovechar el espacio que sobró con más unidades de los SKUs que ya están en este pedido (nunca uno externo), sin mover lo que ya se pidió ni agregar vehículos. Las cantidades son estimadas: al agregarlas, presiona Calcular para confirmarlas.
+                </p>
+                <button onClick={completarEspacios} disabled={calculandoEspacios || palVista} className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md font-medium mb-3" style={{ background: T.nav, color: "#fff", opacity: calculandoEspacios ? 0.7 : 1 }}>
+                  {calculandoEspacios ? <Loader2 size={14} className="animate-spin" /> : <PackagePlus size={14} />}
+                  {calculandoEspacios ? "Calculando…" : "Buscar alternativas"}
+                </button>
+                {espacios && (
+                  espacios.individuales.length === 0 && espacios.combinacion.length === 0 ? (
+                    <p className="text-sm" style={{ color: T.suave }}>No sobró espacio suficiente para meter una unidad más de ningún SKU del pedido{espacios.descartadas ? ` (${espacios.descartadas} ${espacios.descartadas === 1 ? "prueba se descartó" : "pruebas se descartaron"} porque el recálculo no reprodujo la carga original)` : ""}.</p>
+                  ) : (
+                    <>
+                      {espacios.combinacion.length > 1 && (
+                        <div className="mb-3">
+                          <div className="flex items-center gap-2 mb-1">
+                            <p className="text-xs font-medium">Combinación (usa varios SKUs a la vez) · ocupación {espacios.ocupacionActual.toFixed(1)}% → {espacios.ocupacionCombinacion.toFixed(1)}%</p>
+                            <button onClick={() => aplicarRelleno(espacios.combinacion)} className="text-xs px-2 py-1 rounded-md font-medium ml-auto" style={{ background: T.nav, color: "#fff" }}>Agregar toda la combinación</button>
+                          </div>
+                          <ul className="text-sm flex flex-col gap-1">
+                            {espacios.combinacion.map((f) => (
+                              <li key={f.id} className="flex items-center justify-between gap-2 rounded-md px-2 py-1" style={{ background: T.shell }}>
+                                <span>{f.nombre} · <b>+{f.cantidad.toLocaleString("es-MX")}</b> {f.umCaja || "cajas"}{f.paletizado ? " sueltas" : ""}</span>
+                                <button onClick={() => aplicarRelleno([f])} className="text-xs px-2 py-1 rounded-md" style={{ border: `1px solid ${T.linea}` }}>Agregar a la carga</button>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      <p className="text-xs font-medium mb-1">Alternativas individuales (un solo SKU a la vez)</p>
+                      <table className="w-full text-sm">
+                        <thead><tr className="text-left text-xs" style={{ color: T.suave }}><th className="font-medium py-1">SKU</th><th className="font-medium">Cantidad adicional</th><th className="font-medium">Ocupación actual</th><th className="font-medium">Ocupación estimada</th><th></th></tr></thead>
+                        <tbody>
+                          {espacios.individuales.map((f) => (
+                            <tr key={f.id} style={{ borderTop: `1px solid ${T.linea}` }}>
+                              <td className="py-1.5">{f.nombre}</td>
+                              <td className="font-medium">+{f.cantidad.toLocaleString("es-MX")} {f.umCaja || "cajas"}{f.paletizado ? " sueltas" : ""}</td>
+                              <td>{f.ocupacionAntes.toFixed(1)}%</td>
+                              <td>{f.ocupacionDespues.toFixed(1)}%</td>
+                              <td className="text-right"><button onClick={() => aplicarRelleno([f])} className="text-xs px-2 py-1 rounded-md" style={{ border: `1px solid ${T.linea}` }}>Agregar a la carga</button></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </>
+                  )
+                )}
+              </div>
+            )}
           </>
         )}
       </div>

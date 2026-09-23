@@ -16,7 +16,8 @@ export const ARCHIVO_RESPALDO = "maestro_productos_respaldo.xlsx";
 // Archivos viejos con una sola hoja "Productos" se siguen leyendo (ver leerMaestro).
 export const COLS_DATOS = ["SKU", "ID producto", "Descripción", "Largo (mm)", "Ancho (mm)", "Alto (mm)", "Peso (kg)", "Volumen (m³)"];
 export const COLS_PARAMETROS = ["SKU", "Categoría", "Forma", "Piezas por caja", "Orientaciones", "Volteo en piso", "Compresión bajo carga (%)", "Anidado: sube por pieza (mm)", "Máx. piezas anidadas", "Máx. cajas apiladas",
-  "Prioridad de apilamiento", "Peso máx. encima (kg)", "Posición", "Soporta carga encima", "UM de la caja", "Paletizar", "Tarima", "Cajas por pallet", "Cajas por nivel", "Niveles", "Sobrantes", "Acepta cajas encima", "Acepta pallet encima", "Color"];
+  "Prioridad de apilamiento", "Peso máx. encima (kg)", "Posición", "Soporta carga encima", "UM de la caja", "Paletizar", "Tarima", "Cajas por pallet", "Cajas por nivel", "Niveles", "Sobrantes", "Acepta cajas encima", "Acepta pallet encima", "Color",
+  "Bundle activo", "Manufactura propia", "% máximo Bundle", "Cantidad estándar por Bundle", "Largo Bundle (mm)", "Ancho Bundle (mm)", "Alto Bundle (mm)", "Peso Bundle (kg)"];
 // Compatibilidad: los archivos de una sola hoja (anteriores a la separación) usan este orden.
 export const COLS_MAESTRO = ["SKU", "ID producto", "Descripción", "Categoría", "Forma", "Largo (mm)", "Ancho (mm)", "Alto (mm)", "Peso (kg)", "Volumen (m³)", "Piezas por caja", "Orientaciones", "Volteo en piso", "Compresión bajo carga (%)", "Anidado: sube por pieza (mm)", "Máx. piezas anidadas", "Máx. cajas apiladas",
   "Prioridad de apilamiento", "Peso máx. encima (kg)", "Posición", "Soporta carga encima", "UM de la caja", "Paletizar", "Tarima", "Cajas por pallet", "Cajas por nivel", "Niveles", "Sobrantes", "Acepta cajas encima", "Acepta pallet encima", "Color"];
@@ -62,6 +63,13 @@ export const AYUDA = [
   ["Pedido (plantilla de carga)", "Paletizar y Cajas por pallet (opcionales)", "Solo si en esta carga quieres algo distinto a lo que dice el maestro. Vacío = se usa el maestro.", "Mixto · 20", "Se usa el maestro"],
   ["Pedido (plantilla de carga)", "Pedido / destino", "Número de pedido, tienda o cliente. Con la regla «Mantener juntos los pedidos» los SKUs de un mismo pedido se cargan seguidos, dentro de su parada. Un pedido no queda en un solo bloque perfecto: queda agrupado dentro de su zona.", "PED-4471 Norte", "Sin pedido"],
   ["Categorías", "Qué sí hace", "La categoría solo controla apilamiento: con la regla «Solo sobre la misma categoría» activa, un producto solo recibe encima otro de su misma categoría, sin importar el SKU. Compresión, anidado y demás siguen siendo campos por SKU, no por categoría.", "Tejas sobre tejas", "—"],
+  ["Bundle (BDL)", "Qué es", "Un Bundle agrupa varias cajas del mismo SKU en un bulto más grande, con sus propias medidas y peso (por ejemplo, una tarima o caja máster de varias cajas). Al cargar un pedido, la herramienta forma la mayor cantidad de Bundles completos posible (sin pasarse del porcentaje configurado) y el resto del pedido se cubica como cajas sueltas normales: la misma línea puede terminar dividida en Bundle y Suelto.", "13 BDL + 59 sueltas", "No se forman Bundles"],
+  ["Bundle (BDL)", "Bundle activo", "Habilita la transformación a Bundle para este SKU. Sin esto, el SKU se cubica siempre como lo indican sus reglas normales, aunque tenga los demás campos de Bundle llenos.", "Sí", "No"],
+  ["Bundle (BDL)", "Manufactura propia", "El Bundle solo aplica a SKUs de manufactura propia (en la práctica, los que empiezan con DU). Si no está marcado, el SKU se queda como suelto aunque tenga Bundle activo.", "Sí", "No"],
+  ["Bundle (BDL)", "% máximo Bundle", "Qué parte de la cantidad pedida se intenta convertir a Bundles completos; el resto siempre se cubica suelto. Debe ser mayor a 0% y menor a 100%.", "70", "Sin Bundle (0, inválido)"],
+  ["Bundle (BDL)", "Cantidad estándar por Bundle", "Cuántas cajas de este SKU entran en un Bundle completo. Equivale al factor de conversión del Bundle entre el factor de conversión de la caja, ya resuelto a cajas (ver «Importar Bundle desde CS-BDL»).", "10", "Sin Bundle (0, inválido)"],
+  ["Bundle (BDL)", "Largo, Ancho, Alto Bundle (mm)", "Medidas del Bundle ya armado, independientes de la caja suelta. El cubicaje usa estas medidas para los cargos tipo Bundle.", "1200 · 1000 · 1500", "Sin Bundle (inválido)"],
+  ["Bundle (BDL)", "Peso Bundle (kg)", "Peso del Bundle completo. En 0, se calcula como el peso de la caja suelta × la cantidad estándar por Bundle.", "220", "Peso de caja × cantidad estándar"],
   ["Categorías", "Qué no hace todavía", "Dos limitaciones a propósito: (1) el anidado (una pieza dentro de otra) solo funciona entre piezas del mismo SKU, no entre SKUs distintos de la misma categoría — por ejemplo, tanques de tamaños diferentes que embonan uno en otro no se resuelve en esta versión. (2) No hay una matriz de compatibilidad entre categorías distintas (tejas sobre tanques, por ejemplo); solo «misma categoría sí» o la regla general. Para bolsas (BL) con compresión, sigue usando el campo Compresión de cada SKU: no se aplica sola por venir en BL.", "—", "—"],
   ["Dónde va cada parámetro", "Maestro vs. carga", "Las características de la caja (medidas, peso, orientaciones, resistencia, paletizado estándar) van en el maestro y son el valor normal. Si en una carga necesitas algo distinto, cámbialo en Mercancía: aplica solo a esa carga y la fila se marca como «ajustado». Si quieres que quede como nuevo estándar, usa «Guardar en el maestro».", "—", "—"],
   ["Dónde va cada parámetro", "Plantilla de CubeMaster", "En Maestro puedes importar la plantilla «Cargo Upload» de CubeMaster (cm y kg): se crean los productos, las tarimas y el pedido con sus cantidades. La columna FloorStackType no se toma, porque CubeMaster solo la usa con su regla de piso activada; si la necesitas, ajusta Posición en el SKU.", "—", "—"],
@@ -106,7 +114,8 @@ const hexColor = (v) => { const t = String(v ?? "").trim().replace("#", ""); ret
 let sigPid = 1;
 export const productoVacio = (d = {}) => ({
   pid: sigPid++, sku: "", idProducto: "", categoria: "", desc: "", L: 600, W: 400, H: 400, peso: 10, piezas: 1, oris: [...ORIS_STD], volteoPiso: false, compresion: 0, maxNiveles: 0, valorApilar: 0, pesoMaxEncima: 0,
-  forma: "caja", diametro: 0, anidado: 0, maxAnidado: 0, piso: "libre", soportaEncima: true, umCaja: UM_CAJA_DEF, paletizar: false, tarima: "", porPallet: 0, porCapa: 0, capasPallet: 0, resto: "parcial", aceptaCajas: true, aceptaPallet: false, color: null, ...d,
+  forma: "caja", diametro: 0, anidado: 0, maxAnidado: 0, piso: "libre", soportaEncima: true, umCaja: UM_CAJA_DEF, paletizar: false, tarima: "", porPallet: 0, porCapa: 0, capasPallet: 0, resto: "parcial", aceptaCajas: true, aceptaPallet: false, color: null,
+  bundleActivo: false, manufacturaPropia: false, bundlePct: 0, bundleCantidadEstandar: 0, bundleL: 0, bundleW: 0, bundleH: 0, bundlePeso: 0, ...d,
 });
 
 // Arma un producto a partir de la fila de Datos (identidad y medidas) y, si existe, la fila de
@@ -122,6 +131,8 @@ function productoDeFilas(dOne, pOne) {
     pesoMaxEncima: numero(o.pesomaxencima), piso: leerPiso(o.posicion), soportaEncima: siNo(o.soportacargaencima, true), umCaja: normalizaUM(o.umdelacaja) || UM_CAJA_DEF, paletizar: leerPaletizar(o.paletizar),
     tarima: String(o.tarima ?? "").trim(), porPallet: numero(o.cajasporpallet), porCapa: numero(o.cajaspornivel), capasPallet: numero(o.niveles), resto: leerResto(o.sobrantes), aceptaCajas: siNo(o.aceptacajasencima, true),
     aceptaPallet: siNo(o.aceptapalletencima, false), color: hexColor(o.color),
+    bundleActivo: siNo(o.bundleactivo, false), manufacturaPropia: siNo(o.manufacturapropia, false), bundlePct: numero(o.maximobundle),
+    bundleCantidadEstandar: numero(o.cantidadestandarporbundle), bundleL: numero(o.largobundle), bundleW: numero(o.anchobundle), bundleH: numero(o.altobundle), bundlePeso: numero(o.pesobundle),
   });
 }
 
@@ -190,10 +201,11 @@ export function libroMaestro(productos, tarimas, conversiones = null) {
 
   const filasParam = [COLS_PARAMETROS, ...productos.map((p) => [p.sku, p.categoria, FORMA_TXT[p.forma] || "Caja", p.piezas, orisTxt(p.oris), p.volteoPiso ? "Sí" : "No", p.compresion, p.anidado, p.maxAnidado, p.maxNiveles,
     p.valorApilar, p.pesoMaxEncima, PISO_TXT[p.piso], p.soportaEncima ? "Sí" : "No", p.umCaja || UM_CAJA_DEF, paletizarTxt(p.paletizar), p.tarima, p.porPallet, p.porCapa, p.capasPallet, RESTO_TXT[p.resto],
-    p.aceptaCajas ? "Sí" : "No", p.aceptaPallet ? "Sí" : "No", p.color ? p.color.replace("#", "") : ""])];
+    p.aceptaCajas ? "Sí" : "No", p.aceptaPallet ? "Sí" : "No", p.color ? p.color.replace("#", "") : "",
+    p.bundleActivo ? "Sí" : "No", p.manufacturaPropia ? "Sí" : "No", p.bundlePct, p.bundleCantidadEstandar, p.bundleL, p.bundleW, p.bundleH, p.bundlePeso])];
   const wp = XLSX.utils.aoa_to_sheet(filasParam);
   wp["!cols"] = COLS_PARAMETROS.map((h, i) => ({ wch: i === 4 ? 16 : Math.max(10, h.length + 2) }));
-  wp["!autofilter"] = { ref: `A1:X${Math.max(2, productos.length + 1)}` };
+  wp["!autofilter"] = { ref: `A1:AF${Math.max(2, productos.length + 1)}` };
   XLSX.utils.book_append_sheet(wb, wp, "Parámetros");
 
   const wt = XLSX.utils.aoa_to_sheet([COLS_TARIMAS.map((c) => c[0]), ...tarimas.map((t) => COLS_TARIMAS.map((c) => t[c[1]]))]);
@@ -205,7 +217,7 @@ export function libroMaestro(productos, tarimas, conversiones = null) {
     wc["!cols"] = [{ wch: 18 }, { wch: 8 }, { wch: 14 }];
     XLSX.utils.book_append_sheet(wb, wc, HOJA_CONVERSIONES);
   }
-  const wi = XLSX.utils.aoa_to_sheet([["Maestro de productos de Estiba 3D"], ["Guarda este archivo como maestro_productos.xlsx en la carpeta de la herramienta. Al guardar desde Estiba 3D se reemplaza y queda una copia como maestro_productos_respaldo.xlsx."], [],
+  const wi = XLSX.utils.aoa_to_sheet([["Maestro de productos de DarnelCube 3D"], ["Guarda este archivo como maestro_productos.xlsx en la carpeta de la herramienta. Al guardar desde DarnelCube 3D se reemplaza y queda una copia como maestro_productos_respaldo.xlsx."], [],
     ["Sección", "Campo", "Qué significa", "Ejemplo", "Si lo dejas vacío"], ...AYUDA]);
   wi["!cols"] = [{ wch: 24 }, { wch: 30 }, { wch: 80 }, { wch: 24 }, { wch: 26 }];
   XLSX.utils.book_append_sheet(wb, wi, "Instrucciones");
@@ -223,13 +235,13 @@ export function plantillaDimensiones(productos = []) {
   productos.forEach((p, i) => { const r = i + 2; ws["H" + r] = { t: "n", f: `ROUND(D${r}*E${r}*F${r}/1000000000,4)`, v: Math.round((p.L * p.W * p.H) / 1e5) / 1e4 }; });
   ws["!cols"] = COLS_DATOS.map((h, i) => ({ wch: i === 2 ? 32 : Math.max(10, h.length + 2) }));
   XLSX.utils.book_append_sheet(wb, ws, "Datos");
-  const wi = XLSX.utils.aoa_to_sheet([["Plantilla de dimensiones · Estiba 3D"], [],
+  const wi = XLSX.utils.aoa_to_sheet([["Plantilla de dimensiones · DarnelCube 3D"], [],
     ["Solo identidad y medidas: SKU, ID producto, Descripción, Largo, Ancho, Alto (mm) y Peso (kg). Volumen se calcula solo."],
     ["Es lo que en teoría podría entregar un ERP. No lleva ninguna regla de estiba, paletizado ni apilamiento:"],
-    ["esas se configuran aparte, en Estiba 3D, y no se pierden cuando actualizas medidas con este archivo."], [],
+    ["esas se configuran aparte, en DarnelCube 3D, y no se pierden cuando actualizas medidas con este archivo."], [],
     ["Cómo usarla:"],
     ["1. Llena una fila por SKU (o exporta esto mismo desde tu ERP con las mismas columnas)."],
-    ["2. En Estiba 3D, sección Maestro, usa «Actualizar dimensiones» y elige este archivo."],
+    ["2. En DarnelCube 3D, sección Maestro, usa «Actualizar dimensiones» y elige este archivo."],
     ["3. Los SKUs que ya existen actualizan solo su descripción y medidas. Los que no existen se crean"],
     ["   nuevos, con los parámetros por omisión, listos para configurarse."]]);
   wi["!cols"] = [{ wch: 100 }];
@@ -267,6 +279,52 @@ export function actualizarDimensiones(productosActuales, buf) {
     }
   });
   return { productos, actualizados, creados, errores };
+}
+
+// Importa los parámetros de Bundle desde un Excel de referencia (formato "CS-BDL": ID Artículo, UM,
+// Rel, Factor, CS/BDL, Alto/Largo/Ancho en mm). Solo actualiza SKUs que YA existen en el maestro: este
+// archivo no da de alta productos nuevos, solo enciende y configura el Bundle de los que ya tienen
+// sus medidas y reglas normales. La cantidad estándar por Bundle sale de la columna "CS / BDL" si
+// viene en el archivo; si no, se calcula como Rel ÷ Factor (la misma fórmula del documento funcional,
+// ya resuelta a cajas). El % máximo de Bundle NO se toca aquí: es una decisión operativa por SKU que
+// se captura o ajusta a mano en el maestro.
+export function leerBundleMaestro(productosActuales, buf) {
+  const wb = XLSX.read(buf, { type: "array" });
+  const ws = buscarHoja(wb, ["csbdl", "bundle", "maestrobundle"]) || wb.Sheets[wb.SheetNames[0]];
+  const filas = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", blankrows: false });
+  const ID_SKU = ["idarticulo", "sku", "codigo", "item", "iditem"];
+  const hi = filas.findIndex((f) => f.some((c) => ID_SKU.includes(clave(c))));
+  if (hi < 0) throw new Error("No se encontró la columna del artículo (ID Artículo o SKU).");
+  const heads = filas[hi].map(clave);
+  const iSku = heads.findIndex((h) => ID_SKU.includes(h));
+  const iCsBdl = heads.findIndex((h) => h === "csbdl");
+  const iRel = heads.findIndex((h) => h === "rel" || h === "relacion");
+  const iFactor = heads.findIndex((h) => h === "factor");
+  const iAlto = heads.findIndex((h) => h === "alto");
+  const iLargo = heads.findIndex((h) => h === "largo");
+  const iAncho = heads.findIndex((h) => h === "ancho");
+  if (iAlto < 0 || iLargo < 0 || iAncho < 0) throw new Error("Faltan las columnas de dimensiones del Bundle (Alto, Largo, Ancho).");
+
+  const porSku = new Map();
+  productosActuales.forEach((p) => { if (p.sku) porSku.set(clave(p.sku), p); });
+  const productos = [...productosActuales], errores = [], noEncontrados = [];
+  let actualizados = 0;
+  for (let i = hi + 1; i < filas.length; i++) {
+    const f = filas[i], sku = String(f[iSku] ?? "").trim();
+    if (!sku) continue;
+    const existente = porSku.get(clave(sku));
+    if (!existente) { noEncontrados.push(sku); continue; }
+    const cantidadEstandar = iCsBdl >= 0 && numero(f[iCsBdl]) > 0 ? numero(f[iCsBdl])
+      : (iRel >= 0 && iFactor >= 0 && numero(f[iFactor]) > 0 ? numero(f[iRel]) / numero(f[iFactor]) : 0);
+    const bundleL = numero(f[iLargo]), bundleW = numero(f[iAncho]), bundleH = numero(f[iAlto]);
+    if (!(cantidadEstandar > 0) || !(bundleL > 0 && bundleW > 0 && bundleH > 0)) { errores.push(`${sku}: fila incompleta (cantidad estándar o dimensiones); no se importó.`); continue; }
+    // Copia nueva del producto (nunca mutar el que ya está en el estado de React)
+    const pos = productos.indexOf(existente), nuevo = { ...existente, bundleActivo: true, manufacturaPropia: true, bundleCantidadEstandar: cantidadEstandar, bundleL, bundleW, bundleH };
+    productos[pos] = nuevo; porSku.set(clave(sku), nuevo);
+    actualizados++;
+  }
+  if (noEncontrados.length) errores.push(`${noEncontrados.length} SKU${noEncontrados.length === 1 ? "" : "s"} del archivo no ${noEncontrados.length === 1 ? "está" : "están"} en el maestro: ${noEncontrados.slice(0, 8).join(", ")}${noEncontrados.length > 8 ? "…" : ""}.`);
+  return { productos, actualizados, errores };
 }
 
 // Plantilla "Cargo Upload" de CubeMaster (cm y kg): productos, tarimas y cantidades en una sola hoja "Cargoes"

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import * as XLSX from "xlsx";
-import { leerMaestro, libroMaestro, leerCubeMaster, productoVacio, leerOris, orisTxt, plantillaDimensiones, actualizarDimensiones } from "./maestro.js";
+import { leerMaestro, libroMaestro, leerCubeMaster, productoVacio, leerOris, orisTxt, plantillaDimensiones, actualizarDimensiones, leerBundleMaestro } from "./maestro.js";
 
 const bytes = (ruta) => new Uint8Array(readFileSync(ruta));
 const sinPid = ({ pid, ...p }) => p;
@@ -22,7 +22,8 @@ describe("leerMaestro", () => {
     const por = (sku) => productos.find((p) => p.sku === sku);
     expect(sinPid(por("PLY-001"))).toEqual({ sku: "PLY-001", idProducto: "1002345", categoria: "", desc: "Playera básica algodón (caja 24 pzas)", L: 600, W: 400, H: 300, peso: 8, piezas: 24, oris: [true, true, false, false, false, false],
       volteoPiso: false, compresion: 0, maxNiveles: 0, valorApilar: 1, pesoMaxEncima: 0, forma: "caja", diametro: 0, anidado: 0, maxAnidado: 0, piso: "libre", soportaEncima: true, umCaja: "CJ", paletizar: true, tarima: "Americano 1219×1016", porPallet: 20, porCapa: 0, capasPallet: 0, resto: "mixto",
-      aceptaCajas: true, aceptaPallet: false, color: null });
+      aceptaCajas: true, aceptaPallet: false, color: null,
+      bundleActivo: false, manufacturaPropia: false, bundlePct: 0, bundleCantidadEstandar: 0, bundleL: 0, bundleW: 0, bundleH: 0, bundlePeso: 0 });
     expect(por("JNS-010")).toMatchObject({ valorApilar: 2, aceptaPallet: true, porPallet: 16 });
     expect(por("CAL-205")).toMatchObject({ pesoMaxEncima: 60, resto: "parcial", porPallet: 30 });
   });
@@ -120,5 +121,52 @@ describe("dimensiones separadas de los parámetros", () => {
     const r = actualizarDimensiones([], libro({ Datos: [["SKU", "Largo", "Ancho", "Alto"], ["B-2", 600, 400, 0]] }));
     expect(r.creados).toBe(0);
     expect(r.errores).toEqual(["B-2: faltan medidas (largo, ancho o alto); no se actualizó."]);
+  });
+});
+
+describe("leerBundleMaestro", () => {
+  const conDU = () => [productoVacio({ sku: "DU2014501", L: 265, W: 213, H: 28, peso: 0.5 }), productoVacio({ sku: "OTRO-SKU", L: 300, W: 200, H: 150, peso: 3 })];
+
+  it("enciende y configura el Bundle de los SKUs que ya existen, usando CS / BDL", () => {
+    const buf = libro({ "CS-BDL": [["ID Artículo", "Descr", "UM", "Rel", "Factor", "CS / BDL", "Alto (mm)", "Largo (mm)", "Ancho (mm)"],
+      ["DU2014501", "Charola escolar", "BDL", 10, 0.5, 20, 2762.25, 1085.85, 882.65]] });
+    const r = leerBundleMaestro(conDU(), buf);
+    expect(r.errores).toEqual([]);
+    expect(r.actualizados).toBe(1);
+    const p = r.productos.find((x) => x.sku === "DU2014501");
+    expect(p).toMatchObject({ bundleActivo: true, manufacturaPropia: true, bundleCantidadEstandar: 20, bundleL: 1085.85, bundleW: 882.65, bundleH: 2762.25 });
+    // No toca el SKU que no viene en el archivo, ni el % máximo (eso se ajusta a mano)
+    expect(r.productos.find((x) => x.sku === "OTRO-SKU")).toMatchObject({ bundleActivo: false });
+    expect(p.bundlePct).toBe(0);
+  });
+
+  it("no modifica los productos que recibe (son estado de React)", () => {
+    const buf = libro({ "CS-BDL": [["ID Artículo", "CS / BDL", "Alto (mm)", "Largo (mm)", "Ancho (mm)"], ["DU2014501", 20, 100, 200, 300]] });
+    const antes = conDU(), copia = JSON.parse(JSON.stringify(antes));
+    const r = leerBundleMaestro(antes, buf);
+    expect(r.actualizados).toBe(1);
+    expect(JSON.parse(JSON.stringify(antes))).toEqual(copia);
+  });
+
+  it("calcula la cantidad estándar como Rel ÷ Factor cuando no viene la columna CS / BDL", () => {
+    const buf = libro({ "CS-BDL": [["ID Artículo", "UM", "Rel", "Factor", "Alto (mm)", "Largo (mm)", "Ancho (mm)"], ["DU2014501", "BDL", 10, 0.5, 100, 200, 300]] });
+    const r = leerBundleMaestro(conDU(), buf);
+    expect(r.productos.find((x) => x.sku === "DU2014501").bundleCantidadEstandar).toBe(20);
+  });
+
+  it("reporta los SKUs del archivo que no están en el maestro, sin darlos de alta", () => {
+    const buf = libro({ "CS-BDL": [["ID Artículo", "UM", "Rel", "Factor", "CS / BDL", "Alto (mm)", "Largo (mm)", "Ancho (mm)"], ["NO-EXISTE", "BDL", 10, 0.5, 20, 100, 200, 300]] });
+    const r = leerBundleMaestro(conDU(), buf);
+    expect(r.actualizados).toBe(0);
+    expect(r.productos).toHaveLength(2);
+    expect(r.errores.join(" ")).toMatch(/NO-EXISTE/);
+  });
+
+  it("lee de verdad el Excel de referencia CS-BDL 1.xlsx", () => {
+    const buf = bytes("datos/CS-BDL_referencia.xlsx");
+    const actuales = [productoVacio({ sku: "DU2014501", L: 265, W: 213, H: 28, peso: 0.5 })];
+    const r = leerBundleMaestro(actuales, buf);
+    expect(r.actualizados).toBe(1);
+    expect(r.productos[0]).toMatchObject({ bundleActivo: true, bundleCantidadEstandar: 20, bundleL: 1085.85, bundleW: 882.65, bundleH: 2762.25 });
   });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { optimizar, marcarEntregas } from "./motor.js";
+import { optimizar, marcarEntregas, capacidadSuelta, configuracionPallet, capacidadPalletCompleto } from "./motor.js";
 
 // Fixtures mínimos con la misma forma que usa App.jsx (nuevoItem, VEHICULOS, reglas).
 const caja = (d = {}) => ({
@@ -94,9 +94,11 @@ describe("marcarEntregas", () => {
 });
 
 describe("compresión bajo carga", () => {
-  // Hueco de 1000 mm de alto para cajas de 400: rígidas caben 2 capas; con 25% (300 mm aplastada) caben 3.
+  // Compresión escalonada: el % capturado es lo que cede la caja de MÁS ABAJO; hacia arriba cede menos
+  // (en proporción a lo que lleva encima) y la de hasta arriba conserva su altura. Cajas de 400 mm con 25%:
+  //   2 en pila → 300 + 400 = 700 · 3 en pila → 300 + 350 + 400 = 1050
   const hueco = { L: 600, W: 400, H: 1000, tara: 0, maxKg: 0, maxVolPct: 0, maxSkus: 0, maxPiezas: 0 };
-  const columna = (d) => optimizar([caja({ qty: 3, oris: [true, false, false, false, false, false], ...d })], hueco, { ...reglas, limitarPeso: false }, () => {}, []);
+  const columna = (d, H = 1000) => optimizar([caja({ qty: 3, oris: [true, false, false, false, false, false], ...d })], { ...hueco, H }, { ...reglas, limitarPeso: false }, () => {}, []);
 
   it("una caja rígida no gana capas", () => {
     const r = columna({ compresion: 0 });
@@ -104,11 +106,16 @@ describe("compresión bajo carga", () => {
     expect(r.contenedores[0].cajas.map((c) => c.h)).toEqual([400, 400]);
   });
 
-  it("la caja comprimida cede altura salvo la de hasta arriba, que se dibuja completa", () => {
-    const r = columna({ compresion: 25 });
+  it("la caja comprimida cede altura en escalón y la de hasta arriba se dibuja completa", () => {
+    const r = columna({ compresion: 25 }, 1050);
     const cajas = r.contenedores[0].cajas.sort((a, b) => a.z - b.z);
-    expect(cajas.map((c) => [c.z, c.h])).toEqual([[0, 300], [300, 300], [600, 400]]);
+    expect(cajas.map((c) => [c.z, c.h])).toEqual([[0, 300], [300, 350], [650, 400]]);
     expect(r.sinCargar).toBe(0);
+  });
+
+  it("es más prudente que aplastar todas por igual: en 1000 mm la tercera caja ya no entra", () => {
+    const r = columna({ compresion: 25 });
+    expect(r.contenedores[0].cajas.sort((a, b) => a.z - b.z).map((c) => [c.z, c.h])).toEqual([[0, 300], [300, 400]]);
   });
 
   it("también cuenta al armar pallets", () => {
@@ -116,7 +123,8 @@ describe("compresión bajo carga", () => {
     const veh = { L: 5898, W: 2352, H: 2393, tara: 0, maxKg: 0, maxVolPct: 0, maxSkus: 0, maxPiezas: 0 };
     const porPallet = (compresion) => optimizar([caja({ qty: 6, paletizar: true, palletId: 0, compresion })], veh, { ...reglas, limitarPeso: false }, () => {}, [tarima]).pallets[0].n;
     expect(porPallet(0)).toBe(2);
-    expect(porPallet(25)).toBe(3);
+    expect(porPallet(25)).toBe(2); // 3 capas escalonadas piden 1050 mm y la tarima deja 1000
+    expect(porPallet(40)).toBe(3); // 240 + 320 + 400 = 960 mm
   });
 });
 
@@ -205,5 +213,120 @@ describe("apilamiento por categoría", () => {
       const debajo = r.contenedores[0].cajas.find((b, j) => j !== i && Math.abs(b.z + b.h - a.z) < 0.5 && a.x < b.x + b.l && b.x < a.x + a.l && a.y < b.y + b.w && b.y < a.y + a.w);
       if (debajo) expect(a.idx).toBe(debajo.idx);
     });
+  });
+});
+
+describe("capacidadSuelta", () => {
+  it("da la misma cantidad que optimizar con una cantidad enorme del mismo SKU", () => {
+    const r1 = capacidadSuelta(caja(), veh20, reglas);
+    const r2 = optimizar([caja({ qty: 999999 })], veh20, reglas, () => {}, []).contenedores[0];
+    expect(r1.cajas).toBe(r2.cajas.length);
+    expect(r1.cajas).toBeGreaterThanOrEqual(20); // el mismo SKU con qty:20 ya llenaba el contenedor sin sobrar espacio
+    expect(r1.peso).toBe(r2.peso);
+  });
+
+  it("sin nada que quepa (ni una orientación entra en el vehículo), da 0 en vez de tronar", () => {
+    const r = capacidadSuelta(caja({ nombre: "Enorme", L: 7000, W: 400, H: 400 }), veh20, reglas);
+    expect(r.cajas).toBe(0);
+  });
+});
+
+describe("configuracionPallet y capacidadPalletCompleto", () => {
+  const tarima = { nombre: "T", L: 600, W: 400, esp: 150, peso: 20, altMax: 1150, maxKg: 0, ovL: 0, ovW: 0 };
+  const veh = { L: 5898, W: 2352, H: 2393, tara: 0, maxKg: 0, maxVolPct: 0, maxSkus: 0, maxPiezas: 0 };
+
+  it("arma la mejor configuración de cajas por pallet: 1 por nivel, 2 niveles (rígida, altura 1000/400)", () => {
+    const def = configuracionPallet(caja(), tarima, reglas);
+    expect(def.porCapa).toBe(1);
+    expect(def.capas).toBe(2);
+    expect(def.n).toBe(2);
+    expect(def.peso).toBe(tarima.peso + 2 * 10); // tarima + 2 cajas de 10 kg
+  });
+
+  it("cajas por nivel mejora con más piezas por capa cuando el SKU es más chico que la tarima", () => {
+    const def = configuracionPallet(caja({ L: 300, W: 400, H: 400 }), tarima, reglas);
+    expect(def.porCapa).toBe(2); // dos cajas de 300 caben a lo largo de la tarima de 600
+    expect(def.n).toBe(4);
+  });
+
+  it("respeta máx. cajas apiladas al armar el pallet", () => {
+    const def = configuracionPallet(caja({ maxNiveles: 1 }), tarima, reglas);
+    expect(def.capas).toBe(1);
+    expect(def.n).toBe(1);
+  });
+
+  it("calcula cuántos pallets completos caben en el vehículo, sin pallets parciales", () => {
+    const r = capacidadPalletCompleto(caja(), tarima, veh, reglas);
+    // Cada pallet: 600×400×950 mm (150 tarima + 2×400), 40 kg. En el vehículo de 5898×2352×2393:
+    // 9 a lo largo (5898/600), 5 a lo ancho (2352/400) = 45 por nivel; solo 1 nivel de alto (950×2=1900 ≤ 2393 pero sin apilar por default)
+    expect(r.cajasPorPallet).toBe(2);
+    expect(r.pallets).toBeGreaterThan(0);
+    expect(r.pallets % 1).toBe(0); // siempre entero: nunca un pallet parcial
+    expect(r.cajasTotales).toBe(r.pallets * 2);
+  });
+
+  it("sin pallet válido (SKU no cabe en la tarima), no truena y da null o 0", () => {
+    const r = capacidadPalletCompleto(caja({ L: 5000, W: 5000, H: 5000 }), tarima, veh, reglas);
+    expect(r).toBeNull();
+  });
+
+  it("la configuración óptima ignora el estándar capturado; la capacidad en pallets usa el estándar", () => {
+    const conEstandar = caja({ L: 300, W: 400, H: 400, porCapa: 1, capasPallet: 1 }); // estándar: 1 caja por pallet
+    expect(configuracionPallet(conEstandar, tarima, reglas).n).toBe(4); // lo mejor posible, no el estándar
+    const r = capacidadPalletCompleto(conEstandar, tarima, veh, reglas);
+    expect(r.def.estandar).toBe(true);
+    expect(r.cajasPorPallet).toBe(1);
+    expect(capacidadPalletCompleto(caja({ L: 300, W: 400, H: 400 }), tarima, veh, reglas).def.estandar).toBe(false);
+  });
+});
+
+describe("capacidadSuelta con la entrada como la prepara una corrida", () => {
+  it("apila (más de una capa) y responde rápido, en un solo vehículo", async () => {
+    const { prepararEntrada } = await import("./corrida.js");
+    const e = prepararEntrada({ items: [caja({ qty: 1 })], vehiculo: veh20, tarimas: [], reglas: { ...reglas, soporteMin: 75, nivel: 4 } });
+    const t0 = Date.now(), r = capacidadSuelta(e.items[0], veh20, e.reglas);
+    const porCapa = Math.floor(5898 / 400) * Math.floor(2352 / 600);
+    expect(r.cajas).toBeGreaterThan(porCapa); // con soporteMin sin normalizar (75 en vez de 0.75) daba 0
+    expect(Date.now() - t0).toBeLessThan(10000);
+  });
+});
+
+describe("relleno opcional (completar espacios vacíos)", () => {
+  it("no toca nada si no se marca esRelleno", () => {
+    const r = optimizar([caja({ qty: 20 })], veh20, reglas, () => {}, []);
+    expect(r.contenedores[0].cajas.every((c) => !c.relleno)).toBe(true);
+  });
+
+  it("el relleno solo entra después de que la demanda real ya no puede colocar más, y se marca", () => {
+    // Una caja grande de verdad (qty 5, deja hueco) + la misma caja como relleno con qty enorme:
+    // el relleno debe aprovechar lo que sobró sin desplazar a la demanda real.
+    const real = caja({ nombre: "Real", L: 2000, W: 2000, H: 2000, peso: 50, qty: 1 });
+    const relleno = { ...caja({ nombre: "Relleno", L: 300, W: 300, H: 300, peso: 2, qty: 999999 }), esRelleno: true };
+    const r = optimizar([real, relleno], veh20, reglas, () => {}, []);
+    const c = r.contenedores[0];
+    expect(c.cajas.filter((k) => k.idx === 0).length).toBe(1); // toda la demanda real entró
+    expect(c.cajas.filter((k) => k.relleno).length).toBeGreaterThan(0); // y se rellenó el resto
+    expect(r.noCaben).toEqual([]); // el relleno nunca genera "no caben"
+  });
+
+  it("si el relleno de plano no cabe en el vehículo, se descarta en silencio", () => {
+    const relleno = { ...caja({ nombre: "Enorme", L: 7000, W: 400, H: 400, qty: 5 }), esRelleno: true };
+    const r = optimizar([relleno], veh20, reglas, () => {}, []);
+    expect(r.contenedores.length).toBe(0);
+    expect(r.noCaben).toEqual([]);
+    expect(r.avisos).toEqual([]);
+  });
+
+  it("con una cantidad enorme de relleno, NUNCA abre un vehículo extra solo para el relleno", () => {
+    const real = caja({ nombre: "Real", L: 1700, W: 1200, H: 1200, peso: 300, qty: 3 }); // deja huecos irregulares
+    const relleno = { ...caja({ nombre: "Relleno", L: 300, W: 300, H: 300, peso: 5, qty: 999999 }), esRelleno: true };
+    const r = optimizar([real, relleno], veh20, reglas, () => {}, []);
+    const sinRelleno = optimizar([real], veh20, reglas, () => {}, []);
+    expect(r.contenedores.length).toBe(sinRelleno.contenedores.length); // mismo número de vehículos que sin relleno
+    const totalReal = r.contenedores.reduce((a, c) => a + c.cajas.filter((k) => k.idx === 0).length, 0);
+    expect(totalReal).toBe(3); // toda la demanda real entró
+    expect(r.sinCargar).toBe(0); // el relleno que no cupo no cuenta como "sin cargar"
+    const agregado = r.contenedores.reduce((a, c) => a + c.cajas.filter((k) => k.relleno).length, 0);
+    expect(agregado).toBeGreaterThan(0); // y sí aprovechó algo del hueco
   });
 });

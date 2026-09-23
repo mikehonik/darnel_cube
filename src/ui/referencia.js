@@ -11,6 +11,10 @@ export const VEHICULOS = [
   { id: "53CS", nombre: "Tráiler caja seca 53'", L: 16000, W: 2500, H: 2700, tara: 6500, maxKg: 36500, ejeDelantero: 5443, ejeTrasero: 22662, xEjeDelantero: -1400, xEjeTrasero: 13500, taraDelantera: 0, taraTrasera: 0, placa: "", transportadora: "" },
   { id: "TOR", nombre: "Torton", L: 7300, W: 2450, H: 2450, tara: 1500, maxKg: 15500, ejeDelantero: 6000, ejeTrasero: 10000, xEjeDelantero: -900, xEjeTrasero: 6200, taraDelantera: 0, taraTrasera: 0, placa: "", transportadora: "" },
   { id: "RAB", nombre: "Rabón", L: 5500, W: 2400, H: 2300, tara: 1100, maxKg: 9100, ejeDelantero: 3300, ejeTrasero: 5800, xEjeDelantero: -700, xEjeTrasero: 4600, taraDelantera: 0, taraTrasera: 0, placa: "", transportadora: "" },
+  // Cajas secas de EE.UU. (medidas interiores de Darnel: 1,615.40 / 1,447.80 × 248.90 × 279.40 cm). Tara y carga
+  // útil son valores típicos de la industria (≈15,000 lb vacío, ≈45,000 lb de carga): ajústalos a la flota real.
+  { id: "53DV", nombre: "53FT-DryVan", L: 16154, W: 2489, H: 2794, tara: 6800, maxKg: 27200, ejeDelantero: 0, ejeTrasero: 0, xEjeDelantero: 0, xEjeTrasero: 0, taraDelantera: 0, taraTrasera: 0, placa: "", transportadora: "" },
+  { id: "48DV", nombre: "48FT-DryVan", L: 14478, W: 2489, H: 2794, tara: 6400, maxKg: 26800, ejeDelantero: 0, ejeTrasero: 0, xEjeDelantero: 0, xEjeTrasero: 0, taraDelantera: 0, taraTrasera: 0, placa: "", transportadora: "" },
 ];
 export const PALLETS_INICIALES = [
   { nombre: "Americano 1219×1016", L: 1219, W: 1016, esp: 150, peso: 25, altMax: 1800, maxKg: 1200, ovL: 0, ovW: 0 },

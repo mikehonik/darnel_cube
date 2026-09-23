@@ -19,14 +19,6 @@ function rng(seed) { var s = seed >>> 0; return function () { s += 0x6D2B79F5; v
 
 // ---------- Llenado de UN contenedor ----------
 // tipos: [{k, idx, it, oris, g, fase, rem, pal}] (rem se descuenta)
-// Compresión bajo carga: una caja con otra encima se aplasta un porcentaje. La de hasta arriba conserva su altura.
-var altoComprimido = function (it, h) { return it.compresion > 0 ? Math.max(1, h * (1 - it.compresion / 100)) : h; };
-// Incremento real de una pila por cada pieza extra. Con anidado (barriles que entran uno dentro de otro,
-// tejas con cresta) la pieza de arriba solo asoma unos milímetros; el anidado solo aplica de pie.
-var incrPila = function (it, h) {
-  if (it.anidado > 0 && Math.abs(h - it.H) < 0.01) return Math.max(1, Math.min(it.anidado, h));
-  return altoComprimido(it, h);
-};
 // Alturas de cada pieza de una pila, de abajo hacia arriba. La compresión es escalonada: una caja
 // se aplasta según lo que lleva encima, no todas por igual. La de hasta arriba conserva su altura
 // completa y la de abajo aguanta toda la carga, así que es la que más cede. Con anidado no aplica:
@@ -358,7 +350,10 @@ function llenarContenedor(tipos, veh, reglas, op) {
 
 function llenarVarios(tipos, veh, reglas, op) {
   var contenedores = [];
-  while (contenedores.length < 60 && tipos.some(function (t) { return t.rem > 0; })) {
+  var hayDemandaReal = function (lote) { return lote.some(function (t) { return t.rem > 0 && !t.it.esRelleno; }); };
+  // Las herramientas de capacidad preguntan "¿cuánto cabe en UN vehículo?": no tiene caso llenar más.
+  var maxCont = reglas._maxContenedores > 0 ? reglas._maxContenedores : 60;
+  while (contenedores.length < maxCont && tipos.some(function (t) { return t.rem > 0; })) {
     // Un vehículo por pedido: se ofrece al contenedor solo el primer pedido que quede pendiente
     var lote = tipos;
     if (reglas.separarGrupos) {
@@ -366,11 +361,15 @@ function llenarVarios(tipos, veh, reglas, op) {
       tipos.forEach(function (t) { if (t.rem > 0 && (g === null || t.g < g)) g = t.g; });
       lote = tipos.filter(function (t) { return t.g === g; });
     }
+    // El relleno opcional (completar espacios vacíos) nunca abre un vehículo nuevo por sí solo: solo
+    // aprovecha los vehículos que la demanda real ya necesitaba. Sin esto, una cantidad "infinita" de
+    // relleno seguiría llenando vehículos completos de puro relleno.
+    if (!hayDemandaReal(lote)) break;
     var c = llenarContenedor(lote, veh, reglas, op);
     if (!c.cajas.length) break;
     contenedores.push(c);
   }
-  var sin = 0; tipos.forEach(function (t) { sin += t.rem; });
+  var sin = 0; tipos.forEach(function (t) { if (!t.it.esRelleno) sin += t.rem; });
   return { contenedores: contenedores, sinCargar: sin };
 }
 
@@ -575,6 +574,69 @@ function contenedorDePallet(pal) {
     deck: { x: ovL, y: ovW, X: ovL + pal.L, Y: ovW + pal.W } };
 }
 
+// ---------- Herramientas de capacidad (un solo SKU) ----------
+// Cuántas unidades de un SKU caben SUELTAS (sin paletizar) en un vehículo. Se le ofrece al motor una
+// cantidad muy grande ("objetivo"); el propio motor topa por espacio, peso y demás restricciones, así
+// que el resultado es la cantidad máxima físicamente acomodable. Responde: "¿cuánto de este SKU cabe
+// suelto en este vehículo?".
+function capacidadSuelta(it0, veh, reglas, objetivo) {
+  var it = Object.assign({}, it0, { _idx: 0, paletizar: false });
+  var cargaMax = veh.maxKg > 0 && reglas.limitarPeso ? veh.maxKg - (veh.tara || 0) : Infinity;
+  var oris = orientacionesDe(it);
+  if (!oris.length || !oris.some(function (o) { return o.d[0] <= veh.L && o.d[1] <= veh.W && o.d[2] <= veh.H; }) || it.peso > cargaMax) {
+    return { cajas: 0, piezas: 0, peso: 0, vol: 0, volV: veh.L * veh.W * veh.H, contenedor: { cajas: [], peso: 0, vol: 0 } };
+  }
+  var tipos = [{ k: "s0", idx: 0, it: it, oris: oris, fase: 0, g: 0, rem: objetivo > 0 ? objetivo : 999999, pal: -1 }];
+  var r = buscar(tipos, veh, Object.assign({}, reglas, { _maxContenedores: 1 }), reglas.nivel || 2, !!veh.esPallet, null);
+  var c = r.contenedores[0] || { cajas: [], peso: 0, vol: 0 };
+  return { cajas: c.cajas.length, piezas: c.cajas.length * (it.piezas || 1), peso: c.peso, vol: c.vol, volV: veh.L * veh.W * veh.H, contenedor: c };
+}
+
+// Configuración óptima de cajas por pallet para un SKU y una tarima: cuántas cajas por nivel, cuántos
+// niveles, y el total, respetando las restricciones físicas del propio SKU (orientaciones, máx. apiladas,
+// peso máximo encima, etc.) y de la tarima (altura máxima, carga máxima). Ignora a propósito el estándar
+// de paletizado capturado (cajas por pallet, por nivel, niveles): la pregunta es cuál sería el mejor.
+function configuracionPallet(it, pal, reglas) {
+  var libre = Object.assign({}, it, { porPallet: 0, porCapa: 0, capasPallet: 0 });
+  var arm = armarPalletUniforme(libre, pal, 999999, reglas);
+  if (!arm || !arm.cajas.length) return null;
+  return definirPallet(arm.cajas, pal, { nombre: it.nombre, mixto: false, alternado: arm.alternado, capas: arm.capas, porCapa: arm.porCapa });
+}
+
+// El pallet como de verdad se arma: con el estándar capturado en el SKU (cajas por pallet, por nivel,
+// niveles) si lo tiene; si no, el óptimo.
+function palletDelSku(it, pal, reglas) {
+  if (!(it.porPallet > 0 || it.porCapa > 0 || it.capasPallet > 0)) {
+    var opt = configuracionPallet(it, pal, reglas);
+    return opt && Object.assign(opt, { estandar: false });
+  }
+  var arm = armarPalletUniforme(it, pal, it.porPallet > 0 ? it.porPallet : 999999, reglas);
+  if (!arm || !arm.cajas.length) return null;
+  return Object.assign(definirPallet(arm.cajas, pal, { nombre: it.nombre, mixto: false, alternado: arm.alternado, capas: arm.capas, porCapa: arm.porCapa }), { estandar: true });
+}
+
+// Cuántos pallets COMPLETOS de un SKU caben en un vehículo (nunca pallets parciales, para no inflar
+// el aprovechamiento artificialmente). Usa el pallet tal como se arma (palletDelSku: el estándar del
+// SKU, o el óptimo si no tiene) y calcula cuántos de esos bloques caben, tratando cada pallet armado
+// como una sola pieza más (de pie, sin girar de lado, como cualquier pallet real).
+function capacidadPalletCompleto(it, pal, veh, reglas) {
+  var def = palletDelSku(it, pal, reglas);
+  if (!def) return null;
+  var pit = { nombre: def.nombre, L: def.L, W: def.W, H: def.alto, peso: def.peso, oris: [true, true, false, false, false, false], volteoPiso: false,
+    maxNiveles: 0, valorApilar: 0, pesoMaxEncima: 0, piso: "libre", soportaEncima: true, esPallet: true, aceptaCajas: false, aceptaPallet: !!it.aceptaPallet && def.techoPlano, piezas: 1 };
+  var cargaMax = veh.maxKg > 0 && reglas.limitarPeso ? veh.maxKg - (veh.tara || 0) : Infinity;
+  var oris = orientacionesDe(pit);
+  if (!oris.some(function (o) { return o.d[0] <= veh.L && o.d[1] <= veh.W && o.d[2] <= veh.H; }) || pit.peso > cargaMax) {
+    return { pallets: 0, cajasPorPallet: def.n, cajasTotales: 0, piezasTotales: 0, peso: 0, vol: 0, volV: veh.L * veh.W * veh.H, def: def };
+  }
+  var tipos = [{ k: "s0", idx: 0, it: pit, oris: oris, fase: 0, g: 0, rem: 999999, pal: -1 }];
+  var r = buscar(tipos, veh, Object.assign({}, reglas, { _maxContenedores: 1 }), reglas.nivel || 2, !!veh.esPallet, null);
+  var c = r.contenedores[0] || { cajas: [], peso: 0, vol: 0 };
+  var pallets = c.cajas.length;
+  return { pallets: pallets, cajasPorPallet: def.n, cajasTotales: pallets * def.n, piezasTotales: pallets * def.n * (it.piezas || 1),
+    peso: c.peso, vol: c.vol, volV: veh.L * veh.W * veh.H, def: def, contenedor: c };
+}
+
 // ---------- Entrada principal ----------
 // Zonas por entrega y bultos que estorban: los que quedan entre las puertas (x alto) y algo que se entrega antes,
 // en el mismo pasillo y no por encima. ordenDe[idx] es la parada de cada caja (0 = sin parada).
@@ -608,6 +670,10 @@ function optimizar(items, veh, reglas, alProgreso, pallets) {
   var grupoDe = function (g) { g = g || ""; if (gruposOrden[g] === undefined) gruposOrden[g] = ng++; return gruposOrden[g]; };
   var MAXP = 99999999;
   var faseDe = function (it) {
+    // Relleno opcional (completar espacios vacíos, ver archivos/relleno más abajo): siempre va al
+    // final, después de toda la demanda real, sin importar entrega ni pedido. Así nunca le quita
+    // lugar a una caja que sí estaba en el pedido.
+    if (it.esRelleno) return Infinity;
     var f = 0;
     // Se carga de atrás (fondo) hacia las puertas: primero las entregas altas, al final la parada 1.
     if (reglas.usarOrden) f += (it.orden > 0 ? MAXP - Math.min(it.orden, MAXP) : 0) * 100000;
@@ -635,6 +701,12 @@ function optimizar(items, veh, reglas, alProgreso, pallets) {
   items.forEach(function (it0, idx) {
     if (!(it0.qty > 0)) return;
     var it = Object.assign({}, it0, { _idx: idx });
+    // Relleno opcional: siempre suelto, y si de plano no cabe, se descarta en silencio (es un extra,
+    // no algo que el pedido pida de verdad; no genera "no caben" ni avisos).
+    if (it.esRelleno) {
+      if ((!reglas.limitarPeso || it.peso <= cargaMax) && cabeEn(it, veh)) sueltas(it, idx, it.qty);
+      return;
+    }
     var pal = it.paletizar && !veh.esPallet ? pallets[it.palletId || 0] : null;
     if (!pal) {
       if (!((!reglas.limitarPeso || it.peso <= cargaMax) && cabeEn(it, veh))) { noCaben.push(it.nombre); return; }
@@ -673,7 +745,7 @@ function optimizar(items, veh, reglas, alProgreso, pallets) {
   var mejor = buscar(tipos, veh, reglas, reglas.nivel, !!veh.esPallet, alProgreso);
   mejor.contenedores.forEach(function (c) {
     c.cajas = c.cajas.map(function (k) {
-      return { x: k.x, y: k.y, z: k.z, l: k.l, w: k.w, h: k.h, idx: k.idx, ori: k.ori, peso: k.it.peso, carga: Math.round(k.carga), pal: k.pal, rot: k.pal >= 0 && k.ori === 2 };
+      return { x: k.x, y: k.y, z: k.z, l: k.l, w: k.w, h: k.h, idx: k.idx, ori: k.ori, peso: k.it.peso, carga: Math.round(k.carga), pal: k.pal, rot: k.pal >= 0 && k.ori === 2, relleno: k.it.esRelleno || undefined };
     });
     c.peso = c.peso; // peso de la carga (sin tara)
   });
@@ -685,4 +757,4 @@ function optimizar(items, veh, reglas, alProgreso, pallets) {
   return mejor;
 }
 
-export { optimizar, marcarEntregas };
+export { optimizar, marcarEntregas, capacidadSuelta, configuracionPallet, capacidadPalletCompleto };

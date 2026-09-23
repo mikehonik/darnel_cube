@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import * as XLSX from "xlsx";
-import { libroResultados, etapasDe, htmlInstructivo, nombreArchivo } from "./resultados.js";
+import { libroResultados, etapasDe, htmlInstructivo, htmlInstructivoCompleto, nombreArchivo } from "./resultados.js";
 import { armarReporte } from "../motor/reporte.js";
 import { correr, ejecutorEnProceso } from "../motor/corrida.js";
 import { optimizar } from "../motor/motor.js";
@@ -29,7 +29,7 @@ describe("libroResultados", () => {
     expect(filas(wb, "Lista de carga")[0]).toEqual(filas(referencia, "Lista de carga")[0].map((h) => (h === "Orden" ? "Entrega" : h)));
     expect(filas(wb, "Entregas")).toEqual([["Vehículo", "Entrega", "Pedidos", "Bultos", "Volumen (m³)", "Desde las puertas (m)", "Hasta (m)", "Bultos que estorban"], [1, 1, "", 5, +(R.contenedores[0].entregas[0].vol / 1e9).toFixed(2), +(R.contenedores[0].entregas[0].desdePuertas / 1e3).toFixed(2), +(R.contenedores[0].entregas[0].hastaPuertas / 1e3).toFixed(2), 0]]);
     const resumen = filas(wb, "Resumen");
-    expect(resumen.slice(0, 5)).toEqual([["Estiba 3D · Resultados"], ["Carga", "Prueba"], ["Fecha", "hoy"], ["Vehículo", "V"], ["Nivel de optimización", 1]]);
+    expect(resumen.slice(0, 5)).toEqual([["DarnelCube 3D · Resultados"], ["Carga", "Prueba"], ["Fecha", "hoy"], ["Vehículo", "V"], ["Nivel de optimización", 1]]);
     expect(resumen.at(-1)).toEqual(["No caben", "Enorme <b>"]);
     const t = R.contenedores[0], total = resumen.find((f) => f[0] === "Total");
     expect(resumen[6]).toEqual([1, t.nBultos, t.nCajas, t.nPallets, Math.round(t.peso), Math.round(t.pesoBruto), +t.utilPeso.toFixed(1), +t.m3.toFixed(2), +t.m3Cap.toFixed(2), +t.ocupacion.toFixed(1), +t.cgLargo.toFixed(0)]);
@@ -77,6 +77,34 @@ describe("htmlInstructivo", () => {
     expect((html.match(/class="etapa"/g) || []).length).toBe(etapas.length);
     expect(html).toContain('src="data:img0"');
     expect((html.match(/<li>/g) || []).length).toBe(t.pasos.length);
+  });
+});
+
+describe("htmlInstructivoCompleto", () => {
+  it("arma una sección por vehículo con índice y saltos de página entre contenedores", async () => {
+    const R = await reporteReal([caja({ nombre: "A", L: 400, W: 400, H: 400, peso: 3000, qty: 12 })]); // el peso obliga a usar 2 vehículos
+    expect(R.contenedores.length).toBeGreaterThan(1);
+    const secciones = R.contenedores.map((t, i) => {
+      const etapas = etapasDe(t.pasos, t.nBultos);
+      return { sel: i, etapas, imagenes: etapas.map((_, j) => `data:img${i}-${j}`) };
+    });
+    const html = htmlInstructivoCompleto({ reporte: R, secciones, modoPallet: false, proyecto: "Semana 37", nombreVeh: "Contenedor", fecha: "hoy" });
+    const h1s = [...html.matchAll(/<h1>(.*?)<\/h1>/g)].map((m) => m[1]);
+    expect(h1s.length).toBe(R.contenedores.length);
+    expect(h1s[0]).toContain(`Vehículo 1 de ${R.contenedores.length}`);
+    expect(h1s[1]).toContain(`Vehículo 2 de ${R.contenedores.length}`);
+    expect(html).toContain(`Vehículos incluidos (${R.contenedores.length})`);
+    expect(html).toContain("<section class=\"contenedor\">");
+    expect((html.match(/<section class="contenedor">/g) || []).length).toBe(R.contenedores.length);
+    expect(html).toContain('src="data:img0-0"');
+    expect(html).toContain('src="data:img1-0"');
+  });
+
+  it("con un solo contenedor no muestra el índice", async () => {
+    const R = await reporteReal([caja({ nombre: "A", qty: 1 })]);
+    const t = R.contenedores[0], etapas = etapasDe(t.pasos, t.nBultos);
+    const html = htmlInstructivoCompleto({ reporte: R, secciones: [{ sel: 0, etapas, imagenes: etapas.map(() => "data:img") }], modoPallet: false, proyecto: "P", nombreVeh: "V" });
+    expect(html).not.toContain("incluidos");
   });
 });
 

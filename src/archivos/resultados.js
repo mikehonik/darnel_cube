@@ -20,7 +20,7 @@ const hoja = (wb, nombre, filas, anchos) => { const ws = XLSX.utils.aoa_to_sheet
 // Excel con Resumen, Lista de carga, Pallets (si hay) y Pasos de carga. Devuelve el archivo como bytes.
 export function libroResultados({ reporte: R, proyecto, nombreVeh, nivel, fecha = new Date().toLocaleString("es-MX") }) {
   const wb = XLSX.utils.book_new();
-  const r1 = [["Estiba 3D · Resultados"], ["Carga", proyecto], ["Fecha", fecha], ["Vehículo", nombreVeh], ["Nivel de optimización", nivel], [],
+  const r1 = [["DarnelCube 3D · Resultados"], ["Carga", proyecto], ["Fecha", fecha], ["Vehículo", nombreVeh], ["Nivel de optimización", nivel], [],
     ["Vehículo", "Bultos", "Cajas", "Pallets", "Peso carga (kg)", "Peso bruto (kg)", "Utilización de peso (%)", "Volumen cargado (m³)", "Capacidad (m³)", "Utilización volumétrica (%)", "Centro de gravedad (% del fondo)"]];
   R.contenedores.forEach((t) => r1.push([t.num, t.nBultos, t.nCajas, t.nPallets, Math.round(t.peso), Math.round(t.pesoBruto), t.utilPeso == null ? "" : +t.utilPeso.toFixed(1), +t.m3.toFixed(2), +t.m3Cap.toFixed(2), +t.ocupacion.toFixed(1), +t.cgLargo.toFixed(0)]));
   const tot = R.totales;
@@ -54,17 +54,12 @@ export function etapasDe(pasos, total) {
   return etapas;
 }
 
-// Instructivo de un contenedor. `imagenes[i]` es la captura del visor al terminar la etapa i (data URL).
-export function htmlInstructivo({ reporte, sel, modoPallet, proyecto, nombreVeh, etapas, imagenes, fecha = new Date().toLocaleString("es-MX") }) {
+// Sección de un contenedor (título, datos, entregas, lista, pallets y pasos con imágenes). La usan tanto el
+// instructivo de un solo vehículo como el instructivo completo (todos los vehículos en un solo documento).
+function seccionInstructivo({ reporte, sel, modoPallet, proyecto, nombreVeh, fecha, etapas, imagenes }) {
   const t = reporte.contenedores[sel], palsAqui = t.pallets;
   const filasLista = t.lista.map((f) => `<tr><td>${esc(f.ordenTxt)}</td><td><b>${esc(f.nombre)}</b> ${esc(f.desc)}</td><td>${f.sueltas}</td><td>${f.enPallet}</td><td><b>${f.total}</b></td><td>${Math.round(f.peso)} kg</td></tr>`).join("");
-  return `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Instructivo de carga · ${esc(proyecto)}</title>
-<style>body{font-family:Arial,Helvetica,sans-serif;color:#16202C;margin:24px;font-size:12px}h1{font-size:20px;margin:0}h2{font-size:15px;margin:22px 0 8px;border-bottom:2px solid #F2B705;padding-bottom:3px}
-.sub{color:#5B6B7B;margin:2px 0 14px}.datos{display:flex;gap:10px;flex-wrap:wrap}.dato{background:#EEF1F5;border-radius:6px;padding:6px 10px}.dato b{display:block;font-size:15px}
-table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #DCE2E8;padding:4px 6px;text-align:left;vertical-align:top}th{background:#14213D;color:#fff;font-weight:normal}
-.etapa{display:flex;gap:14px;page-break-inside:avoid;margin-bottom:14px}.etapa img{width:46%;border:1px solid #DCE2E8;border-radius:6px}.etapa ol{margin:0;padding-left:18px}.etapa li{margin-bottom:5px}
-.nota{color:#5B6B7B;font-size:11px}@media print{body{margin:10mm}.noimp{display:none}}</style></head><body>
-<p class="noimp nota">Para guardar en PDF: Imprimir → Guardar como PDF.</p>
+  return `<section class="contenedor">
 <h1>Instructivo de carga · ${esc(modoPallet ? "Pallet" : "Vehículo")} ${sel + 1} de ${reporte.contenedores.length}</h1>
 <p class="sub">${esc(proyecto)} · ${esc(nombreVeh)} · ${fecha}</p>
 <div class="datos"><div class="dato">Utilización volumétrica<b>${t.ocupacion.toFixed(1)}%</b></div><div class="dato">Volumen<b>${t.m3.toFixed(1)} de ${t.m3Cap.toFixed(1)} m³</b></div>
@@ -76,5 +71,33 @@ ${t.entregas.length ? `<h2>Orden de descarga</h2><p class="nota">Se descarga de 
 ${palsAqui.length ? `<h2>Armado de pallets (antes de cargar)</h2><table><tr><th>Pallet</th><th>Tarima</th><th>Cómo se arma</th><th>Alto</th><th>Peso</th></tr>${palsAqui.map((d) => `<tr><td><b>${esc(d.nombre)}</b></td><td>${esc(d.tipoPallet)}</td><td>${d.capas ? `${d.capas} capas de ${d.porCapa} cajas${d.alternado ? "; alterna cada capa en espejo para amarrar" : ""}` : `${d.n} cajas de ${d.nSkus} SKUs, lo más pesado abajo`}${d.sobraL || d.sobraW ? `; sobresale hasta ${Math.round(d.sobraL)} mm a lo largo y ${Math.round(d.sobraW)} mm a lo ancho` : ""}</td><td>${Math.round(d.alto)} mm</td><td>${Math.round(d.peso)} kg</td></tr>`).join("")}</table>` : ""}
 <h2>Pasos de carga</h2>
 ${etapas.map((e, i) => `<div class="etapa"><img src="${imagenes[i]}" alt="Etapa ${i + 1}"><div><b>Etapa ${i + 1} de ${etapas.length}</b> · bultos ${e[0].ini + 1} a ${e[e.length - 1].fin}<ol start="${e[0].num}">${e.map((p) => `<li>${esc(p.texto)}</li>`).join("")}</ol></div></div>`).join("")}
-<p class="nota">Generado con Estiba 3D.</p></body></html>`;
+</section>`;
+}
+
+const ESTILO_INSTRUCTIVO = `body{font-family:Arial,Helvetica,sans-serif;color:#16202C;margin:24px;font-size:12px}h1{font-size:20px;margin:0}h2{font-size:15px;margin:22px 0 8px;border-bottom:2px solid #F2B705;padding-bottom:3px}
+.sub{color:#5B6B7B;margin:2px 0 14px}.datos{display:flex;gap:10px;flex-wrap:wrap}.dato{background:#EEF1F5;border-radius:6px;padding:6px 10px}.dato b{display:block;font-size:15px}
+table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #DCE2E8;padding:4px 6px;text-align:left;vertical-align:top}th{background:#14213D;color:#fff;font-weight:normal}
+.etapa{display:flex;gap:14px;page-break-inside:avoid;margin-bottom:14px}.etapa img{width:46%;border:1px solid #DCE2E8;border-radius:6px}.etapa ol{margin:0;padding-left:18px}.etapa li{margin-bottom:5px}
+.nota{color:#5B6B7B;font-size:11px}.contenedor+.contenedor{page-break-before:always;margin-top:28px}
+@media print{body{margin:10mm}.noimp{display:none}}`;
+
+const docInstructivo = (titulo, cuerpo) => `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Instructivo de carga · ${esc(titulo)}</title>
+<style>${ESTILO_INSTRUCTIVO}</style></head><body>
+<p class="noimp nota">Para guardar en PDF: Imprimir → Guardar como PDF.</p>
+${cuerpo}
+<p class="nota">Generado con DarnelCube 3D.</p></body></html>`;
+
+// Instructivo de un solo contenedor. `imagenes[i]` es la captura del visor al terminar la etapa i (data URL).
+export function htmlInstructivo({ reporte, sel, modoPallet, proyecto, nombreVeh, etapas, imagenes, fecha = new Date().toLocaleString("es-MX") }) {
+  return docInstructivo(proyecto, seccionInstructivo({ reporte, sel, modoPallet, proyecto, nombreVeh, fecha, etapas, imagenes }));
+}
+
+// Instructivo completo: todos los vehículos (o pallets) en un solo documento, cada uno en su propia página al
+// imprimir. `secciones` es un arreglo de { sel, etapas, imagenes } en el orden en que se quieren ver.
+export function htmlInstructivoCompleto({ reporte, secciones, modoPallet, proyecto, nombreVeh, fecha = new Date().toLocaleString("es-MX") }) {
+  const indice = secciones.length > 1
+    ? `<h2>${esc(modoPallet ? "Pallets" : "Vehículos")} incluidos (${secciones.length})</h2><ol>${secciones.map((s) => { const t = reporte.contenedores[s.sel]; return `<li>${esc(modoPallet ? "Pallet" : "Vehículo")} ${s.sel + 1}: ${t.ocupacion.toFixed(1)}% de ocupación, ${t.nBultos} bultos.</li>`; }).join("")}</ol>`
+    : "";
+  const cuerpo = indice + secciones.map((s) => seccionInstructivo({ reporte, sel: s.sel, modoPallet, proyecto, nombreVeh, fecha, etapas: s.etapas, imagenes: s.imagenes })).join("");
+  return docInstructivo(proyecto, cuerpo);
 }

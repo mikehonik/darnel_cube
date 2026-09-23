@@ -63,7 +63,7 @@ export function libroVehiculos(vehiculos = []) {
   ws["!cols"] = COLS_VEHICULOS.map((h) => ({ wch: Math.max(12, h.length) }));
   ws["!autofilter"] = { ref: `A1:N${Math.max(2, vehiculos.length + 1)}` };
   XLSX.utils.book_append_sheet(wb, ws, "Vehículos");
-  const wi = XLSX.utils.aoa_to_sheet([["Catálogo de vehículos · Estiba 3D"], [],
+  const wi = XLSX.utils.aoa_to_sheet([["Catálogo de vehículos · DarnelCube 3D"], [],
     ["Sección", "Campo", "Qué significa", "Ejemplo", "Si lo dejas vacío"], ...AYUDA_VEHICULOS]);
   wi["!cols"] = [{ wch: 24 }, { wch: 34 }, { wch: 80 }, { wch: 24 }, { wch: 26 }];
   XLSX.utils.book_append_sheet(wb, wi, "Instrucciones");

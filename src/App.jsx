@@ -1,14 +1,15 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { Package, Truck, Layers, SlidersHorizontal, HelpCircle, Play, FilePlus, ClipboardPaste, AlertTriangle, Loader2, Plus, Trash2, X, ChevronDown, Database, FolderOpen, Save, Upload, FileSpreadsheet, Search, RefreshCw, CheckCircle2, Repeat } from "lucide-react";
+import { Package, Truck, Layers, SlidersHorizontal, HelpCircle, Play, FilePlus, ClipboardPaste, AlertTriangle, Loader2, Plus, Trash2, X, ChevronDown, Database, FolderOpen, Save, Upload, FileSpreadsheet, Search, RefreshCw, CheckCircle2, Repeat, Calculator, PackagePlus } from "lucide-react";
 import { correr, ejecutorWorker, ErrorCorrida } from "./motor/corrida.js";
 import MotorWorker from "./motor/motor.worker.js?worker&inline";
 import { armarReporte } from "./motor/reporte.js";
 import { clave, numero } from "./archivos/celdas.js";
-import { ARCHIVO_MAESTRO, ARCHIVO_RESPALDO, productoVacio, leerMaestro, libroMaestro, leerCubeMaster, plantillaDimensiones, actualizarDimensiones } from "./archivos/maestro.js";
+import { ARCHIVO_MAESTRO, ARCHIVO_RESPALDO, productoVacio, leerMaestro, libroMaestro, leerCubeMaster, plantillaDimensiones, actualizarDimensiones, leerBundleMaestro } from "./archivos/maestro.js";
+import { transformarPedidoBundle } from "./archivos/bundle.js";
 import { leerVehiculos, libroVehiculos, plantillaVehiculos, vehiculoVacio } from "./archivos/vehiculos.js";
 import { leerPedido, libroPlantilla } from "./archivos/pedido.js";
 import { leerConversiones, aCajas, UM_CAJA_DEF, normalizaUM, nombreUM } from "./archivos/conversiones.js";
-import { libroResultados, etapasDe, htmlInstructivo, nombreArchivo, libroSimple, MIME_XLSX } from "./archivos/resultados.js";
+import { libroResultados, etapasDe, htmlInstructivo, htmlInstructivoCompleto, nombreArchivo, libroSimple, MIME_XLSX } from "./archivos/resultados.js";
 import { EJEMPLOS, PALLETS_INICIALES, VEHICULOS, nuevoItem } from "./ui/referencia.js";
 import { PALETAS, generarColores } from "./ui/colores.js";
 import { T } from "./ui/tema.js";
@@ -23,8 +24,13 @@ import { RevisionPedido } from "./ui/secciones/RevisionPedido.jsx";
 import { SeccionPaletizado } from "./ui/secciones/SeccionPaletizado.jsx";
 import { SeccionAyuda } from "./ui/secciones/SeccionAyuda.jsx";
 import { SeccionReglas } from "./ui/secciones/SeccionReglas.jsx";
+import { SeccionHerramientas } from "./ui/secciones/SeccionHerramientas.jsx";
 import { PanelResultados } from "./ui/secciones/PanelResultados.jsx";
 import { FilaItem, FilaMaestro } from "./ui/filas.jsx";
+
+// Un vehículo que termina usándose por debajo de este % es la señal de "casi no hacía falta":
+// ahí vale la pena ofrecer intentar consolidar todo en un vehículo menos.
+const UMBRAL_CONSOLIDAR = 0.05;
 
 // ================= Motor (Web Worker) =================
 // Cada corrida crea un Worker nuevo. El worker va incrustado (?worker&inline) para que el build de un solo archivo HTML funcione sin servidor.
@@ -50,6 +56,9 @@ export default function Estiba3D({ usuario }) {
   const [paso, setPaso] = useState(0);
   const [progreso, setProgreso] = useState(null);
   const [corrida, setCorrida] = useState(null); // { resultado, carga } de la última corrida
+  const [espacios, setEspacios] = useState(null); // alternativas para completar espacios vacíos
+  const [calculandoEspacios, setCalculandoEspacios] = useState(false);
+  const [consolidar, setConsolidar] = useState(null); // intento de meter todo en un solo vehículo
   const [error, setError] = useState("");
   const [resaltado, setResaltado] = useState(null);
   const [pestana, setPestana] = useState("resumen");
@@ -72,6 +81,7 @@ export default function Estiba3D({ usuario }) {
   const inputCube = useRef(null);
   const inputConv = useRef(null);
   const inputDims = useRef(null);
+  const inputBundle = useRef(null);
   const inputVehiculos = useRef(null);
   const [confirmar, setConfirmar] = useState(null);
   const [generando, setGenerando] = useState(false);
@@ -112,8 +122,19 @@ export default function Estiba3D({ usuario }) {
   const colores = useMemo(() => items.map((it, i) => it.color || coloresBase[i]), [items, coloresBase]);
   const hayPersonalizados = items.some((i) => i.color);
 
+  // Cualquier cambio a la carga deja viejas las sugerencias (completar espacios, consolidar): se borran,
+  // y si alguna todavía está calculando, su resultado se descarta al llegar (ver intentoRef).
+  const intentoRef = useRef(0);
   const invalidar = () => {
-    setRecomendacion(null); setRes(null); setCorrida(null); setResaltado(null); setVista(null); };
+    setRecomendacion(null); setRes(null); setCorrida(null); setResaltado(null); setVista(null);
+    setEspacios(null); setConsolidar(null); setCalculandoEspacios(false); intentoRef.current++; };
+  // La carga tal como la recibe el motor en una corrida normal. Con «orden de la lista», la posición de la
+  // fila manda (la de arriba entra primero, al fondo); si además hay entregas, la parada sigue mandando y
+  // la lista solo desempata dentro de cada parada.
+  const cargaPara = (lista, r) => ({
+    items: r.usarLista ? lista.map((it, i) => ({ ...it, entrega: it.orden, orden: (it.orden > 0 ? it.orden : 9999) * 10000 + (lista.length - i) })) : lista,
+    vehiculo: vehCalc, tarimas: pallets, reglas: r.usarLista ? { ...r, usarOrden: true } : r,
+  });
 
   // ---------- Guardar y cargar en la nube (un proyecto por usuario) ----------
   const estadoParaGuardar = () => ({
@@ -406,6 +427,21 @@ export default function Estiba3D({ usuario }) {
         + (r.errores.length ? ` ${r.errores.length} línea${r.errores.length === 1 ? "" : "s"} con problemas: ${r.errores.join(" ")}` : ""));
     } catch (err) { setError("No se pudo leer el archivo de dimensiones: " + err.message); }
   };
+  // Enciende y configura el Bundle (BDL) de los SKUs que ya existen en el maestro, a partir del Excel
+  // de referencia (ID Artículo, UM, Rel, Factor, CS/BDL, medidas). El % máximo de Bundle se ajusta
+  // después, a mano, por SKU: es una decisión operativa y no viene en ese archivo.
+  const importarBundle = async (e) => {
+    const f = e.target.files?.[0]; e.target.value = "";
+    if (!f) return;
+    setError("");
+    try {
+      const r = leerBundleMaestro(maestro.productos, await f.arrayBuffer());
+      if (!r.actualizados) { setError(`No se importó ningún SKU. ${r.errores.join(" ")}`); return; }
+      setMaestro((m) => ({ ...m, productos: r.productos, sucio: true }));
+      setAviso(`Bundle importado: ${r.actualizados} SKU${r.actualizados === 1 ? "" : "s"} con Bundle activado. Falta capturar el % máximo de Bundle por SKU y presionar Guardar.`
+        + (r.errores.length ? ` ${r.errores.length} línea${r.errores.length === 1 ? "" : "s"} con problemas: ${r.errores.join(" ")}` : ""));
+    } catch (err) { setError("No se pudo leer el archivo de Bundle: " + err.message); }
+  };
   // Reemplaza el catálogo de vehículos con lo que traiga el archivo (conserva el vehículo elegido si sigue en la lista).
   const importarVehiculos = async (e) => {
     const f = e.target.files?.[0]; e.target.value = "";
@@ -454,7 +490,12 @@ export default function Estiba3D({ usuario }) {
         filas.push(fila);
       });
       if (!nuevos.length) { setError(`Ningún SKU del pedido está en el maestro${maestro.productos.length ? "" : " (conecta o abre el maestro primero)"}.`); setRevision({ filas, archivo: f.name }); return; }
-      setItems(nuevos);
+      // Bundle (BDL): antes de cargar la mercancía, cada SKU con Bundle activado se divide en su
+      // parte de Bundles completos y su parte suelta (ver archivos/bundle.js). Se hace aquí, sobre
+      // las cantidades ya convertidas a cajas, y no dentro del motor de cubicaje.
+      const { items: itemsFinal, avisos: avisosBundle } = transformarPedidoBundle(nuevos, porSku, clave);
+      const bundlesFormados = itemsFinal.filter((it) => it.esBundle).length;
+      setItems(itemsFinal);
       setProyecto(datos.nombre || f.name.replace(/\.[^.]+$/, ""));
       const v = datos.vehiculo && vehiculos.find((x) => clave(x.nombre) === clave(datos.vehiculo) || clave(x.id) === clave(datos.vehiculo));
       if (v) elegirVehiculo(v.id); else invalidar();
@@ -462,7 +503,9 @@ export default function Estiba3D({ usuario }) {
       setRevision({ filas, archivo: f.name });
       setError("");
       setAviso(`Pedido cargado: ${nuevos.length} de ${filas.length} líneas, ${nuevos.reduce((a, x) => a + x.qty, 0).toLocaleString("es-MX")} cajas${v ? `, vehículo ${v.nombre}` : ""}.`
-        + (revisar ? ` ${revisar} ${revisar === 1 ? "línea necesita" : "líneas necesitan"} revisión: abajo está el detalle.` : " Todas las cantidades cuadraron exactas."));
+        + (bundlesFormados ? ` ${bundlesFormados} línea${bundlesFormados === 1 ? "" : "s"} de Bundle formada${bundlesFormados === 1 ? "" : "s"}.` : "")
+        + (revisar ? ` ${revisar} ${revisar === 1 ? "línea necesita" : "líneas necesitan"} revisión: abajo está el detalle.` : " Todas las cantidades cuadraron exactas.")
+        + (avisosBundle.length ? ` Bundle: ${avisosBundle.join(" ")}` : ""));
       setVerMedidas(false); setSeccion("mercancia");
     } catch (err) { setError("No se pudo leer el pedido: " + err.message); }
   };
@@ -540,16 +583,10 @@ export default function Estiba3D({ usuario }) {
   };
 
   const calcular = async () => {
-    setError(""); setProgreso({ i: 0, n: 1 }); setResaltado(null); setVista(null);
+    setError(""); setProgreso({ i: 0, n: 1 }); setResaltado(null); setVista(null); setConsolidar(null); setEspacios(null); setCalculandoEspacios(false); intentoRef.current++;
     const ctrl = new AbortController(); corridaRef.current = ctrl;
     try {
-      // Orden de la lista: la fila de arriba se carga primero (queda al fondo)
-      // Manda la posición de la fila (la de arriba entra primero, al fondo). Si además hay entregas,
-      // la parada sigue mandando y la lista solo desempata dentro de cada parada.
-      const conOrden = reglas.usarLista
-        ? items.map((it, i) => ({ ...it, entrega: it.orden, orden: (it.orden > 0 ? it.orden : 9999) * 10000 + (items.length - i) }))
-        : items;
-      const c = await correr({ items: conOrden, vehiculo: vehCalc, tarimas: pallets, reglas: reglas.usarLista ? { ...reglas, usarOrden: true } : reglas }, { ejecutor, signal: ctrl.signal, onProgreso: (i, n) => setProgreso({ i, n }) });
+      const c = await correr(cargaPara(items, reglas), { ejecutor, signal: ctrl.signal, onProgreso: (i, n) => setProgreso({ i, n }) });
       const r = c.resultado; setCorrida(c); setRes(r); setSel(0); setPaso(r.contenedores[0]?.cajas.length || 0);
       setPestana(r.avisos.length || r.sinCargar || r.noCaben.length ? "avisos" : "resumen");
     } catch (e) {
@@ -563,10 +600,188 @@ export default function Estiba3D({ usuario }) {
   const cancelarCorrida = () => corridaRef.current?.abort();
   useEffect(() => () => corridaRef.current?.abort(), []);
 
+  // Completar espacios vacíos: sobre la carga ya calculada, prueba meter más unidades de los SKUs
+  // que ya están en el pedido (nunca uno externo) en lo que sobró de espacio. Se corre con la MISMA carga
+  // y reglas que la corrida mostrada (corrida.carga): una vez con cada SKU solo (alternativas individuales,
+  // en nivel rápido) y una con todos juntos (la combinación, en el nivel de la corrida). El relleno nunca
+  // desplaza la demanda real: ver esRelleno en motor/motor.js (siempre se coloca al final y nunca abre
+  // un vehículo nuevo). Una alternativa solo cuenta si la demanda real quedó igual que en la corrida.
+  const completarEspacios = async () => {
+    if (!res || !corrida || !res.contenedores.length) return;
+    const token = ++intentoRef.current;
+    setError(""); setCalculandoEspacios(true); setEspacios(null);
+    const base = corrida.carga, vb = base.vehiculo, volV = vb.L * vb.W * vb.H, nBase = res.contenedores.length;
+    const ocupacion = (r) => (volV && r.contenedores.length ? (r.contenedores.reduce((a, c) => a + c.vol, 0) / (volV * r.contenedores.length)) * 100 : 0);
+    const comparable = (r) => r.contenedores.length === nBase && r.sinCargar <= res.sinCargar;
+    const candidatos = new Map();
+    base.items.forEach((it) => { if (!it.esBundle && it.qty > 0 && !candidatos.has(it.id)) candidatos.set(it.id, it); });
+    const lista = [...candidatos.values()];
+    const filler = (it) => ({ ...it, id: `rel-${it.id}`, qty: 500000, esRelleno: true, paletizar: false });
+    const correrCon = (fillers, nivel) => correr({ ...base, items: [...base.items, ...fillers], reglas: { ...base.reglas, nivel } }, { ejecutor }).then((c) => c.resultado);
+    // origen[i] es el SKU del que salió el relleno i (va después de las líneas reales de la carga)
+    const contar = (r, origen) => {
+      const cuenta = new Map();
+      r.contenedores.forEach((c) => c.cajas.forEach((k) => {
+        const it = k.relleno ? origen[k.idx - base.items.length] : null; if (!it) return;
+        const e = cuenta.get(it.id) || { id: it.id, nombre: it.nombre, umCaja: it.umCaja, paletizado: !!it.paletizar, cantidad: 0 };
+        e.cantidad++; cuenta.set(it.id, e);
+      }));
+      return [...cuenta.values()].sort((a, b) => b.cantidad - a.cantidad);
+    };
+    try {
+      const ocupacionActual = ocupacion(res);
+      let descartadas = 0;
+      const individuales = [];
+      for (const it of lista) {
+        // Primero en nivel rápido; si así la demanda real ya no queda igual, se repite en el nivel de la corrida
+        let r = await correrCon([filler(it)], 1);
+        if (token !== intentoRef.current) return;
+        if (!comparable(r) && base.reglas.nivel > 1) { r = await correrCon([filler(it)], base.reglas.nivel); if (token !== intentoRef.current) return; }
+        if (!comparable(r)) { descartadas++; continue; }
+        const [f] = contar(r, [it]);
+        if (f) individuales.push({ ...f, ocupacionAntes: ocupacionActual, ocupacionDespues: ocupacion(r) });
+      }
+      individuales.sort((a, b) => b.cantidad - a.cantidad);
+      let combinacion = [], ocupacionCombinacion = ocupacionActual;
+      if (lista.length > 1) {
+        const r = await correrCon(lista.map(filler), base.reglas.nivel);
+        if (token !== intentoRef.current) return;
+        if (comparable(r)) { combinacion = contar(r, lista); ocupacionCombinacion = ocupacion(r); } else descartadas++;
+      }
+      setEspacios({ ocupacionActual, individuales, combinacion, ocupacionCombinacion, descartadas });
+    } catch (e) {
+      if (token === intentoRef.current) setError("No se pudo calcular el relleno de espacios: " + (e.detalle?.original || e.message));
+    }
+    if (token === intentoRef.current) setCalculandoEspacios(false);
+  };
+  // Aplica una o varias alternativas: suma la cantidad sugerida a cada SKU en la carga actual. El relleno
+  // se calculó suelto: si el SKU va paletizado, lo extra entra como una línea suelta aparte (si se sumara a
+  // la línea paletizada, el motor lo armaría en pallet y ya no cabría igual). Falta recalcular para verlo.
+  const aplicarRelleno = (sugeridas) => {
+    setItems((a) => {
+      let nueva = [...a];
+      sugeridas.forEach(({ id, cantidad }) => {
+        const it = nueva.find((x) => x.id === id);
+        if (!it) return;
+        if (it.paletizar) { const { id: _id, ...resto } = it; nueva.push(nuevoItem({ ...resto, qty: cantidad, paletizar: false })); }
+        else nueva = nueva.map((x) => (x.id === id ? { ...x, qty: x.qty + cantidad } : x));
+      });
+      return nueva;
+    });
+    invalidar();
+    const total = sugeridas.reduce((s, f) => s + f.cantidad, 0);
+    setAviso(`Se agregaron ${total.toLocaleString("es-MX")} unidades más (${sugeridas.map((f) => f.nombre).join(", ")}) para aprovechar el espacio libre. Presiona Calcular para verlas acomodadas.`);
+  };
+
+  // Cuando el último vehículo casi no se usa (menos del 5%), vale la pena preguntarse si todo cabía en uno
+  // menos. Se prueba, de la menos a la más invasiva: más nivel de esfuerzo; relajar las reglas que estén
+  // activas (orden de entrega, lista, pedidos juntos o separados, apilamiento, cajas juntas); cambiar
+  // «simular la carga real»; y permitir girar las cajas en cualquier orientación. Si nada de eso lo logra,
+  // se sugiere qué reducir a partir de lo que de verdad terminó en el último vehículo, y se comprueba.
+  const intentarConsolidar = async () => {
+    if (!res || !corrida || res.contenedores.length < 2) return;
+    const token = ++intentoRef.current;
+    const nBase = res.contenedores.length, objetivo = nBase - 1;
+    const vb = corrida.carga.vehiculo, volV = vb.L * vb.W * vb.H;
+    setError(""); setConsolidar({ intentando: true, objetivo });
+    const hayEntregas = items.some((it) => it.orden > 0), hayPedidos = items.some((it) => it.grupo);
+    const relajadas = [];
+    if (reglas.usarOrden && hayEntregas) relajadas.push("sin respetar el orden de entrega (cambia el orden de descarga)");
+    if (reglas.usarLista) relajadas.push("sin el orden de la lista");
+    if (reglas.agrupar && hayPedidos) relajadas.push("sin mantener juntos los pedidos");
+    if (reglas.separarGrupos && hayPedidos) relajadas.push("mezclando pedidos en el mismo vehículo");
+    if (reglas.apilamiento !== "ninguna") relajadas.push("sin regla de apilamiento");
+    if (reglas.juntos) relajadas.push("permitiendo separar cajas del mismo SKU");
+    const relajar = { usarOrden: false, usarLista: false, agrupar: false, separarGrupos: false, apilamiento: "ninguna", juntos: false };
+    const nivelPrueba = Math.max(2, Math.min(3, reglas.nivel));
+    const simular = reglas.compresionAuto !== false;
+    const girables = (lista) => lista.map((it) => (it.paletizar || (it.forma && it.forma !== "caja") ? it : { ...it, oris: [true, true, true, true, true, true], volteoPiso: true }));
+    const variaciones = [];
+    if (reglas.nivel < 4) variaciones.push({ descripcion: `con más nivel de esfuerzo de cálculo (nivel ${reglas.nivel + 1})`, cambios: { nivel: reglas.nivel + 1 } });
+    if (relajadas.length) variaciones.push({ descripcion: relajadas.join(", "), cambios: { nivel: nivelPrueba, ...relajar } });
+    // Cada variación acumula las reglas relajadas; la descripción dice exactamente qué cambió
+    // «Simular la carga real» reproduce cómo se carga en el piso (bultos de pie, holgura entre SKUs), así
+    // que apagarlo da el óptimo geométrico: más apretado, pero hay que confirmar que el andén lo logre.
+    // Encenderlo nunca ayuda a consolidar, por eso solo se prueba apagarlo, y la rotación libre va encima.
+    const pasos = [...relajadas];
+    if (simular) {
+      pasos.push("desactivando «simular la carga real» (acomodo geométrico óptimo; confirma que el andén lo pueda replicar)");
+      variaciones.push({ descripcion: pasos.join(", "), cambios: { nivel: nivelPrueba, ...relajar, compresionAuto: false } });
+    }
+    pasos.push("permitiendo girar o acostar las cajas en cualquier orientación (confirma que el producto lo aguante)");
+    variaciones.push({ descripcion: pasos.join(", "), cambios: { nivel: nivelPrueba, ...relajar, compresionAuto: false }, items: girables });
+    const cabe = (r) => r.contenedores.length <= objetivo && r.sinCargar <= res.sinCargar && r.noCaben.length <= res.noCaben.length;
+    try {
+      for (const v of variaciones) {
+        const reglasProbar = { ...reglas, ...v.cambios };
+        const itemsProbar = v.items ? v.items(items) : items;
+        const c = await correr(cargaPara(itemsProbar, reglasProbar), { ejecutor });
+        if (token !== intentoRef.current) return;
+        if (cabe(c.resultado)) {
+          const ocupacion = c.resultado.contenedores.reduce((a, k) => a + k.vol, 0) / (volV * c.resultado.contenedores.length) * 100;
+          setConsolidar({ intentando: false, objetivo, exito: { descripcion: v.descripcion, reglas: reglasProbar, items: v.items ? itemsProbar : null, corrida: c }, ocupacion });
+          return;
+        }
+      }
+      // Ninguna variación lo logró: se sugiere quitar lo que de verdad terminó en el último vehículo (sueltas
+      // y el contenido de sus pallets, incluidos los mixtos), contado por línea de la carga.
+      const cargaItems = corrida.carga.items, ultimo = res.contenedores[nBase - 1], cuenta = new Map();
+      const sumar = (idx) => {
+        const it = cargaItems[idx]; if (!it) return;
+        const e = cuenta.get(it.id) || { id: it.id, nombre: it.nombre, umCaja: it.umCaja, cantidad: 0 };
+        e.cantidad++; cuenta.set(it.id, e);
+      };
+      ultimo.cajas.forEach((k) => { if (k.pal >= 0) (res.pallets[k.pal]?.cajas || []).forEach((kk) => sumar(kk.idx)); else sumar(k.idx); });
+      const reduccion = [...cuenta.values()].sort((a, b) => b.cantidad - a.cantidad);
+      // Se comprueba corriendo la carga ya reducida con las reglas actuales: el motor es heurístico y no
+      // siempre reproduce el mismo acomodo, así que se avisa si la reducción no alcanzó por sí sola.
+      const porId = new Map(reduccion.map((r) => [r.id, r.cantidad]));
+      const reducidos = items.map((it) => (porId.has(it.id) ? { ...it, qty: it.qty - porId.get(it.id) } : it)).filter((it) => it.qty > 0);
+      let verificada = false;
+      if (reducidos.length) {
+        const c = await correr(cargaPara(reducidos, reglas), { ejecutor });
+        if (token !== intentoRef.current) return;
+        verificada = c.resultado.contenedores.length <= objetivo;
+      }
+      setConsolidar({ intentando: false, objetivo, exito: null, reduccion, verificada, ultimoPct: (ultimo.vol / volV) * 100 });
+    } catch (e) {
+      if (token !== intentoRef.current) return;
+      setError("No se pudo intentar la consolidación: " + (e.detalle?.original || e.message));
+      setConsolidar(null);
+    }
+  };
+  // Aplica la variación que sí logró usar un vehículo menos, y deja ya puesto ese resultado.
+  const aplicarConsolidacion = () => {
+    if (!consolidar?.exito) return;
+    const { reglas: r, items: its, corrida: c, descripcion } = consolidar.exito;
+    intentoRef.current++;
+    setReglas(r); if (its) setItems(its);
+    setCorrida(c); setRes(c.resultado); setSel(0); setPaso(c.resultado.contenedores[0]?.cajas.length || 0); setEspacios(null);
+    setPestana(c.resultado.avisos.length ? "avisos" : "resumen");
+    setConsolidar(null);
+    setAviso(`Con ${descripcion}, la carga quedó en ${c.resultado.contenedores.length} ${c.resultado.contenedores.length === 1 ? "vehículo" : "vehículos"} al ${consolidar.ocupacion.toFixed(0)}%. Las reglas${its ? " y orientaciones" : ""} quedaron cambiadas para esta carga.`);
+  };
+  // Aplica la reducción sugerida cuando ninguna variación alcanzó: baja esas cantidades de cada línea.
+  const aplicarReduccionConsolidar = () => {
+    if (!consolidar?.reduccion) return;
+    const porId = new Map(consolidar.reduccion.map((r) => [r.id, r.cantidad]));
+    setItems((a) => a.map((it) => (porId.has(it.id) ? { ...it, qty: Math.max(0, it.qty - porId.get(it.id)) } : it)).filter((it) => it.qty > 0));
+    invalidar();
+    setAviso("Se redujeron las cantidades sugeridas. Presiona Calcular para ver el resultado con un vehículo menos.");
+  };
+
   const cont = res?.contenedores[sel];
   // El reporte se arma una sola vez por corrida, con la carga exacta que usó el motor.
   const reporte = useMemo(() => (corrida ? armarReporte(corrida) : null), [corrida]);
   const stats = reporte?.contenedores[sel] ?? null;
+  // El último vehículo casi vacío (menos del 5%) es la señal de que tal vez todo cabía en uno solo.
+  const ultimoCasiVacio = useMemo(() => {
+    const vb = corrida?.carga.vehiculo;
+    if (!res || res.contenedores.length < 2 || !vb?.L) return null;
+    const volV = vb.L * vb.W * vb.H, ultimo = res.contenedores[res.contenedores.length - 1];
+    const pct = ultimo.vol / volV;
+    return pct < UMBRAL_CONSOLIDAR ? pct * 100 : null;
+  }, [res, corrida]);
 
   const descargarRevision = () => {
     const filas = [["SKU", "Descripción", "Capturado", "UM capturada", "UM de la caja", "Cajas", "Estado", "Detalle"],
@@ -589,6 +804,32 @@ export default function Estiba3D({ usuario }) {
     setAviso("Instructivo descargado. Ábrelo en el navegador y usa Imprimir → Guardar como PDF si lo quieres en PDF.");
   };
 
+  // Instructivo con el diagrama de pasos de TODOS los vehículos (o pallets) en un solo documento,
+  // cada uno con su propia numeración de pasos e imágenes del visor.
+  const descargarInstructivoCompleto = async () => {
+    if (!res || !apiVisor.current || !reporte) return;
+    setGenerando(true); setVista(null);
+    const selOriginal = sel;
+    try {
+      const secciones = [];
+      for (let i = 0; i < res.contenedores.length; i++) {
+        setSel(i); setPaso(res.contenedores[i].cajas.length);
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise((r) => setTimeout(r, 120)); // dejar que el visor redibuje este vehículo antes de capturarlo
+        const statsI = reporte.contenedores[i];
+        const etapas = etapasDe(statsI.pasos, statsI.nBultos);
+        const imagenes = apiVisor.current.capturar(etapas.map((e) => e[e.length - 1].fin));
+        secciones.push({ sel: i, etapas, imagenes });
+      }
+      const html = htmlInstructivoCompleto({ reporte, secciones, modoPallet, proyecto, nombreVeh });
+      descargarArchivo(html, `instructivo_carga_${nombreArchivo(proyecto)}_completo.html`, "text/html;charset=utf-8");
+      setAviso(`Instructivo completo descargado (${res.contenedores.length} ${modoPallet ? "pallets" : "vehículos"}, uno por página).`);
+    } finally {
+      setSel(selOriginal); setPaso(res.contenedores[selOriginal]?.cajas.length || 0);
+      setGenerando(false);
+    }
+  };
+
   const verPallet = (i) => { setVista(i); setPaso(res.pallets[i].cajas.length); setResaltado(null); };
   const verVehiculo = (i) => { setVista(null); setSel(i); setPaso(res.contenedores[i].cajas.length); };
   const palVista = vista !== null && res ? res.pallets[vista] : null;
@@ -608,6 +849,7 @@ export default function Estiba3D({ usuario }) {
     { id: "vehiculo", icono: Truck, t: modoPallet ? "Pallet" : "Vehículo", d: nombreVeh },
     { id: "pallets", icono: Layers, t: "Paletizado", d: nPalletizados ? `${nPalletizados} SKUs paletizados` : "Catálogo de tarimas" },
     { id: "reglas", icono: SlidersHorizontal, t: "Reglas", d: `Nivel ${reglas.nivel}${reglasActivas ? ` · ${reglasActivas} activas` : ""}` },
+    { id: "herramientas", icono: Calculator, t: "Herramientas", d: "Capacidad de un SKU" },
     { id: "ayuda", icono: HelpCircle, t: "Ayuda", d: "Qué significa cada campo" },
   ];
 
@@ -694,6 +936,7 @@ export default function Estiba3D({ usuario }) {
           <input ref={inputPedido} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={cargarPedido} />
           <input ref={inputCube} type="file" accept=".xlsx,.xls" className="hidden" onChange={importarCube} />
           <input ref={inputDims} type="file" accept=".xlsx,.xls" className="hidden" onChange={importarDimensiones} />
+          <input ref={inputBundle} type="file" accept=".xlsx,.xls" className="hidden" onChange={importarBundle} />
           <input ref={inputVehiculos} type="file" accept=".xlsx,.xls" className="hidden" onChange={importarVehiculos} />
           <input ref={inputConv} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={importarConversiones} />
           {aviso && (
@@ -780,6 +1023,7 @@ export default function Estiba3D({ usuario }) {
                 <button className="underline" onClick={() => descargarArchivo(plantillaDimensiones(maestro.productos), "plantilla_dimensiones.xlsx", MIME_XLSX)} title="Solo SKU, ID producto, descripción y medidas: lo que en el futuro podría venir del ERP">Descargar plantilla de dimensiones</button>
                 <button className="underline" onClick={() => inputDims.current?.click()} title="Actualiza SKU, descripción y medidas sin tocar las reglas de estiba ya configuradas">Actualizar dimensiones</button>
                 <button className="underline" onClick={() => inputCube.current?.click()}>Importar plantilla de CubeMaster</button>
+                <button className="underline" onClick={() => inputBundle.current?.click()} title="Excel con ID Artículo, UM, Rel, Factor, CS/BDL y medidas: enciende y configura el Bundle de los SKUs que ya existen">Importar Bundle (BDL)</button>
                 <button className="underline" onClick={() => inputConv.current?.click()}>Importar conversiones de unidad</button>
               </div>
             </>
@@ -849,7 +1093,7 @@ export default function Estiba3D({ usuario }) {
                       {items.map((it, i) => (
                         <FilaItem key={it.id} it={it} color={colores[i]} abierto={abierto === it.id} pallets={pallets} modoPallet={modoPallet} verMedidas={verMedidas}
                           anchoSku={anchoSku}
-                          difiere={difiereDeMaestro(it)} enMaestro={mapaMaestro.has(clave(it.nombre))} aMaestro={() => guardarEnMaestro(it)} deMaestro={() => volverAlMaestro(it)}
+                          difiere={!it.esBundle && difiereDeMaestro(it)} enMaestro={!it.esBundle && mapaMaestro.has(clave(it.nombre))} aMaestro={() => guardarEnMaestro(it)} deMaestro={() => volverAlMaestro(it)}
                           mover={reglas.usarLista ? (paso) => moverItem(it.id, paso) : null} primera={i === 0} ultima={i === items.length - 1}
                           onToggle={() => setAbierto(abierto === it.id ? null : it.id)} editar={(k, v) => editarItem(it.id, k, v)}
                           quitar={() => { setItems((a) => a.filter((x) => x.id !== it.id)); invalidar(); }} />
@@ -943,6 +1187,8 @@ export default function Estiba3D({ usuario }) {
 
           {seccion === "pallets" && <SeccionPaletizado colores={colores} editarItem={editarItem} editarPallet={editarPallet} items={items} nPalletizados={nPalletizados} pallets={pallets} setPallets={setPallets} />}
 
+          {seccion === "herramientas" && <SeccionHerramientas maestro={maestro} vehiculos={vehiculos} pallets={pallets} reglas={reglas} />}
+
           {seccion === "ayuda" && <SeccionAyuda />}
 
           {seccion === "reglas" && <SeccionReglas editarRegla={editarRegla} reglas={reglas} />}
@@ -1013,7 +1259,9 @@ export default function Estiba3D({ usuario }) {
             )}
           </div>
 
-          <PanelResultados oculto={panelOculto} setOculto={setPanelOculto} editarOris={editarOrisDeLinea} colores={colores} descargarInstructivo={descargarInstructivo} descargarResultados={descargarResultados} generando={generando} modoPallet={modoPallet} palVista={palVista} pestana={pestana} reporte={reporte} res={res} resaltado={resaltado} sel={sel} setPestana={setPestana} setResaltado={setResaltado} stats={stats} verPallet={verPallet} vista={vista} />
+          <PanelResultados oculto={panelOculto} setOculto={setPanelOculto} editarOris={editarOrisDeLinea} colores={colores} descargarInstructivo={descargarInstructivo} descargarInstructivoCompleto={descargarInstructivoCompleto} descargarResultados={descargarResultados} generando={generando} modoPallet={modoPallet} palVista={palVista} pestana={pestana} reporte={reporte} res={res} resaltado={resaltado} sel={sel} setPestana={setPestana} setResaltado={setResaltado} stats={stats} verPallet={verPallet} vista={vista}
+            espacios={espacios} calculandoEspacios={calculandoEspacios} completarEspacios={completarEspacios} aplicarRelleno={aplicarRelleno}
+            ultimoCasiVacio={ultimoCasiVacio} consolidar={consolidar} intentarConsolidar={intentarConsolidar} aplicarConsolidacion={aplicarConsolidacion} aplicarReduccionConsolidar={aplicarReduccionConsolidar} />
         </main>
       </div>
     </div>

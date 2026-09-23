@@ -53,6 +53,7 @@ export function FilaItem({ it, color, abierto, pallets, modoPallet, verMedidas =
             </label>
             <input value={it.nombre} onChange={(e) => editar("nombre", e.target.value)} className={celda} style={{ minWidth: 76, textOverflow: "ellipsis" }} title={it.nombre} />
             {it.paletizar && !modoPallet && <span className="flex-none text-xs px-1.5 rounded" style={{ background: "#FFF4CC", color: T.aviso }} title={it.paletizar === "mixto" ? "Pallet mixto" : "Pallet de un SKU"}>{it.paletizar === "mixto" ? "PM" : `P${it.porPallet || ""}`}</span>}
+            {it.esBundle && <span className="flex-none text-xs px-1.5 rounded" style={{ background: "#E6D9F7", color: "#5B3A9E" }} title={`Bundle: ${it.qty} × ${it.cantidadPorBundle} cajas`}>BDL</span>}
             {difiere && <span className="flex-none text-xs px-1.5 rounded" style={{ background: "#E8EEF8", color: T.nav }} title="Tiene ajustes solo para esta carga">ajustado</span>}
           </div>
         </td>
@@ -233,6 +234,37 @@ function ReglasSku({ it, editar, pallets, modoPallet }) {
   );
 }
 
+// Parámetros de Bundle (BDL): solo se configuran en el maestro, por SKU. Ver archivos/bundle.js.
+function BloqueBundle({ p, editar }) {
+  const [abierto, setAbierto] = useState(() => !!p.bundleActivo);
+  return (
+    <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${T.linea}` }}>
+      <button onClick={() => setAbierto(!abierto)} aria-expanded={abierto} className="flex items-center gap-1 text-xs mb-2" style={{ color: T.suave }}>
+        <ChevronDown size={14} style={{ transform: abierto ? "none" : "rotate(-90deg)", transition: "transform .15s" }} />
+        Bundle (BDL){p.bundleActivo ? " · activo" : ""}
+      </button>
+      {abierto && (
+        <>
+          <div className="grid grid-cols-2 gap-x-4 mb-2">
+            <Interruptor etiqueta="Activar agrupación en Bundle" valor={p.bundleActivo} onChange={(v) => editar("bundleActivo", v)} />
+            <Interruptor etiqueta="Manufactura propia" detalle="El Bundle solo aplica a manufactura propia" valor={p.manufacturaPropia} onChange={(v) => editar("manufacturaPropia", v)} />
+          </div>
+          {p.bundleActivo && (
+            <div className="grid grid-cols-3 gap-2">
+              <Num etiqueta="% máximo en Bundle" valor={p.bundlePct} onChange={(v) => editar("bundlePct", Math.min(99.99, v))} ayuda="Mayor a 0% y menor a 100%. Es la parte de lo pedido que se intenta convertir en Bundles completos" />
+              <Num etiqueta="Cajas por Bundle" valor={p.bundleCantidadEstandar} onChange={(v) => editar("bundleCantidadEstandar", v)} ayuda="Cuántas cajas de este SKU entran en un Bundle completo" />
+              <Num etiqueta="Peso Bundle kg" valor={p.bundlePeso} onChange={(v) => editar("bundlePeso", v)} ayuda="0 = se calcula como el peso de la caja × cajas por Bundle" />
+              <Num etiqueta="Largo Bundle mm" valor={p.bundleL} onChange={(v) => editar("bundleL", v)} />
+              <Num etiqueta="Ancho Bundle mm" valor={p.bundleW} onChange={(v) => editar("bundleW", v)} />
+              <Num etiqueta="Alto Bundle mm" valor={p.bundleH} onChange={(v) => editar("bundleH", v)} />
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 export function FilaMaestro({ p, pallets, abierto, onToggle, editar, quitar, aCarga }) {
   const num = (k) => (e) => editar(k, Math.max(0, Number(e.target.value) || 0));
   const td = { borderBottom: `1px solid ${T.linea}` };
@@ -274,6 +306,7 @@ export function FilaMaestro({ p, pallets, abierto, onToggle, editar, quitar, aCa
               {p.color ? <button className="underline" onClick={() => editar("color", null)}>usar paleta</button> : <span>usa la paleta</span>}
             </div>
             <ReglasSku it={itAdapt} editar={editarAdapt} pallets={pallets} modoPallet={false} />
+            <BloqueBundle p={p} editar={editar} />
             </div>
           </td>
         </tr>
