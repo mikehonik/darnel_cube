@@ -211,8 +211,19 @@ function llenarContenedor(tipos, veh, reglas, op) {
           if (veh.maxVolPct > 0) cap = Math.min(cap, Math.floor((volV * veh.maxVolPct / 100 - vol) / (it.L * it.W * it.H) + 1e-9));
           if (cap <= 0) continue;
           if (veh.maxSkus > 0 && !skus[t.k] && nSkus >= veh.maxSkus) continue;
+          // Carga real: en cada hueco, si el bulto cabe de pie, va de pie. Solo se rota donde ya no
+          // entra de pie: contra una pared, bajo el techo o en el sobrante del fondo. Es como se carga
+          // en el piso, y evita que el motor gire bultos en medio del contenedor, cosa que nadie hace.
+          var cabeDePie = false;
+          if (reglas.cargaReal) {
+            for (var oc = 0; oc < t.oris.length; oc++) {
+              var od = t.oris[oc];
+              if (od.k < 2 && od.d[0] <= sx && od.d[1] <= sy && od.d[2] <= sz) { cabeDePie = true; break; }
+            }
+          }
           for (var oi = 0; oi < t.oris.length; oi++) {
             var o = t.oris[oi], l = o.d[0], w = o.d[1], h = o.d[2];
+            if (cabeDePie && o.k >= 2) continue;
             if (l > sx || w > sy || h > sz) continue;
             if (s.z === 0 && o.volteo && !it.volteoPiso) continue;
             var ex0 = sp.x, ey0 = s.y, esx = sx, esy = sy;
@@ -292,9 +303,17 @@ function llenarContenedor(tipos, veh, reglas, op) {
   // aunque ahí quepan unidades sueltas. Esto es lo que hace un estibador al terminar: dejar de
   // pensar en bloques e ir metiendo piezas donde quepan, en cualquier orientación y arrimadas a
   // cualquier esquina del hueco. Solo agrega carga; nunca mueve lo ya colocado.
+  // "Rotar al final": durante la carga normal los bultos van de pie, pero al llegar a las esquinas,
+  // al techo y al fondo la gente los gira en cualquier sentido para aprovechar lo que queda.
+  var orisRelleno = {};
+  tipos.forEach(function (t) {
+    orisRelleno[t.k] = reglas.rotarAlFinal
+      ? orientacionesDe({ oris: [true, true, true, true, true, true], L: t.it.L, W: t.it.W, H: t.it.H })
+      : t.oris;
+  });
   var huecoMasChico = Infinity;
   tipos.forEach(function (t) {
-    if (t.rem > 0) t.oris.forEach(function (o) { var v = o.d[0] * o.d[1] * o.d[2]; if (v < huecoMasChico) huecoMasChico = v; });
+    if (t.rem > 0) orisRelleno[t.k].forEach(function (o) { var v = o.d[0] * o.d[1] * o.d[2]; if (v < huecoMasChico) huecoMasChico = v; });
   });
   var rondas = 0;
   while (tipos.some(function (t) { return t.rem > 0; }) && rondas++ < 400) {
@@ -312,8 +331,9 @@ function llenarContenedor(tipos, veh, reglas, op) {
         if (it2.peso > 0 && peso + it2.peso > cargaMax + 1e-9) continue;
         if (veh.maxPiezas > 0 && cajas.length >= veh.maxPiezas) continue;
         if (veh.maxSkus > 0 && !skus[t2.k] && nSkus >= veh.maxSkus) continue;
-        for (var oi2 = 0; oi2 < t2.oris.length && !metida; oi2++) {
-          var o2 = t2.oris[oi2], l2 = o2.d[0], w2 = o2.d[1], h2 = o2.d[2];
+        var orsR = orisRelleno[t2.k];
+        for (var oi2 = 0; oi2 < orsR.length && !metida; oi2++) {
+          var o2 = orsR[oi2], l2 = o2.d[0], w2 = o2.d[1], h2 = o2.d[2];
           if (l2 > hx || w2 > hy || h2 > hz) continue;
           if (h.z === 0 && o2.volteo && !it2.volteoPiso) continue;
           // Las cuatro esquinas del hueco: arrimar a cualquiera puede ser lo que dé el apoyo necesario.
