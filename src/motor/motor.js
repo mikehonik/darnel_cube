@@ -575,6 +575,46 @@ function contenedorDePallet(pal) {
 }
 
 // ---------- Herramientas de capacidad (un solo SKU) ----------
+// Tope de piezas que se acomodan una por una. Un SKU diminuto (o con medidas de relleno, como 10 × 10 × 10 mm)
+// daba cientos de miles de piezas y congelaba la página. Arriba de estos topes se responde con la cuenta
+// geométrica (cuántas caben en rejilla en la mejor orientación), marcada como estimado: con piezas tan
+// chicas la diferencia contra el acomodo fino es mínima.
+var TOPE_SUELTA = 20000, TOPE_PALLET = 3000;
+function medidasValidas(it) { return it.L > 0 && it.W > 0 && it.H > 0; }
+function rejilla(oris, X, Y, Z) {
+  var mejor = null;
+  oris.forEach(function (o) {
+    var nx = Math.floor(X / o.d[0]), ny = Math.floor(Y / o.d[1]), nz = Math.floor(Z / o.d[2]), n = nx * ny * nz;
+    if (!mejor || n > mejor.n) mejor = { n: n, nx: nx, ny: ny, nz: nz, o: o };
+  });
+  return mejor;
+}
+// Pallet estimado en rejilla cuando el acomodo fino pasaría del tope; null si no hace falta estimar.
+function palletEstimado(it, pal, estandar) {
+  var ovL = pal.ovL || 0, ovW = pal.ovW || 0, CX = pal.L + 2 * ovL, CY = pal.W + 2 * ovW, CZ = Math.max(1, pal.altMax - pal.esp);
+  var g = rejilla(orientacionesDe(it), CX, CY, CZ);
+  if (!g || g.n <= TOPE_PALLET) return null;
+  var porCapa = g.nx * g.ny, capas = g.nz;
+  if (it.maxNiveles > 0) capas = Math.min(capas, it.maxNiveles);
+  if (!it.soportaEncima) capas = 1;
+  if (estandar && it.porCapa > 0) porCapa = Math.min(porCapa, it.porCapa);
+  if (estandar && it.capasPallet > 0) capas = Math.min(capas, it.capasPallet);
+  var n = porCapa * capas;
+  if (estandar && it.porPallet > 0) n = Math.min(n, it.porPallet);
+  if (pal.maxKg > 0 && it.peso > 0) n = Math.min(n, Math.floor(pal.maxKg / it.peso));
+  if (n < 1) return null;
+  var d = g.o.d, vol = n * d[0] * d[1] * d[2], nx = g.nx, ny = g.ny;
+  if (n < porCapa) { porCapa = n; nx = Math.min(g.nx, n); ny = Math.ceil(n / nx); }   // el peso no deja completar ni un nivel
+  capas = Math.ceil(n / porCapa);
+  return {
+    nombre: it.nombre, mixto: false, tipoPallet: pal.nombre, alternado: false,
+    L: nx * d[0], W: ny * d[1], esp: pal.esp, baseX: 0, baseY: 0, palL: pal.L, palW: pal.W, ovL: ovL, ovW: ovW,
+    alto: pal.esp + capas * d[2], peso: (pal.peso || 0) + n * (it.peso || 0), piezas: n * (it.piezas || 1), n: n,
+    volCarga: vol, utilVol: vol / (CX * CY * CZ), sobraL: 0, sobraW: 0, capas: capas, porCapa: porCapa,
+    techoPlano: n === porCapa * capas, valor: it.valorApilar || 0, cajas: [], estimado: true
+  };
+}
+
 // Cuántas unidades de un SKU caben SUELTAS (sin paletizar) en un vehículo. Se le ofrece al motor una
 // cantidad muy grande ("objetivo"); el propio motor topa por espacio, peso y demás restricciones, así
 // que el resultado es la cantidad máxima físicamente acomodable. Responde: "¿cuánto de este SKU cabe
@@ -582,9 +622,15 @@ function contenedorDePallet(pal) {
 function capacidadSuelta(it0, veh, reglas, objetivo) {
   var it = Object.assign({}, it0, { _idx: 0, paletizar: false });
   var cargaMax = veh.maxKg > 0 && reglas.limitarPeso ? veh.maxKg - (veh.tara || 0) : Infinity;
-  var oris = orientacionesDe(it);
+  var oris = medidasValidas(it) ? orientacionesDe(it) : [];
   if (!oris.length || !oris.some(function (o) { return o.d[0] <= veh.L && o.d[1] <= veh.W && o.d[2] <= veh.H; }) || it.peso > cargaMax) {
     return { cajas: 0, piezas: 0, peso: 0, vol: 0, volV: veh.L * veh.W * veh.H, contenedor: { cajas: [], peso: 0, vol: 0 } };
+  }
+  var g = rejilla(oris, veh.L, veh.W, veh.H);
+  if (g.n > TOPE_SUELTA) {
+    var n = Math.min(g.n, it.peso > 0 ? Math.floor(cargaMax / it.peso) : g.n, objetivo > 0 ? objetivo : Infinity);
+    var pesoE = n * (it.peso || 0), volE = n * it.L * it.W * it.H;
+    return { cajas: n, piezas: n * (it.piezas || 1), peso: pesoE, vol: volE, volV: veh.L * veh.W * veh.H, contenedor: { cajas: [], peso: pesoE, vol: volE }, estimado: true };
   }
   var tipos = [{ k: "s0", idx: 0, it: it, oris: oris, fase: 0, g: 0, rem: objetivo > 0 ? objetivo : 999999, pal: -1 }];
   var r = buscar(tipos, veh, Object.assign({}, reglas, { _maxContenedores: 1 }), reglas.nivel || 2, !!veh.esPallet, null);
@@ -597,7 +643,10 @@ function capacidadSuelta(it0, veh, reglas, objetivo) {
 // peso máximo encima, etc.) y de la tarima (altura máxima, carga máxima). Ignora a propósito el estándar
 // de paletizado capturado (cajas por pallet, por nivel, niveles): la pregunta es cuál sería el mejor.
 function configuracionPallet(it, pal, reglas) {
+  if (!medidasValidas(it)) return null;
   var libre = Object.assign({}, it, { porPallet: 0, porCapa: 0, capasPallet: 0 });
+  var est = palletEstimado(libre, pal, false);
+  if (est) return est;
   var arm = armarPalletUniforme(libre, pal, 999999, reglas);
   if (!arm || !arm.cajas.length) return null;
   return definirPallet(arm.cajas, pal, { nombre: it.nombre, mixto: false, alternado: arm.alternado, capas: arm.capas, porCapa: arm.porCapa });
@@ -610,6 +659,9 @@ function palletDelSku(it, pal, reglas) {
     var opt = configuracionPallet(it, pal, reglas);
     return opt && Object.assign(opt, { estandar: false });
   }
+  if (!medidasValidas(it)) return null;
+  var est = palletEstimado(it, pal, true);
+  if (est) return Object.assign(est, { estandar: true });
   var arm = armarPalletUniforme(it, pal, it.porPallet > 0 ? it.porPallet : 999999, reglas);
   if (!arm || !arm.cajas.length) return null;
   return Object.assign(definirPallet(arm.cajas, pal, { nombre: it.nombre, mixto: false, alternado: arm.alternado, capas: arm.capas, porCapa: arm.porCapa }), { estandar: true });

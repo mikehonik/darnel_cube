@@ -4,11 +4,11 @@
 // pallet. Las tres reutilizan el mismo motor de cubicaje (ver motor/motor.js), solo que con un único
 // SKU y una cantidad "infinita": el motor topa por espacio, peso y las reglas propias del SKU.
 import { useMemo, useState } from "react";
-import { claveSku } from "../../archivos/celdas.js";
+import { claveSku, indiceSku, buscarSku } from "../../archivos/celdas.js";
 import { capacidadSuelta, configuracionPallet, capacidadPalletCompleto } from "../../motor/motor.js";
 import { prepararEntrada } from "../../motor/corrida.js";
 import { T } from "../tema.js";
-import { Sel, Tarjeta } from "../controles.jsx";
+import { Sel, Tarjeta, inp, estInp } from "../controles.jsx";
 import { useUnidades } from "../unidadesContexto.jsx";
 
 const vehParaCalculo = (v) => ({ ...v, maxVolPct: v.maxVolPct || 0, maxSkus: v.maxSkus || 0, maxPiezas: v.maxPiezas || 0 });
@@ -22,15 +22,48 @@ const paraMotor = (p, reglas) => {
 };
 const pct = (n) => `${(n * 100).toLocaleString("es-MX", { maximumFractionDigits: 1 })}%`;
 
-function Resultado({ filas }) {
+function Resultado({ filas, estimado }) {
   return (
-    <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm mt-2">
-      {filas.map(([k, v]) => (
-        <div key={k} className="flex justify-between gap-2 col-span-2 sm:col-span-1">
-          <dt style={{ color: T.suave }}>{k}</dt><dd className="font-medium text-right">{v}</dd>
-        </div>
-      ))}
-    </dl>
+    <>
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm mt-2">
+        {filas.map(([k, v]) => (
+          <div key={k} className="flex justify-between gap-2 col-span-2 sm:col-span-1">
+            <dt style={{ color: T.suave }}>{k}</dt><dd className="font-medium text-right">{v}</dd>
+          </div>
+        ))}
+      </dl>
+      {estimado && <p className="text-xs mt-2" style={{ color: T.suave }}>Aproximado: son tantas piezas que se calcula en rejilla en vez de acomodarlas una por una.</p>}
+    </>
+  );
+}
+
+// Con 26 mil SKU, una lista desplegable con todos tardaba en abrir y se sentía trabada. Aquí se escribe el
+// SKU (o parte de la descripción) y solo se sugieren las primeras coincidencias.
+const MAX_SUGERENCIAS = 30;
+function BuscadorSku({ productos, valor, onElegir }) {
+  const [texto, setTexto] = useState(valor);
+  const indice = useMemo(() => indiceSku(productos), [productos]);
+  const sugerencias = useMemo(() => {
+    const q = claveSku(texto), d = texto.trim().toLowerCase();
+    if (!q) return productos.slice(0, MAX_SUGERENCIAS);
+    const empiezan = [], contienen = [];
+    for (const p of productos) {
+      const k = claveSku(p.sku);
+      if (k.startsWith(q)) empiezan.push(p);
+      else if (contienen.length < MAX_SUGERENCIAS && (k.includes(q) || (d.length > 2 && String(p.desc || "").toLowerCase().includes(d)))) contienen.push(p);
+      if (empiezan.length >= MAX_SUGERENCIAS) break;
+    }
+    return [...empiezan, ...contienen].slice(0, MAX_SUGERENCIAS);
+  }, [texto, productos]);
+  const cambiar = (t) => { setTexto(t); const p = buscarSku(indice, t); if (p) onElegir(p.sku); };
+  return (
+    <label className="block text-xs" style={{ color: T.suave }}>
+      <span className="block mb-1">SKU (escribe el código o parte de la descripción)</span>
+      <input list="herramientas-skus" value={texto} onChange={(e) => cambiar(e.target.value)} className={inp} style={estInp} placeholder="Ej. 85210" autoComplete="off" />
+      <datalist id="herramientas-skus">
+        {sugerencias.map((p) => <option key={p.pid ?? p.sku} value={p.sku}>{p.desc || ""}</option>)}
+      </datalist>
+    </label>
   );
 }
 
@@ -57,7 +90,17 @@ export function SeccionHerramientas({ maestro, vehiculos, pallets, reglas }) {
       <h2 className="text-lg font-semibold mb-1">Herramientas de capacidad</h2>
       <p className="text-xs mb-3" style={{ color: T.suave }}>Preguntas rápidas sobre un solo SKU, sin necesidad de cargar un pedido completo.</p>
       <Tarjeta titulo="SKU a evaluar">
-        <Sel etiqueta="SKU" valor={producto ? producto.sku : ""} onChange={setSkuSel} opciones={maestro.productos.map((p) => [p.sku, `${p.sku}${p.desc ? " — " + p.desc : ""}`])} />
+        <BuscadorSku productos={maestro.productos} valor={producto ? producto.sku : ""} onElegir={setSkuSel} />
+        {producto && (
+          <p className="text-xs mt-2" style={{ color: T.suave }}>
+            {producto.desc ? `${producto.desc} · ` : ""}{u.fLLL(producto.L, producto.W, producto.H)} · {u.fP(producto.peso, 2)}
+          </p>
+        )}
+        {producto && Math.max(producto.L, producto.W, producto.H) < 30 && (
+          <p className="text-xs mt-2 px-2 py-1.5 rounded" style={{ color: T.error, background: `${T.error}12` }}>
+            Medidas muy pequeñas ({u.fLLL(producto.L, producto.W, producto.H)}). Puede ser un dato de relleno en el maestro: revisa las medidas reales antes de usar estos resultados.
+          </p>
+        )}
       </Tarjeta>
 
       <Tarjeta titulo="Capacidad máxima suelta (sin paletizar)">
@@ -65,7 +108,7 @@ export function SeccionHerramientas({ maestro, vehiculos, pallets, reglas }) {
         <Sel etiqueta="Vehículo" valor={veh.id || vehiculos[0]?.id} onChange={setVehSel} opciones={vehiculos.map((v) => [v.id, v.nombre])} />
         {rSuelta && (
           rSuelta.cajas > 0 ? (
-            <Resultado filas={[
+            <Resultado estimado={rSuelta.estimado} filas={[
               ["Cantidad máxima (unidades)", rSuelta.cajas.toLocaleString("es-MX")],
               ["Piezas totales", rSuelta.piezas.toLocaleString("es-MX")],
               ["Volumen ocupado", u.fV(rSuelta.vol)],
@@ -80,7 +123,7 @@ export function SeccionHerramientas({ maestro, vehiculos, pallets, reglas }) {
         <p className="text-xs mb-2" style={{ color: T.suave }}>¿Cuál es la configuración que maximiza la cantidad de cajas de este SKU en esta tarima?</p>
         <Sel etiqueta="Tarima" valor={tarimaSel} onChange={(v) => setTarimaSel(Number(v))} opciones={pallets.map((p, i) => [i, p.nombre])} />
         {rConfig ? (
-          <Resultado filas={[
+          <Resultado estimado={rConfig.estimado} filas={[
             ["Cajas por nivel", rConfig.porCapa.toLocaleString("es-MX")],
             ["Niveles", rConfig.capas.toLocaleString("es-MX")],
             ["Total de cajas por pallet", rConfig.n.toLocaleString("es-MX")],
@@ -97,7 +140,7 @@ export function SeccionHerramientas({ maestro, vehiculos, pallets, reglas }) {
         <Sel etiqueta="Vehículo" valor={veh.id || vehiculos[0]?.id} onChange={setVehSel} opciones={vehiculos.map((v) => [v.id, v.nombre])} />
         {rPallets && (
           rPallets.pallets > 0 ? (
-            <Resultado filas={[
+            <Resultado estimado={rPallets.def.estimado} filas={[
               ["Pallet usado", rPallets.def.estandar ? `Estándar del SKU: ${rPallets.def.capas ? `${rPallets.def.capas} niveles × ${rPallets.def.porCapa}` : `${rPallets.cajasPorPallet} cajas`}` : "Configuración óptima (el SKU no tiene estándar)"],
               ["Pallets completos", rPallets.pallets.toLocaleString("es-MX")],
               ["Cajas por pallet", rPallets.cajasPorPallet.toLocaleString("es-MX")],

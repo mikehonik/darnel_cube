@@ -330,3 +330,30 @@ describe("relleno opcional (completar espacios vacíos)", () => {
     expect(agregado).toBeGreaterThan(0); // y sí aprovechó algo del hueco
   });
 });
+
+describe("herramientas de capacidad con SKU diminutos o sin medidas (no deben congelar la página)", () => {
+  const tarima = { nombre: "U", L: 1200, W: 1000, esp: 150, peso: 25, altMax: 1800, maxKg: 1200, ovL: 0, ovW: 0 };
+  const veh53 = { L: 16000, W: 2500, H: 2700, tara: 6500, maxKg: 36500, maxVolPct: 0, maxSkus: 0, maxPiezas: 0 };
+  it("10 × 10 × 10 mm responde al instante con un estimado en rejilla, topado por peso", () => {
+    const t = Date.now(), it = caja({ L: 10, W: 10, H: 10, peso: 0.01 });
+    const s = capacidadSuelta(it, veh53, reglas), c = configuracionPallet(it, tarima, reglas), p = capacidadPalletCompleto(it, tarima, veh53, reglas);
+    expect(Date.now() - t).toBeLessThan(2000);
+    expect(s.estimado).toBe(true);
+    expect(s.cajas).toBe(Math.min(1600 * 250 * 270, Math.floor(30000 / 0.01)));
+    expect(c.estimado).toBe(true);
+    expect(c.n).toBe(Math.floor(1200 / 0.01)); // la rejilla daría 1,980,000; manda el peso máximo de la tarima
+    expect(p.pallets).toBeGreaterThan(0);
+  });
+  it("respeta el peso máximo de la tarima en el estimado", () => {
+    const c = configuracionPallet(caja({ L: 10, W: 10, H: 10, peso: 0.5 }), tarima, reglas);
+    expect(c.n).toBe(2400);
+    expect(c.peso).toBe(25 + 2400 * 0.5);
+  });
+  it("una medida en cero da 'no cabe' en vez de quedarse pensando para siempre", () => {
+    for (const d of [{ L: 0 }, { W: 0 }, { H: 0 }]) {
+      expect(capacidadSuelta(caja(d), veh53, reglas).cajas).toBe(0);
+      expect(configuracionPallet(caja(d), tarima, reglas)).toBeNull();
+      expect(capacidadPalletCompleto(caja(d), tarima, veh53, reglas)).toBeNull();
+    }
+  });
+});

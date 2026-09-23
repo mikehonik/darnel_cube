@@ -16,6 +16,14 @@ export const VERSION_COMPLETA = `v${VERSION}${BUILD ? ` · ${BUILD}` : ""}${FECH
 // escrito para quien usa la herramienta (no para programadores).
 export const NOVEDADES = [
   {
+    version: "1.2.5", fecha: "23/09/2026",
+    cambios: [
+      "Herramientas ya no se traba. Con SKU muy chicos (por ejemplo los que traen 10 × 10 × 10 mm de relleno) la página intentaba acomodar cientos de miles de piezas una por una y dejaba de responder. Ahora responde al instante y, en esos casos, da un aproximado en rejilla.",
+      "El SKU se busca escribiendo el código o parte de la descripción, en vez de una lista con los 26 mil productos. Debajo se ven sus medidas y peso.",
+      "Si el SKU tiene medidas diminutas, avisa que pueden ser datos de relleno en el maestro. Un SKU con alguna medida en cero ya no deja la página pensando: dice que no cabe.",
+    ],
+  },
+  {
     version: "1.2.4", fecha: "23/09/2026",
     cambios: [
       "«Nueva carga» vuelve a estar a la vista, junto al nombre de la carga. Si ya hay un pedido capturado, pregunta antes de borrarlo.",
