@@ -5,6 +5,7 @@
 // Las medidas y reglas no vienen aquí: se resuelven contra el maestro. Si el archivo es una plantilla
 // de CubeMaster, se delega a leerCubeMaster y se devuelve { cubemaster }.
 import * as XLSX from "xlsx";
+import { escribirXlsx } from "./escribir.js";
 import { clave, numero, hojaAObjetos, buscarHoja } from "./celdas.js";
 import { leerCubeMaster, leerPaletizar } from "./maestro.js";
 import { normalizaUM } from "./conversiones.js";
@@ -58,5 +59,5 @@ export function libroPlantilla(productos, vehiculos) {
   wd["!cols"] = [{ wch: 22 }, { wch: 30 }];
   XLSX.utils.book_append_sheet(wb, wd, "Datos de la carga");
   wb.Workbook = { CalcPr: { fullCalcOnLoad: true } };
-  return XLSX.write(wb, { type: "array", bookType: "xlsx" });
+  return escribirXlsx(wb);
 }

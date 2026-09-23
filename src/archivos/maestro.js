@@ -3,6 +3,7 @@
 // Aquí vive todo lo que sabe leerlo y escribirlo: las columnas, sus textos, la lectura tolerante
 // y la importación de la plantilla "Cargo Upload" de CubeMaster. No toca el DOM ni React.
 import * as XLSX from "xlsx";
+import { escribirXlsx } from "./escribir.js";
 import { clave, claveSku, indiceSku, buscarSku, siNo, numero, hojaAObjetos, buscarHoja } from "./celdas.js";
 import { HOJA_CONVERSIONES, UM_CAJA_DEF, normalizaUM, filasConversiones, conversionesDeHoja } from "./conversiones.js";
 import { factorColumna, describirUnidades, encabezadoEn, SISTEMAS } from "../unidades.js";
@@ -263,7 +264,7 @@ export function libroMaestro(productos, tarimas, conversiones = null, sis = SIST
     ["Sección", "Campo", "Qué significa", "Ejemplo", "Si lo dejas vacío"], ...AYUDA]);
   wi["!cols"] = [{ wch: 24 }, { wch: 30 }, { wch: 80 }, { wch: 24 }, { wch: 26 }];
   XLSX.utils.book_append_sheet(wb, wi, "Instrucciones");
-  return XLSX.write(wb, { type: "array", bookType: "xlsx" });
+  return escribirXlsx(wb);
 }
 
 // ================= Dimensiones (lo que en el futuro podría venir del ERP) =================
@@ -285,7 +286,7 @@ export function plantillaDimensiones(productos = [], sis = SISTEMAS.metrico) {
     ["   nuevos, con los parámetros por omisión, listos para configurarse."]]);
   wi["!cols"] = [{ wch: 100 }];
   XLSX.utils.book_append_sheet(wb, wi, "Instrucciones");
-  return XLSX.write(wb, { type: "array", bookType: "xlsx" });
+  return escribirXlsx(wb);
 }
 
 // Lee un archivo de solo dimensiones (el mismo formato de plantillaDimensiones, o la hoja "Datos" de

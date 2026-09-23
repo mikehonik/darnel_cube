@@ -3,6 +3,7 @@
 // vehículos) y el instructivo de carga en HTML (un vehículo, con imágenes del visor).
 // Ambos son renderers del reporte: no leen el resultado crudo del motor.
 import * as XLSX from "xlsx";
+import { escribirXlsx } from "./escribir.js";
 import { clave } from "./celdas.js";
 import { NOMBRE_VERSION, BUILD } from "../version.js";
 import { unidadesDe, encabezadoEn } from "../unidades.js";
@@ -21,7 +22,7 @@ export function libroSimple(filas, hoja, anchos) {
   const wb = XLSX.utils.book_new(), ws = XLSX.utils.aoa_to_sheet(filas);
   if (anchos) ws["!cols"] = anchos.map((w) => ({ wch: w }));
   XLSX.utils.book_append_sheet(wb, ws, hoja);
-  return XLSX.write(wb, { type: "array", bookType: "xlsx" });
+  return escribirXlsx(wb);
 }
 export const MIME_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 export const nombreArchivo = (t) => clave(t).slice(0, 40) || "carga";
@@ -55,7 +56,7 @@ export function libroResultados({ reporte: R, proyecto, nombreVeh, nivel, fecha 
   const r4 = [H(["Vehículo", "Paso", "Qué y dónde", "SKU / pallet", "Bultos", "Forma", "Desde el fondo (m)", "Desde el lado derecho (m)", "Altura (m)"])];
   R.contenedores.forEach((t) => t.pasos.forEach((p) => r4.push([t.num, p.num, p.texto, p.sku, p.n, p.forma, c.d(p.x0), c.d(p.y0), c.d(p.z0)])));
   hoja(wb, "Pasos de carga", r4, [9, 6, 110, 18, 8, 14, 16, 22, 10]);
-  return XLSX.write(wb, { type: "array", bookType: "xlsx" });
+  return escribirXlsx(wb);
 }
 
 // Reparte los pasos de un contenedor en hasta 8 etapas de tamaño parecido (por bultos). Cada etapa termina en un paso completo.

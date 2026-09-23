@@ -16,6 +16,12 @@ export const VERSION_COMPLETA = `v${VERSION}${BUILD ? ` · ${BUILD}` : ""}${FECH
 // escrito para quien usa la herramienta (no para programadores).
 export const NOVEDADES = [
   {
+    version: "1.2.3", fecha: "23/09/2026",
+    cambios: [
+      "Los Excel que descarga la herramienta pesan como los de Excel: el maestro completo pasa de 45 MB a unos 5 MB. Aplica al maestro, las plantillas, los vehículos y los resultados; el contenido es el mismo.",
+    ],
+  },
+  {
     version: "1.2.2", fecha: "23/09/2026",
     cambios: [
       "Barra de arriba más ligera: el correo, Nueva carga, los ejemplos y Cerrar sesión pasan al menú de tres puntos (···). Ya no se corta en laptops ni con el zoom de Windows al 125% o 150%.",

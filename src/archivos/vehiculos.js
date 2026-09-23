@@ -3,6 +3,7 @@
 // productos: lo administra el proveedor y el cliente solo elige de la lista. Cada vehículo trae
 // placa, transportadora, medidas internas, peso máximo y, si se conoce, los límites por eje.
 import * as XLSX from "xlsx";
+import { escribirXlsx } from "./escribir.js";
 import { clave, siNo, numero, hojaAObjetos, buscarHoja } from "./celdas.js";
 import { VEHICULOS } from "../ui/referencia.js";
 import { factorColumna, encabezadoEn, SISTEMAS } from "../unidades.js";
@@ -71,7 +72,7 @@ export function libroVehiculos(vehiculos = [], sis = SISTEMAS.metrico) {
     ["Sección", "Campo", "Qué significa", "Ejemplo", "Si lo dejas vacío"], ...AYUDA_VEHICULOS]);
   wi["!cols"] = [{ wch: 24 }, { wch: 34 }, { wch: 80 }, { wch: 24 }, { wch: 26 }];
   XLSX.utils.book_append_sheet(wb, wi, "Instrucciones");
-  return XLSX.write(wb, { type: "array", bookType: "xlsx" });
+  return escribirXlsx(wb);
 }
 
 // Catálogo de ejemplo: los vehículos que ya trae la herramienta por omisión.
