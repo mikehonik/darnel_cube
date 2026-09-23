@@ -4,7 +4,7 @@
 // Sirve para que un pedido capturado en otra unidad (millares, tarimas, kilos) se convierta a cajas:
 //   cajas = cantidad × factor(unidad del pedido) ÷ factor(unidad de la caja)
 import * as XLSX from "xlsx";
-import { clave, numero, buscarHoja } from "./celdas.js";
+import { clave, claveSku, numero, buscarHoja } from "./celdas.js";
 
 export const UM_CAJA_DEF = "CJ";
 export const HOJA_CONVERSIONES = "Conversiones";
@@ -33,7 +33,7 @@ export function leerConversiones(buf, soloSkus = null) {
     const f = filas[i], sku = String(f[iSku] ?? "").trim(), um = normalizaUM(f[iUm]), fac = numero(f[iFac]);
     if (!sku || !um || !(fac > 0)) continue;
     leidas++;
-    const k = clave(sku);
+    const k = claveSku(sku);
     if (permitidos && !permitidos.has(k)) { sinUsar++; continue; }
     (porSku[k] = porSku[k] || {})[um] = fac;
   }
@@ -90,7 +90,9 @@ export function aCajas(cantidad, um, umCaja, tabla, piezasPorCaja) {
 
 // Hoja Conversiones para guardar dentro del maestro, limitada a los SKUs que existan en él.
 export function filasConversiones(porSku, productos) {
-  const orden = new Map(productos.map((p, i) => [clave(p.sku), { i, sku: p.sku }]));
+  // Llaves nuevas (claveSku) y las guardadas antes (clave, sin guion) apuntan al mismo producto.
+  const orden = new Map();
+  productos.forEach((p, i) => { const r = { i, sku: p.sku }; orden.set(claveSku(p.sku), r); if (!orden.has(clave(p.sku))) orden.set(clave(p.sku), r); });
   const filas = [];
   Object.entries(porSku || {}).forEach(([k, tabla]) => {
     const ref = orden.get(k);
@@ -108,7 +110,7 @@ export function conversionesDeHoja(ws) {
   const porSku = {};
   filas.slice(1).forEach((f) => {
     const sku = String(f[0] ?? "").trim(), um = normalizaUM(f[1]), fac = numero(f[2]);
-    if (sku && um && fac > 0) (porSku[clave(sku)] = porSku[clave(sku)] || {})[um] = fac;
+    if (sku && um && fac > 0) (porSku[claveSku(sku)] = porSku[claveSku(sku)] || {})[um] = fac;
   });
   return Object.keys(porSku).length ? porSku : null;
 }

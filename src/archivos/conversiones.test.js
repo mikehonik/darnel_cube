@@ -18,11 +18,11 @@ describe("leerConversiones", () => {
     expect(r.filas).toBe(8);
     expect(r.skus).toBe(3);
     expect(r.ums).toEqual(["BL", "CJ", "KG", "ML", "PLT", "UN"]);
-    expect(r.porSku["a1"]).toEqual({ ML: 1, CJ: 0.2, UN: 0.001 });
+    expect(r.porSku["a-1"]).toEqual({ ML: 1, CJ: 0.2, UN: 0.001 });
   });
 
   it("se queda solo con los SKUs del maestro cuando se le pasa la lista", () => {
-    const r = leerConversiones(libro(PS), new Set(["a1"]));
+    const r = leerConversiones(libro(PS), new Set(["a-1"]));
     expect(r.skus).toBe(1);
     expect(r.sinUsar).toBe(5);
   });
@@ -116,8 +116,14 @@ describe("hoja Conversiones del maestro", () => {
     const filas = filasConversiones(porSku, productos);
     expect(filas.map((f) => f[0])).toEqual(["B-2", "B-2", "B-2", "A-1", "A-1", "A-1"]);
     const ws = XLSX.utils.aoa_to_sheet([["SKU", "UM", "Factor"], ...filas]);
-    expect(conversionesDeHoja(ws)).toEqual({ b2: porSku.b2, a1: porSku.a1 });
+    expect(conversionesDeHoja(ws)).toEqual({ "b-2": porSku["b-2"], "a-1": porSku["a-1"] });
+    expect(porSku["a-1"]).toBeTruthy();
     expect(conversionesDeHoja(XLSX.utils.aoa_to_sheet([["SKU", "UM", "Factor"]]))).toBeNull();
+  });
+
+  it("también escribe conversiones guardadas con la llave vieja (sin guion)", () => {
+    const filas = filasConversiones({ a1: { CJ: 2 } }, [{ sku: "A-1" }]);
+    expect(filas).toEqual([["A-1", "CJ", 2]]);
   });
 });
 

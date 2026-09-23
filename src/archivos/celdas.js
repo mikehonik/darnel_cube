@@ -17,6 +17,31 @@ export const clave = (t) => {
   if (/^0+\d+$/.test(s)) s = s.replace(/^0+/, "");
   return s;
 };
+// Identidad de un SKU. Igual que clave (mayúsculas, espacios, acentos y ceros a la izquierda no cuentan),
+// pero el guion SÍ cuenta: en Darnel "852-10" y "85210" son productos distintos. Con clave se fusionaban
+// y el maestro reportaba uno de los dos como repetido, quedándose solo con el primero.
+export const claveSku = (t) => {
+  let s = String(t ?? "").trim();
+  if (s !== "" && /^-?\d+(\.\d+)?$/.test(s)) s = String(Number(s));
+  s = s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\(.*?\)/g, "").replace(/[^a-z0-9-]/g, "").replace(/-+/g, "-").replace(/^-+|-+$/g, "");
+  if (/^0+\d+$/.test(s)) s = s.replace(/^0+/, "");
+  return s;
+};
+// Índice de productos para buscar por SKU o por ID producto. La llave exacta respeta el guion. Además, la
+// forma sin guion (clave) apunta al producto solo si ningún otro la reclama: así un pedido que trae "85210"
+// encuentra "852-10" cuando es el único parecido, pero si existen los dos, cada uno se encuentra a sí mismo.
+export function indiceSku(productos) {
+  const m = new Map(), sueltas = new Map();
+  const suelta = (c, p) => { if (c) sueltas.set(c, sueltas.has(c) && sueltas.get(c) !== p ? null : p); };
+  productos.forEach((p) => { if (p.sku) { const k = claveSku(p.sku); if (!m.has(k)) m.set(k, p); suelta(clave(p.sku), p); } });
+  productos.forEach((p) => { if (p.idProducto) { const k = claveSku(p.idProducto); if (!m.has(k)) m.set(k, p); if (!sueltas.has(clave(p.idProducto))) suelta(clave(p.idProducto), p); } });
+  sueltas.forEach((p, c) => { if (p && !m.has(c)) m.set(c, p); });
+  return m;
+}
+export const buscarSku = (indice, texto) => indice.get(claveSku(texto)) ?? indice.get(clave(texto)) ?? null;
+// Tabla de conversiones de un SKU. Las guardadas antes de claveSku quedaron con la llave sin guion.
+export const conversionDe = (conversiones, sku) => conversiones?.[claveSku(sku)] ?? conversiones?.[clave(sku)];
+
 export const siNo = (v, def) => (v === undefined || v === null || String(v).trim() === "" ? def : ["si", "s", "yes", "y", "1", "true", "x", "verdadero"].includes(clave(v)));
 export const numero = (v, def = 0) => { const n = parseFloat(String(v ?? "").replace(",", ".")); return isFinite(n) ? n : def; };
 

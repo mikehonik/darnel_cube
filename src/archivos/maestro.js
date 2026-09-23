@@ -3,7 +3,7 @@
 // Aquí vive todo lo que sabe leerlo y escribirlo: las columnas, sus textos, la lectura tolerante
 // y la importación de la plantilla "Cargo Upload" de CubeMaster. No toca el DOM ni React.
 import * as XLSX from "xlsx";
-import { clave, siNo, numero, hojaAObjetos, buscarHoja } from "./celdas.js";
+import { clave, claveSku, indiceSku, buscarSku, siNo, numero, hojaAObjetos, buscarHoja } from "./celdas.js";
 import { HOJA_CONVERSIONES, UM_CAJA_DEF, normalizaUM, filasConversiones, conversionesDeHoja } from "./conversiones.js";
 
 export const ARCHIVO_MAESTRO = "maestro_productos.xlsx";
@@ -158,14 +158,14 @@ export function leerMaestro(buf) {
   if (hd) {
     // Formato nuevo: Datos trae la identidad y medidas; Parámetros (si existe) las reglas, por SKU.
     const porSku = new Map();
-    if (hpar) hojaAObjetos(hpar).forEach((o) => { const sku = String(o.sku ?? "").trim(); if (sku && !porSku.has(clave(sku))) porSku.set(clave(sku), o); });
+    if (hpar) hojaAObjetos(hpar).forEach((o) => { const sku = String(o.sku ?? "").trim(); if (sku && !porSku.has(claveSku(sku))) porSku.set(claveSku(sku), o); });
     hojaAObjetos(hd).forEach((o) => {
       const sku = String(o.sku ?? o.codigo ?? "").trim();
       if (!sku) return;
-      if (vistos.has(clave(sku))) { errores.push(`${sku} está repetido; se usa la primera fila.`); return; }
-      vistos.add(clave(sku));
+      if (vistos.has(claveSku(sku))) { errores.push(`${sku} está repetido; se usa la primera fila.`); return; }
+      vistos.add(claveSku(sku));
       const dOne = { sku, idProducto: String(o.idproducto ?? o.id ?? o.idarticulo ?? o.codigodearticulo ?? "").trim(), desc: String(o.descripcion ?? ""), L: numero(o.largo), W: numero(o.ancho), H: numero(o.alto), peso: numero(o.peso) };
-      const p = productoDeFilas(dOne, porSku.get(clave(sku)));
+      const p = productoDeFilas(dOne, porSku.get(claveSku(sku)));
       if (!(p.L > 0 && p.W > 0 && p.H > 0)) errores.push(`${sku}: faltan medidas (largo, ancho o alto).`);
       productos.push(p);
     });
@@ -177,8 +177,8 @@ export function leerMaestro(buf) {
   hojaAObjetos(hp).forEach((o) => {
     const sku = String(o.sku ?? o.codigo ?? "").trim();
     if (!sku) return;
-    if (vistos.has(clave(sku))) { errores.push(`${sku} está repetido; se usa la primera fila.`); return; }
-    vistos.add(clave(sku));
+    if (vistos.has(claveSku(sku))) { errores.push(`${sku} está repetido; se usa la primera fila.`); return; }
+    vistos.add(claveSku(sku));
     const dOne = { sku, idProducto: String(o.idproducto ?? o.id ?? o.idarticulo ?? o.codigodearticulo ?? "").trim(), desc: String(o.descripcion ?? ""), L: numero(o.largo), W: numero(o.ancho), H: numero(o.alto), peso: numero(o.peso) };
     const p = productoDeFilas(dOne, o);
     if (!(p.L > 0 && p.W > 0 && p.H > 0)) errores.push(`${sku}: faltan medidas (largo, ancho o alto).`);
@@ -257,24 +257,24 @@ export function actualizarDimensiones(productosActuales, buf) {
   const wb = XLSX.read(buf, { type: "array" });
   const hd = buscarHoja(wb, ["datos", "medidas", "dimensiones"]) || wb.Sheets[wb.SheetNames[0]];
   const porSku = new Map(), porId = new Map();
-  productosActuales.forEach((p) => { if (p.sku) porSku.set(clave(p.sku), p); if (p.idProducto) porId.set(clave(p.idProducto), p); });
+  productosActuales.forEach((p) => { if (p.sku) porSku.set(claveSku(p.sku), p); if (p.idProducto) porId.set(claveSku(p.idProducto), p); });
   const productos = [...productosActuales], errores = [], vistos = new Set();
   let actualizados = 0, creados = 0;
   hojaAObjetos(hd).forEach((o) => {
     const sku = String(o.sku ?? o.codigo ?? "").trim();
     if (!sku) return;
-    if (vistos.has(clave(sku))) { errores.push(`${sku} está repetido en el archivo; se usa la primera fila.`); return; }
-    vistos.add(clave(sku));
+    if (vistos.has(claveSku(sku))) { errores.push(`${sku} está repetido en el archivo; se usa la primera fila.`); return; }
+    vistos.add(claveSku(sku));
     const idProducto = String(o.idproducto ?? o.id ?? o.idarticulo ?? o.codigodearticulo ?? "").trim();
     const datos = { desc: String(o.descripcion ?? ""), L: numero(o.largo), W: numero(o.ancho), H: numero(o.alto), peso: numero(o.peso) };
     if (!(datos.L > 0 && datos.W > 0 && datos.H > 0)) { errores.push(`${sku}: faltan medidas (largo, ancho o alto); no se actualizó.`); return; }
-    const existente = porSku.get(clave(sku)) || (idProducto && porId.get(clave(idProducto)));
+    const existente = porSku.get(claveSku(sku)) || (idProducto && porId.get(claveSku(idProducto)));
     if (existente) {
       Object.assign(existente, { sku, idProducto: idProducto || existente.idProducto, ...datos });
       actualizados++;
     } else {
       const nuevo = productoVacio({ sku, idProducto, ...datos });
-      productos.push(nuevo); porSku.set(clave(sku), nuevo); if (idProducto) porId.set(clave(idProducto), nuevo);
+      productos.push(nuevo); porSku.set(claveSku(sku), nuevo); if (idProducto) porId.set(claveSku(idProducto), nuevo);
       creados++;
     }
   });
@@ -305,22 +305,21 @@ export function leerBundleMaestro(productosActuales, buf) {
   const iAncho = heads.findIndex((h) => h === "ancho");
   if (iAlto < 0 || iLargo < 0 || iAncho < 0) throw new Error("Faltan las columnas de dimensiones del Bundle (Alto, Largo, Ancho).");
 
-  const porSku = new Map();
-  productosActuales.forEach((p) => { if (p.sku) porSku.set(clave(p.sku), p); });
+  const indice = indiceSku(productosActuales);
   const productos = [...productosActuales], errores = [], noEncontrados = [];
   let actualizados = 0;
   for (let i = hi + 1; i < filas.length; i++) {
     const f = filas[i], sku = String(f[iSku] ?? "").trim();
     if (!sku) continue;
-    const existente = porSku.get(clave(sku));
+    const existente = buscarSku(indice, sku);
     if (!existente) { noEncontrados.push(sku); continue; }
     const cantidadEstandar = iCsBdl >= 0 && numero(f[iCsBdl]) > 0 ? numero(f[iCsBdl])
       : (iRel >= 0 && iFactor >= 0 && numero(f[iFactor]) > 0 ? numero(f[iRel]) / numero(f[iFactor]) : 0);
     const bundleL = numero(f[iLargo]), bundleW = numero(f[iAncho]), bundleH = numero(f[iAlto]);
     if (!(cantidadEstandar > 0) || !(bundleL > 0 && bundleW > 0 && bundleH > 0)) { errores.push(`${sku}: fila incompleta (cantidad estándar o dimensiones); no se importó.`); continue; }
     // Copia nueva del producto (nunca mutar el que ya está en el estado de React)
-    const pos = productos.indexOf(existente), nuevo = { ...existente, bundleActivo: true, manufacturaPropia: true, bundleCantidadEstandar: cantidadEstandar, bundleL, bundleW, bundleH };
-    productos[pos] = nuevo; porSku.set(clave(sku), nuevo);
+    const pos = productos.findIndex((p) => p.pid === existente.pid), nuevo = { ...productos[pos], bundleActivo: true, manufacturaPropia: true, bundleCantidadEstandar: cantidadEstandar, bundleL, bundleW, bundleH };
+    productos[pos] = nuevo;
     actualizados++;
   }
   if (noEncontrados.length) errores.push(`${noEncontrados.length} SKU${noEncontrados.length === 1 ? "" : "s"} del archivo no ${noEncontrados.length === 1 ? "está" : "están"} en el maestro: ${noEncontrados.slice(0, 8).join(", ")}${noEncontrados.length > 8 ? "…" : ""}.`);
@@ -349,7 +348,7 @@ export function leerCubeMaster(buf) {
       pesoMaxEncima: numero(r.MaxSupportingWeight), piso: "libre", soportaEncima: String(r.SupportsOthers).trim() === "" || numero(r.SupportsOthers) === 1,
       paletizar: numero(r.Palletized) === 1, tarima, resto: numero(r.RemainQtyToMixPallet) === 1 ? "mixto" : numero(r.RemainQtyToVehicle) === 1 ? "sueltas" : "parcial",
       aceptaCajas: true, aceptaPallet: numero(r.PalletMaxStacksOnVehicle) > 1, color });
-    if (!vistos.has(clave(sku))) { vistos.set(clave(sku), p); productos.push(p); }
+    if (!vistos.has(claveSku(sku))) { vistos.set(claveSku(sku), p); productos.push(p); }
     if (numero(r.Qty) > 0) lineas.push({ sku, qty: Math.round(numero(r.Qty)), orden: Math.round(numero(r.Seq)), grupo: String(r.Group || "").trim() });
   });
   return { productos, tarimas, lineas };

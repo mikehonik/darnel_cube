@@ -3,7 +3,7 @@ import { Package, Truck, Layers, SlidersHorizontal, HelpCircle, Play, FilePlus, 
 import { correr, ejecutorWorker, ErrorCorrida } from "./motor/corrida.js";
 import MotorWorker from "./motor/motor.worker.js?worker&inline";
 import { armarReporte } from "./motor/reporte.js";
-import { clave, numero } from "./archivos/celdas.js";
+import { clave, claveSku, indiceSku, buscarSku, conversionDe, numero } from "./archivos/celdas.js";
 import { ARCHIVO_MAESTRO, ARCHIVO_RESPALDO, productoVacio, leerMaestro, libroMaestro, leerCubeMaster, plantillaDimensiones, actualizarDimensiones, leerBundleMaestro } from "./archivos/maestro.js";
 import { transformarPedidoBundle } from "./archivos/bundle.js";
 import { leerVehiculos, libroVehiculos, plantillaVehiculos, vehiculoVacio } from "./archivos/vehiculos.js";
@@ -114,12 +114,9 @@ export default function Estiba3D({ usuario }) {
   const formas = useMemo(() => items.map((it) => it.forma || "caja"), [items]);
   const coloresBase = useMemo(() => generarColores(items.length, paleta), [items.length, paleta]);
   // Los pedidos y transferencias a veces traen el ID del ERP en vez del SKU: se busca por los dos.
-  const mapaMaestro = useMemo(() => {
-    const m = new Map();
-    maestro.productos.forEach((p) => { if (p.sku) m.set(clave(p.sku), p); });
-    maestro.productos.forEach((p) => { if (p.idProducto && !m.has(clave(p.idProducto))) m.set(clave(p.idProducto), p); });
-    return m;
-  }, [maestro.productos]);
+  // El guion cuenta ("852-10" ≠ "85210"), pero si un pedido trae el código sin guion y solo hay un
+  // producto parecido, también lo encuentra (ver indiceSku). Buscar siempre con buscarSku(mapaMaestro, texto).
+  const mapaMaestro = useMemo(() => indiceSku(maestro.productos), [maestro.productos]);
   const colores = useMemo(() => items.map((it, i) => it.color || coloresBase[i]), [items, coloresBase]);
   const hayPersonalizados = items.some((i) => i.color);
 
@@ -249,8 +246,8 @@ export default function Estiba3D({ usuario }) {
       if (it.id !== id) return it;
       // Al escribir un SKU que existe en el maestro, se traen sus medidas y reglas (se conservan cantidad, entrega y pedido)
       if (k === "nombre") {
-        const p = mapaMaestro.get(clave(v));
-        if (p && clave(v) !== clave(it.nombre)) return { ...itemDeProducto(p, { qty: it.qty, orden: it.orden, grupo: it.grupo, destino: it.destino }), id: it.id, color: it.color };
+        const p = buscarSku(mapaMaestro, v);
+        if (p && claveSku(v) !== claveSku(it.nombre)) return { ...itemDeProducto(p, { qty: it.qty, orden: it.orden, grupo: it.grupo, destino: it.destino }), id: it.id, color: it.color };
       }
       return { ...it, [k]: v };
     }));
@@ -372,13 +369,13 @@ export default function Estiba3D({ usuario }) {
   };
   const agregarACarga = (p) => { setItems((a) => [...a, itemDeProducto(p, { qty: 1 })]); invalidar(); setAviso(`${p.sku} agregado a la carga con 1 caja. Ajusta la cantidad en Mercancía.`); };
   const agregarSkuDelMaestro = () => {
-    const p = mapaMaestro.get(clave(skuNuevo));
+    const p = buscarSku(mapaMaestro, skuNuevo);
     if (!p) { setError(`${skuNuevo} no está en el maestro.`); return; }
     setItems((a) => [...a, itemDeProducto(p, { qty: 1 })]); setSkuNuevo(""); setError(""); invalidar();
   };
   const pasarCargaAlMaestro = () => {
-    const existentes = new Set(maestro.productos.map((p) => clave(p.sku)));
-    const nuevos = items.filter((it) => it.nombre && !existentes.has(clave(it.nombre))).map((it) => {
+    const existentes = new Set(maestro.productos.map((p) => claveSku(p.sku)));
+    const nuevos = items.filter((it) => it.nombre && !existentes.has(claveSku(it.nombre))).map((it) => {
       const { id, nombre, qty, orden, grupo, palletId, desc, ...r } = it;
       return productoVacio({ ...r, sku: nombre, desc: desc || "", tarima: pallets[palletId]?.nombre || "" });
     });
@@ -389,11 +386,13 @@ export default function Estiba3D({ usuario }) {
     const nuevasT = [...pallets];
     tarimas.forEach((t) => { if (!nuevasT.some((x) => clave(x.nombre) === clave(t.nombre))) nuevasT.push(t); });
     setPallets(nuevasT);
-    const porSku = mapaMaestro;
-    productos.forEach((p) => porSku.set(clave(p.sku), { ...p, pid: porSku.get(clave(p.sku))?.pid ?? p.pid }));
-    setMaestro((m) => ({ ...m, productos: [...porSku.values()], sucio: true, origen: m.origen || { tipo: "archivo", nombre: ARCHIVO_MAESTRO } }));
+    // Mapa nuevo por SKU exacto (antes se escribía sobre mapaMaestro, que es del render y tiene llaves de respaldo)
+    const porSku = new Map(maestro.productos.filter((p) => p.sku).map((p) => [claveSku(p.sku), p]));
+    productos.forEach((p) => porSku.set(claveSku(p.sku), { ...p, pid: porSku.get(claveSku(p.sku))?.pid ?? p.pid }));
+    const todos = [...porSku.values()], indice = indiceSku(todos);
+    setMaestro((m) => ({ ...m, productos: todos, sucio: true, origen: m.origen || { tipo: "archivo", nombre: ARCHIVO_MAESTRO } }));
     if (lineas.length) {
-      const nuevos = lineas.map((l) => itemDeProducto(porSku.get(clave(l.sku)), { qty: l.qty, orden: l.orden, grupo: l.grupo, destino: l.destino }, nuevasT));
+      const nuevos = lineas.map((l) => itemDeProducto(buscarSku(indice, l.sku), { qty: l.qty, orden: l.orden, grupo: l.grupo, destino: l.destino }, nuevasT));
       setItems(nuevos); setProyecto(nombre.replace(/\.[^.]+$/, "")); invalidar();
     }
     setAviso(`Plantilla de CubeMaster importada: ${productos.length} productos al maestro${tarimas.length ? `, ${tarimas.length} tarimas` : ""}${lineas.length ? ` y un pedido de ${lineas.reduce((a, l) => a + l.qty, 0).toLocaleString("es-MX")} cajas` : ""}. Presiona Guardar en Maestro para conservar los productos.`);
@@ -407,7 +406,7 @@ export default function Estiba3D({ usuario }) {
     try {
       const buf = await f.arrayBuffer();
       await new Promise((r) => setTimeout(r, 30));  // deja pintar el aviso antes de bloquear con la lectura
-      const skus = new Set(maestro.productos.map((p) => clave(p.sku)));
+      const skus = new Set(maestro.productos.map((p) => claveSku(p.sku)));
       const r = leerConversiones(buf, skus);
       if (!r.skus) { setError(`El archivo tiene ${r.filas.toLocaleString("es-MX")} equivalencias, pero ninguna es de un SKU del maestro. Carga primero el maestro.`); setLeyendo(""); return; }
       setMaestro((m) => ({ ...m, sucio: true, conversiones: { ...(m.conversiones || {}), ...r.porSku } }));
@@ -476,10 +475,10 @@ export default function Estiba3D({ usuario }) {
       const porSku = mapaMaestro;
       const nuevos = [], filas = [];
       lineas.forEach((l) => {
-        const p = porSku.get(clave(l.sku)), extra = { qty: l.qty, orden: l.orden, grupo: l.grupo, destino: l.destino };
+        const p = buscarSku(porSku, l.sku), extra = { qty: l.qty, orden: l.orden, grupo: l.grupo, destino: l.destino };
         const umCaja = p?.umCaja || UM_CAJA_DEF;
         const fila = { sku: l.sku, desc: p?.desc || "", capturado: l.qty, um: l.um || "", umCaja, cajas: l.qty, estado: "ok", detalle: "" };
-        const c = aCajas(l.qty, l.um, umCaja, maestro.conversiones?.[clave(l.sku)], p?.piezas);
+        const c = aCajas(l.qty, l.um, umCaja, conversionDe(maestro.conversiones, p?.sku ?? l.sku), p?.piezas);
         extra.qty = fila.cajas = c.cajas;
         if (l.um && normalizaUM(l.um) !== normalizaUM(umCaja)) { extra.qtyPedido = l.qty; extra.umPedido = l.um; }
         if (c.motivo) { fila.estado = "sin conversión"; fila.detalle = c.motivo + "; se tomó la cantidad tal cual"; }
@@ -501,7 +500,7 @@ export default function Estiba3D({ usuario }) {
       // Bundle (BDL): antes de cargar la mercancía, cada SKU con Bundle activado se divide en su
       // parte de Bundles completos y su parte suelta (ver archivos/bundle.js). Se hace aquí, sobre
       // las cantidades ya convertidas a cajas, y no dentro del motor de cubicaje.
-      const { items: itemsFinal, avisos: avisosBundle } = transformarPedidoBundle(nuevos, porSku, clave);
+      const { items: itemsFinal, avisos: avisosBundle } = transformarPedidoBundle(nuevos, porSku, claveSku);
       const bundlesFormados = itemsFinal.filter((it) => it.esBundle).length;
       setItems(itemsFinal);
       setProyecto(datos.nombre || f.name.replace(/\.[^.]+$/, ""));
@@ -520,17 +519,17 @@ export default function Estiba3D({ usuario }) {
   const CAMPOS_MAESTRO = ["L", "W", "H", "peso", "piezas", "umCaja", "volteoPiso", "compresion", "maxNiveles", "valorApilar", "pesoMaxEncima", "piso", "soportaEncima", "paletizar", "porPallet", "porCapa", "capasPallet", "resto", "aceptaCajas", "aceptaPallet"];
 
   const difiereDeMaestro = (it) => {
-    const p = mapaMaestro.get(clave(it.nombre)); if (!p) return false;
+    const p = buscarSku(mapaMaestro, it.nombre); if (!p) return false;
     if (CAMPOS_MAESTRO.some((k) => it[k] !== p[k])) return true;
     if (it.oris.some((v, i) => v !== p.oris[i])) return true;
     return clave(pallets[it.palletId]?.nombre) !== clave(p.tarima) && (it.paletizar || p.paletizar);
   };
   const guardarEnMaestro = (it) => {
-    setMaestro((m) => ({ ...m, sucio: true, productos: m.productos.map((p) => (clave(p.sku) === clave(it.nombre) ? { ...p, ...Object.fromEntries(CAMPOS_MAESTRO.map((k) => [k, it[k]])), oris: [...it.oris], tarima: pallets[it.palletId]?.nombre || p.tarima } : p)) }));
+    setMaestro((m) => ({ ...m, sucio: true, productos: m.productos.map((p) => (claveSku(p.sku) === claveSku(it.nombre) ? { ...p, ...Object.fromEntries(CAMPOS_MAESTRO.map((k) => [k, it[k]])), oris: [...it.oris], tarima: pallets[it.palletId]?.nombre || p.tarima } : p)) }));
     setAviso(`${it.nombre} actualizado en el maestro. Falta presionar Guardar en Maestro.`);
   };
   const volverAlMaestro = (it) => {
-    const p = mapaMaestro.get(clave(it.nombre)); if (!p) return;
+    const p = buscarSku(mapaMaestro, it.nombre); if (!p) return;
     const base = itemDeProducto(p, { qty: it.qty, orden: it.orden, grupo: it.grupo, destino: it.destino });
     setItems((a) => a.map((x) => (x.id === it.id ? { ...base, id: it.id, color: it.color } : x))); invalidar();
   };
@@ -1102,7 +1101,7 @@ export default function Estiba3D({ usuario }) {
                       {items.map((it, i) => (
                         <FilaItem key={it.id} it={it} color={colores[i]} abierto={abierto === it.id} pallets={pallets} modoPallet={modoPallet} verMedidas={verMedidas}
                           anchoSku={anchoSku}
-                          difiere={!it.esBundle && difiereDeMaestro(it)} enMaestro={!it.esBundle && mapaMaestro.has(clave(it.nombre))} aMaestro={() => guardarEnMaestro(it)} deMaestro={() => volverAlMaestro(it)}
+                          difiere={!it.esBundle && difiereDeMaestro(it)} enMaestro={!it.esBundle && !!buscarSku(mapaMaestro, it.nombre)} aMaestro={() => guardarEnMaestro(it)} deMaestro={() => volverAlMaestro(it)}
                           mover={reglas.usarLista ? (paso) => moverItem(it.id, paso) : null} primera={i === 0} ultima={i === items.length - 1}
                           onToggle={() => setAbierto(abierto === it.id ? null : it.id)} editar={(k, v) => editarItem(it.id, k, v)}
                           quitar={() => { setItems((a) => a.filter((x) => x.id !== it.id)); invalidar(); }} />

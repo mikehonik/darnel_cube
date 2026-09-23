@@ -16,6 +16,13 @@ export const VERSION_COMPLETA = `v${VERSION}${BUILD ? ` · ${BUILD}` : ""}${FECH
 // escrito para quien usa la herramienta (no para programadores).
 export const NOVEDADES = [
   {
+    version: "1.1.2", fecha: "23/09/2026",
+    cambios: [
+      "El guion en el SKU ahora cuenta: 852-10 y 85210 son productos distintos. Antes el maestro los tomaba como repetidos y se quedaba solo con uno.",
+      "Si un pedido trae el código sin guion y en el maestro solo hay uno parecido, lo sigue encontrando.",
+    ],
+  },
+  {
     version: "1.1.1", fecha: "23/09/2026",
     cambios: [
       "Los escenarios guardados antes de la 1.1.0 ya muestran los vehículos nuevos (53FT-DryVan y 48FT-DryVan) sin perder los que tenían.",

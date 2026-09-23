@@ -4,7 +4,7 @@
 // pallet. Las tres reutilizan el mismo motor de cubicaje (ver motor/motor.js), solo que con un único
 // SKU y una cantidad "infinita": el motor topa por espacio, peso y las reglas propias del SKU.
 import { useMemo, useState } from "react";
-import { clave } from "../../archivos/celdas.js";
+import { claveSku } from "../../archivos/celdas.js";
 import { capacidadSuelta, configuracionPallet, capacidadPalletCompleto } from "../../motor/motor.js";
 import { prepararEntrada } from "../../motor/corrida.js";
 import { T } from "../tema.js";
@@ -39,7 +39,7 @@ export function SeccionHerramientas({ maestro, vehiculos, pallets, reglas }) {
   const [vehSel, setVehSel] = useState(vehiculos[0]?.id || "");
   const [tarimaSel, setTarimaSel] = useState(0);
 
-  const producto = useMemo(() => maestro.productos.find((p) => clave(p.sku) === clave(skuSel)) || null, [maestro.productos, skuSel]);
+  const producto = useMemo(() => maestro.productos.find((p) => claveSku(p.sku) === claveSku(skuSel)) || null, [maestro.productos, skuSel]);
   const veh = useMemo(() => vehParaCalculo(vehiculos.find((v) => v.id === vehSel) || vehiculos[0] || {}), [vehiculos, vehSel]);
   const pal = pallets[tarimaSel] || pallets[0];
   // Memorizado: sin esto el objeto cambiaba en cada render y el motor se volvía a correr cada vez.

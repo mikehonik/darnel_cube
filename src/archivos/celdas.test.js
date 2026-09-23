@@ -62,3 +62,25 @@ describe("numero", () => {
     expect(numero("abc")).toBe(0);
   });
 });
+
+describe("claveSku e indiceSku (el guion cuenta)", async () => {
+  const { claveSku, indiceSku, buscarSku, conversionDe } = await import("./celdas.js");
+  it("distingue 852-10 de 85210, pero ignora mayúsculas, espacios y ceros a la izquierda", () => {
+    expect(claveSku("852-10")).not.toBe(claveSku("85210"));
+    expect(claveSku(" b04115s110-G ")).toBe(claveSku("B04115S110-G"));
+    expect(claveSku("00123")).toBe(claveSku("123"));
+  });
+  it("cada SKU se encuentra a sí mismo; sin guion encuentra al único parecido", () => {
+    const a = { sku: "852-10" }, b = { sku: "85210" }, c = { sku: "999-1", idProducto: "ERP-77" };
+    const i = indiceSku([a, b, c]);
+    expect(buscarSku(i, "852-10")).toBe(a);
+    expect(buscarSku(i, "85210")).toBe(b);
+    expect(buscarSku(i, "9991")).toBe(c);   // pedido sin guion: solo hay un parecido
+    expect(buscarSku(i, "ERP77")).toBe(c);  // también por ID producto
+    expect(buscarSku(i, "nada")).toBeNull();
+  });
+  it("lee conversiones guardadas con la llave vieja", () => {
+    expect(conversionDe({ a1: { CJ: 2 } }, "A-1")).toEqual({ CJ: 2 });
+    expect(conversionDe({ "a-1": { CJ: 3 }, a1: { CJ: 2 } }, "A-1")).toEqual({ CJ: 3 });
+  });
+});
