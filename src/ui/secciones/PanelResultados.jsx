@@ -77,20 +77,22 @@ export function PanelResultados({ colores, descargarInstructivo, descargarInstru
         className="absolute left-0 right-0 flex justify-center" style={{ top: -5, height: 10, cursor: "row-resize", zIndex: 5 }}>
         <span className="rounded-full mt-1" style={{ width: 44, height: 4, background: T.linea }} />
       </div>
-      <div className="flex items-center gap-1 px-3 flex-none" style={{ borderBottom: `1px solid ${T.linea}` }} role="tablist">
+      <div className="flex items-center gap-1 px-3 flex-none" style={{ borderBottom: `1px solid ${T.linea}` }}>
+        {/* Las pestañas se desplazan de lado si no caben; los botones de la derecha siempre quedan visibles */}
+        <div className="flex items-center gap-1 flex-1 min-w-0 overflow-x-auto" role="tablist" style={{ scrollbarWidth: "thin" }}>
         {[["resumen", "Resumen"], ["lista", "Lista de carga"], ...(reporte?.conEntregas ? [["entregas", `Entregas${stats?.estorban ? " ⚠" : ""}`]] : []), ["pallets", `Pallets armados${reporte?.pallets.length ? ` (${reporte.pallets.length})` : ""}`], ["avisos", `Avisos${reporte?.avisos.length ? ` (${reporte.avisos.length})` : ""}`], ["espacios", "Completar espacios"]].map(([k, t]) => (
-          <button key={k} role="tab" aria-selected={pestana === k} onClick={() => setPestana(k)} className="text-sm px-3 py-2.5 relative whitespace-nowrap"
+          <button key={k} role="tab" aria-selected={pestana === k} onClick={() => setPestana(k)} className="text-sm px-3 py-2.5 relative whitespace-nowrap flex-none"
             style={{ color: pestana === k ? T.tinta : T.suave, fontWeight: pestana === k ? 600 : 400 }}>
             {t}
             <span className="absolute left-2 right-2 bottom-0" style={{ height: 2, background: pestana === k ? T.acento : "transparent" }} />
           </button>
         ))}
-        <div className="flex-1" />
-        <button onClick={() => setOculto(true)} className="flex items-center text-xs px-2 py-1.5 rounded-md mr-1" style={{ border: `1px solid ${T.linea}`, color: T.suave }} aria-label="Ocultar el panel de resultados" title="Ocultar el panel y dejar el visor completo">
+        </div>
+        <button onClick={() => setOculto(true)} className="flex flex-none items-center text-xs px-2 py-1.5 rounded-md mr-1" style={{ border: `1px solid ${T.linea}`, color: T.suave }} aria-label="Ocultar el panel de resultados" title="Ocultar el panel y dejar el visor completo">
           <PanelBottomClose size={14} />
         </button>
         {res && res.contenedores.length > 0 && (
-          <div className="flex gap-1.5">
+          <div className="flex flex-none gap-1.5">
             <button onClick={descargarResultados} className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md whitespace-nowrap" style={{ border: `1px solid ${T.linea}` }} title="Resumen, lista de carga, pallets y pasos de todos los vehículos"><Download size={14} />Excel</button>
             <button onClick={descargarInstructivo} disabled={generando || !!palVista} className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md font-medium whitespace-nowrap" style={{ background: T.nav, color: "#fff", opacity: generando || palVista ? 0.6 : 1 }} title="Pasos con imágenes para el equipo de carga">
               {generando ? <Loader2 size={14} className="animate-spin" /> : <FileSpreadsheet size={14} />}Instructivo {sel + 1}
@@ -108,7 +110,7 @@ export function PanelResultados({ colores, descargarInstructivo, descargarInstru
         {!res ? <p className="text-sm" style={{ color: T.suave }}>Los resultados aparecerán aquí.</p> : (
           <>
             {pestana === "resumen" && (palVista ? (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              <div className="grid gap-2 grid-cols-[repeat(auto-fit,minmax(150px,1fr))]">
                 <Dato t="Cajas" v={palVista.n} s={`${palVista.piezas.toLocaleString("es-MX")} piezas`} />
                 <Dato t="Altura total" v={u.fL(palVista.alto, 1)} s="con tarima" />
                 <Dato t="Peso total" v={u.fP(palVista.peso, 1)} s="con tarima" />
@@ -120,7 +122,7 @@ export function PanelResultados({ colores, descargarInstructivo, descargarInstru
               </div>
             ) : stats && (
               <>
-                <div className={`grid grid-cols-2 gap-2 mb-3 ${reporte.conEntregas ? "md:grid-cols-6" : "md:grid-cols-5"}`}>
+                <div className="grid gap-2 grid-cols-[repeat(auto-fit,minmax(150px,1fr))] mb-3">
                   <Dato t={modoPallet ? "Pallets" : "Vehículos"} v={reporte.contenedores.length} s={`mejor de ${reporte.estrategiasProbadas} intentos`} />
                   <Dato t="Utilización volumétrica" v={`${stats.ocupacion.toFixed(1)}%`} s={`${u.fV3(stats.m3, 1).replace(` ${u.v}`, "")} de ${u.fV3(stats.m3Cap, 1)}`} />
                   <Dato t="Utilización de peso" v={stats.utilPeso != null ? `${stats.utilPeso.toFixed(1)}%` : "—"} s={`${u.fP(stats.peso)} de carga${reporte.vehiculo.maxKg ? ` · bruto ${u.fP(stats.pesoBruto).replace(` ${u.p}`, "")} / ${u.fP(reporte.vehiculo.maxKg)}` : ""}`} />
@@ -128,7 +130,7 @@ export function PanelResultados({ colores, descargarInstructivo, descargarInstru
                   <Dato t="Centro de gravedad" v={`${stats.cgLargo.toFixed(0)}%`} s={`del fondo · ${u.fL(stats.cgLateral, 0)} lateral`} />
                   {reporte.conEntregas && <Dato t="Bultos que estorban" v={stats.estorban || 0} s={stats.estorban ? "hay que moverlos al descargar" : "descarga limpia por entrega"} />}
                 </div>
-                <div className="grid grid-cols-2 gap-2 mb-3 md:grid-cols-3">
+                <div className="grid gap-2 grid-cols-[repeat(auto-fit,minmax(150px,1fr))] mb-3">
                   <Dato t={u.id === "metrico" ? "Metros lineales libres" : "Pies lineales libres"} v={u.fD(stats.mLibres * 1000)} s={`de ${u.fD(stats.mTotal * 1000, 1)} · usados ${u.fD(stats.mUsados * 1000)}`} />
                   {stats.ejes && (
                     <>

@@ -16,6 +16,15 @@ export const VERSION_COMPLETA = `v${VERSION}${BUILD ? ` · ${BUILD}` : ""}${FECH
 // escrito para quien usa la herramienta (no para programadores).
 export const NOVEDADES = [
   {
+    version: "1.2.2", fecha: "23/09/2026",
+    cambios: [
+      "Barra de arriba más ligera: el correo, Nueva carga, los ejemplos y Cerrar sesión pasan al menú de tres puntos (···). Ya no se corta en laptops ni con el zoom de Windows al 125% o 150%.",
+      "La separación entre la tabla y la vista 3D se puede mover: arrastra la línea del centro. Arranca mitad y mitad y recuerda tu ajuste.",
+      "Los indicadores del resumen (utilización, peso, bultos, centro de gravedad) se acomodan al ancho del panel y ya no se amontonan.",
+      "Las pestañas de resultados se deslizan de lado cuando no caben, y Excel e Instructivo siempre quedan a la vista.",
+    ],
+  },
+  {
     version: "1.2.1", fecha: "23/09/2026",
     cambios: [
       "El maestro se guarda comprimido en la nube: un maestro de 26 mil productos pasa de 20 MB a poco más de 1 MB. Carga más rápido y cuida el límite gratuito de Supabase. Los maestros ya guardados se siguen abriendo igual.",

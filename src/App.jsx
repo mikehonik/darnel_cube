@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { Package, Truck, Layers, SlidersHorizontal, HelpCircle, Play, FilePlus, ClipboardPaste, AlertTriangle, Loader2, Plus, Trash2, X, ChevronDown, Database, FolderOpen, Save, Upload, FileSpreadsheet, Search, RefreshCw, CheckCircle2, Repeat, Calculator, PackagePlus } from "lucide-react";
+import { Package, Truck, Layers, SlidersHorizontal, HelpCircle, Play, FilePlus, ClipboardPaste, AlertTriangle, Loader2, Plus, Trash2, X, ChevronDown, Database, FolderOpen, Save, Upload, FileSpreadsheet, Search, RefreshCw, CheckCircle2, Repeat, Calculator, PackagePlus, MoreHorizontal, LogOut, BookOpen } from "lucide-react";
 import { correr, ejecutorWorker, ErrorCorrida } from "./motor/corrida.js";
 import MotorWorker from "./motor/motor.worker.js?worker&inline";
 import { armarReporte } from "./motor/reporte.js";
@@ -66,7 +66,21 @@ export default function Estiba3D({ usuario }) {
   const [abierto, setAbierto] = useState(null);
   const [pegar, setPegar] = useState(false);
   const [textoPegado, setTextoPegado] = useState("");
-  const [menuEj, setMenuEj] = useState(false);
+  const [menuEj, setMenuEj] = useState(false);   // menú "Más" del encabezado (nuevo, ejemplos, sesión)
+  // Ancho del panel izquierdo (tabla) en pantallas anchas, en % del total. Cada quien lo arrastra a su gusto
+  // y se recuerda en este navegador: unos prefieren ver más tabla, otros más 3D.
+  const [anchoIzq, setAnchoIzq] = useState(() => { try { const v = +localStorage.getItem("darnelcube.anchoIzq"); return v >= 30 && v <= 70 ? v : 50; } catch { return 50; } });
+  const arrastreDiv = useRef(null);
+  const moverDivisor = (e) => {
+    if (!arrastreDiv.current) return;
+    const v = Math.min(70, Math.max(30, (e.clientX / window.innerWidth) * 100));
+    setAnchoIzq(v);
+  };
+  const soltarDivisor = () => {
+    if (!arrastreDiv.current) return;
+    arrastreDiv.current = null;
+    setAnchoIzq((v) => { try { localStorage.setItem("darnelcube.anchoIzq", String(Math.round(v))); } catch { /* sin almacenamiento local */ } return v; });
+  };
   const [res, setRes] = useState(null);
   const [sel, setSel] = useState(0);
   const [vista, setVista] = useState(null);
@@ -894,35 +908,43 @@ export default function Estiba3D({ usuario }) {
           <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 22, fontWeight: 700, letterSpacing: "0.01em", whiteSpace: "nowrap" }}>DarnelCube 3D</span>
           <button onClick={() => setSeccion("ayuda")} className="text-xs px-1.5 py-0.5 rounded" style={{ color: T.acento, border: `1px solid ${T.acento}66` }} title={`Versión ${VERSION_COMPLETA}. Clic para ver las novedades.`}>v{VERSION}</button>
         </div>
-        <input value={proyecto} onChange={(e) => setProyecto(e.target.value)} aria-label="Nombre del proyecto"
-          className="hidden md:block bg-transparent text-sm px-2 py-1 rounded-md outline-none" style={{ color: "#fff", border: "1px solid rgba(255,255,255,.15)", width: 240 }} />
+        <input value={proyecto} onChange={(e) => setProyecto(e.target.value)} aria-label="Nombre del proyecto" title={proyecto}
+          className="hidden md:block bg-transparent text-sm px-2 py-1 rounded-md outline-none min-w-0" style={{ color: "#fff", border: "1px solid rgba(255,255,255,.15)", width: 220, flexShrink: 1 }} />
         <div className="flex-1" />
-        <div className="hidden sm:flex rounded-md overflow-hidden text-xs" role="group" aria-label="Sistema de unidades" style={{ border: "1px solid rgba(255,255,255,.25)" }}>
+        {/* Encabezado ligero: solo lo que se usa en cada carga. Lo demás vive en el menú «Más». */}
+        <div className="hidden sm:flex flex-none rounded-md overflow-hidden text-xs whitespace-nowrap" role="group" aria-label="Sistema de unidades" style={{ border: "1px solid rgba(255,255,255,.25)" }}>
           {Object.values(SISTEMAS).map((x) => (
-            <button key={x.id} onClick={() => cambiarSistema(x.id)} aria-pressed={sistema === x.id} title={`Ver y capturar en ${x.nombre.toLowerCase()} (${x.corto})`} className="px-2 py-1"
+            <button key={x.id} onClick={() => cambiarSistema(x.id)} aria-pressed={sistema === x.id} title={`Ver y capturar en ${x.nombre.toLowerCase()} (${x.corto})`} className="px-2 py-1 whitespace-nowrap"
               style={{ background: sistema === x.id ? T.acento : "transparent", color: sistema === x.id ? T.nav : "rgba(255,255,255,.8)", fontWeight: sistema === x.id ? 600 : 400 }}>{x.corto}</button>
           ))}
         </div>
-        <span className="hidden lg:block text-xs" style={{ color: "rgba(255,255,255,.55)" }}>{usuario?.email}</span>
-        <button onClick={() => setVerEscenarios(true)} className="hidden sm:flex items-center gap-1.5 text-sm px-2.5 py-1.5 rounded-md" style={{ color: T.navTexto }} title="Guardar este escenario con un nombre, o abrir uno anterior">
-          <FolderOpen size={15} />Escenarios
+        <button onClick={() => setVerEscenarios(true)} className="hidden sm:flex flex-none items-center gap-1.5 text-sm px-2.5 py-1.5 rounded-md whitespace-nowrap" style={{ color: T.navTexto }} title="Guardar este escenario con un nombre, o abrir uno anterior">
+          <FolderOpen size={15} /><span className="hidden lg:inline">Escenarios</span>
         </button>
-        <button onClick={cerrarSesion} className="hidden sm:flex items-center text-sm px-2.5 py-1.5 rounded-md" style={{ color: "rgba(255,255,255,.6)" }} title="Cerrar sesión">Salir</button>
-        <button onClick={nuevo} className="hidden sm:flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md" style={{ color: T.navTexto }}><FilePlus size={16} />Nuevo</button>
-        <div className="relative">
-          <button onClick={() => setMenuEj(!menuEj)} className="flex items-center gap-1 text-sm px-3 py-1.5 rounded-md" style={{ color: T.navTexto }} aria-expanded={menuEj}>Ejemplos<ChevronDown size={14} /></button>
+        <button onClick={recomendar} disabled={calculando || !items.length} className="hidden sm:flex flex-none items-center gap-1.5 text-sm px-3 py-2 rounded-md whitespace-nowrap" style={{ border: "1px solid rgba(255,255,255,.2)", color: T.navTexto }} title="Corre el pedido contra cada vehículo de la lista y compara">
+          <Truck size={15} /><span className="hidden lg:inline">Recomendar</span>
+        </button>
+        <div className="relative flex-none">
+          <button onClick={() => setMenuEj(!menuEj)} className="flex items-center gap-1 text-sm px-2.5 py-1.5 rounded-md whitespace-nowrap" style={{ color: T.navTexto }} aria-expanded={menuEj} aria-label="Más opciones" title="Nuevo, ejemplos, sesión">
+            <MoreHorizontal size={18} /><span className="hidden xl:inline">Más</span>
+          </button>
           {menuEj && (
-            <div className="absolute right-0 mt-1 rounded-lg py-1 z-20 shadow-lg" style={{ background: T.sup, border: `1px solid ${T.linea}`, width: 260 }}>
-              {Object.entries(EJEMPLOS).map(([k, e]) => (
-                <button key={k} onClick={() => cargarEjemplo(k)} className="block w-full text-left text-sm px-3 py-2 hover:bg-gray-100" style={{ color: T.tinta }}>{e.nombre}</button>
-              ))}
-            </div>
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setMenuEj(false)} aria-hidden="true" />
+              <div className="absolute right-0 mt-1 rounded-lg py-1 z-20 shadow-lg text-sm" style={{ background: T.sup, border: `1px solid ${T.linea}`, width: 280, color: T.tinta }}>
+                <div className="px-3 py-2 text-xs" style={{ color: T.suave, borderBottom: `1px solid ${T.linea}` }}>{usuario?.email}</div>
+                <button onClick={() => { setMenuEj(false); nuevo(); }} className="flex items-center gap-2 w-full text-left px-3 py-2 hover:bg-gray-100"><FilePlus size={15} />Nueva carga</button>
+                <button onClick={() => { setMenuEj(false); setVerEscenarios(true); }} className="flex sm:hidden items-center gap-2 w-full text-left px-3 py-2 hover:bg-gray-100"><FolderOpen size={15} />Escenarios</button>
+                <div className="px-3 pt-2 pb-1 text-xs flex items-center gap-1.5" style={{ color: T.suave, borderTop: `1px solid ${T.linea}` }}><BookOpen size={13} />Ejemplos</div>
+                {Object.entries(EJEMPLOS).map(([k, e]) => (
+                  <button key={k} onClick={() => cargarEjemplo(k)} className="block w-full text-left px-3 py-1.5 pl-8 hover:bg-gray-100">{e.nombre}</button>
+                ))}
+                <button onClick={() => { setMenuEj(false); cerrarSesion(); }} className="flex items-center gap-2 w-full text-left px-3 py-2 hover:bg-gray-100" style={{ borderTop: `1px solid ${T.linea}`, color: T.suave }}><LogOut size={15} />Cerrar sesión</button>
+              </div>
+            </>
           )}
         </div>
-        <button onClick={recomendar} disabled={calculando || !items.length} className="hidden sm:flex items-center gap-1.5 text-sm px-3 py-2 rounded-md" style={{ border: "1px solid rgba(255,255,255,.2)", color: T.navTexto }} title="Corre el pedido contra cada vehículo de la lista y compara">
-            <Truck size={15} />Recomendar vehículo
-          </button>
-          <button onClick={calcular} disabled={calculando || !items.length} className="flex items-center gap-2 text-sm font-semibold px-4 py-2 rounded-md"
+          <button onClick={calcular} disabled={calculando || !items.length} className="flex flex-none items-center gap-2 text-sm font-semibold px-4 py-2 rounded-md whitespace-nowrap"
           style={{ background: T.acento, color: T.nav, opacity: calculando ? 0.8 : 1, minWidth: 150, justifyContent: "center" }}>
           {calculando ? <><Loader2 size={16} className="animate-spin" />Estrategia {progreso.i}/{progreso.n}</> : <><Play size={16} />{modoPallet ? "Armar pallet" : "Calcular carga"}</>}
         </button>
@@ -948,12 +970,12 @@ export default function Estiba3D({ usuario }) {
           const act = seccion === id;
           return (
             <button key={id} onClick={() => setSeccion(id)} aria-current={act ? "page" : undefined}
-              className="flex items-center gap-2 px-4 py-2.5 relative flex-none whitespace-nowrap" title={d}
+              className="flex items-center gap-2 px-3 2xl:px-4 py-2.5 relative flex-none whitespace-nowrap" title={d}
               style={{ color: act ? "#fff" : T.navTexto, background: act ? "rgba(255,255,255,.07)" : "transparent" }}>
               <span className="absolute left-0 right-0 bottom-0" style={{ height: 3, background: act ? T.acento : "transparent" }} />
               <Icono size={16} color={act ? T.acento : T.navTexto} />
               <span className="text-sm font-medium">{t}</span>
-              <span className="hidden xl:inline text-xs" style={{ color: act ? "#C9D3E0" : "#7F8EA3" }}>{d}</span>
+              <span className="hidden 2xl:inline text-xs" style={{ color: act ? "#C9D3E0" : "#7F8EA3" }}>{d}</span>
             </button>
           );
         })}
@@ -961,7 +983,7 @@ export default function Estiba3D({ usuario }) {
 
       <div className="flex flex-col lg:flex-row flex-1 min-h-0">
         {/* ============ Panel de edición ============ */}
-        <section className="flex-none lg:w-1/2 xl:w-2/5 lg:overflow-y-auto p-4" style={{ borderRight: `1px solid ${T.linea}` }}>
+        <section className="flex-none lg:w-[var(--anchoIzq)] lg:overflow-y-auto p-4" style={{ "--anchoIzq": `${anchoIzq}%` }}>
           <datalist id="categorias-existentes">{[...new Set(maestro.productos.map((p) => p.categoria).filter(Boolean))].map((c) => <option key={c} value={c} />)}</datalist>
           <input ref={inputMaestro} type="file" accept=".xlsx,.xls" className="hidden" onChange={abrirArchivoMaestro} />
           <input ref={inputPedido} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={cargarPedido} />
@@ -1232,6 +1254,14 @@ export default function Estiba3D({ usuario }) {
 
           {error && <p className="text-sm mt-2 flex gap-1" style={{ color: T.error }}><AlertTriangle size={16} className="flex-none mt-0.5" />{error}</p>}
         </section>
+
+        {/* Divisor arrastrable entre la tabla y el visor (doble clic = mitad y mitad) */}
+        <div role="separator" aria-orientation="vertical" aria-label="Cambiar el ancho de la tabla y del visor" title="Arrastra para dar más espacio a la tabla o al 3D · doble clic: mitad y mitad"
+          onPointerDown={(e) => { arrastreDiv.current = true; e.currentTarget.setPointerCapture(e.pointerId); }} onPointerMove={moverDivisor} onPointerUp={soltarDivisor}
+          onDoubleClick={() => { setAnchoIzq(50); try { localStorage.setItem("darnelcube.anchoIzq", "50"); } catch { /* sin almacenamiento local */ } }}
+          className="hidden lg:flex flex-none items-center justify-center group" style={{ width: 8, cursor: "col-resize", background: T.linea }}>
+          <span className="rounded-full" style={{ width: 3, height: 36, background: T.suave, opacity: 0.6 }} />
+        </div>
 
         {/* ============ Área de trabajo: visor + resultados ============ */}
         <main className="flex-1 flex flex-col min-w-0 min-h-0">
