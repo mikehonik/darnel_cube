@@ -73,7 +73,15 @@ export function validarCarga({ items, vehiculo, tarimas, reglas }) {
 // geométricamente imposibles). Atribuirle eso al producto sería falso y, si el motor mejora,
 // pasaría a prometer de más. Estos valores se sostienen como deformación física y nada más;
 // el resto de la brecha queda a la vista, que es donde se puede trabajar de verdad.
-export const COMPRESION_POR_OMISION = { BL: 8, PQ: 4, CJ: 3, CS: 3, CJM: 3, PAC: 3, BLT: 3, RL: 0 };
+export const COMPRESION_POR_OMISION = { BL: 4, PQ: 2, CJ: 0, CS: 0, CJM: 0, PAC: 0, BLT: 0, RL: 0 };
+
+// Holgura entre bultos rígidos, en mm que se suman a lo largo y ancho de cada caja al buscarle
+// lugar (el dibujo y el volumen usan la medida real). Con un solo SKU no hace falta: las cajas
+// iguales encajan entre sí. Con variedad se pierde espacio, y crece con cuántos SKUs distintos
+// lleva el contenedor. El tope es bajo a propósito: más allá de unos milímetros ya no sería una
+// holgura física sino otra cosa, y no queremos que un número inventado se lea como si lo fuera.
+// Las bolsas no llevan holgura: se amoldan y rellenan el hueco solas.
+export const holguraPorMezcla = (nSkus) => Math.min(6, 2 * Math.max(0, nSkus - 1));
 
 export function prepararEntrada({ items, vehiculo, tarimas, reglas }) {
   return {
@@ -81,12 +89,21 @@ export function prepararEntrada({ items, vehiculo, tarimas, reglas }) {
     // Compresión por omisión: a un SKU que no la tenga capturada se le aplica la de su empaque
     // (ver COMPRESION_POR_OMISION). Calibrada con 1,185 contenedores reales; se apaga con
     // reglas.compresionAuto = false, y cualquier valor capturado en el SKU manda sobre esto.
-    items: items.map(({ id, color, desc, ...x }) => (
-      reglas.compresionAuto !== false && !(x.compresion > 0)
-        ? { ...x, compresion: COMPRESION_POR_OMISION[String(x.umCaja || "CJ").trim().toUpperCase()] ?? COMPRESION_POR_OMISION.CJ }
-        : x)),
+    items: (() => {
+      const real = reglas.compresionAuto !== false;
+      const holgura = real ? holguraPorMezcla(new Set(items.map((i) => String(i.nombre || "").trim().toUpperCase())).size) : 0;
+      return items.map(({ id, color, desc, ...x }) => {
+        if (!real) return x;
+        const um = String(x.umCaja || "CJ").trim().toUpperCase();
+        const y = { ...x };
+        if (!(x.compresion > 0)) y.compresion = COMPRESION_POR_OMISION[um] ?? COMPRESION_POR_OMISION.CJ;
+        if (holgura > 0 && um !== "BL") { y.L = x.L + holgura; y.W = x.W + holgura; }
+        return y;
+      });
+    })(),
     veh: vehiculo,
-    reglas: { ...reglas, soporteMin: reglas.soporteMin / 100 },
+    // "Simular la carga real" gobierna las tres cosas: cómo se rota, cuánto cede el producto y la holgura.
+    reglas: { ...reglas, soporteMin: reglas.soporteMin / 100, cargaReal: reglas.compresionAuto !== false, rotarAlFinal: reglas.compresionAuto !== false },
     pallets: tarimas || [],
   };
 }
