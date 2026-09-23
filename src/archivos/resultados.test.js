@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import * as XLSX from "xlsx";
 import { libroResultados, etapasDe, htmlInstructivo, htmlInstructivoCompleto, nombreArchivo } from "./resultados.js";
 import { armarReporte } from "../motor/reporte.js";
+import { NOMBRE_VERSION } from "../version.js";
 import { correr, ejecutorEnProceso } from "../motor/corrida.js";
 import { optimizar } from "../motor/motor.js";
 
@@ -29,7 +30,7 @@ describe("libroResultados", () => {
     expect(filas(wb, "Lista de carga")[0]).toEqual(filas(referencia, "Lista de carga")[0].map((h) => (h === "Orden" ? "Entrega" : h)));
     expect(filas(wb, "Entregas")).toEqual([["Vehículo", "Entrega", "Pedidos", "Bultos", "Volumen (m³)", "Desde las puertas (m)", "Hasta (m)", "Bultos que estorban"], [1, 1, "", 5, +(R.contenedores[0].entregas[0].vol / 1e9).toFixed(2), +(R.contenedores[0].entregas[0].desdePuertas / 1e3).toFixed(2), +(R.contenedores[0].entregas[0].hastaPuertas / 1e3).toFixed(2), 0]]);
     const resumen = filas(wb, "Resumen");
-    expect(resumen.slice(0, 5)).toEqual([["DarnelCube 3D · Resultados"], ["Carga", "Prueba"], ["Fecha", "hoy"], ["Vehículo", "V"], ["Nivel de optimización", 1]]);
+    expect(resumen.slice(0, 5)).toEqual([[`${NOMBRE_VERSION} · Resultados`], ["Carga", "Prueba"], ["Fecha", "hoy"], ["Vehículo", "V"], ["Nivel de optimización", 1]]);
     expect(resumen.at(-1)).toEqual(["No caben", "Enorme <b>"]);
     const t = R.contenedores[0], total = resumen.find((f) => f[0] === "Total");
     expect(resumen[6]).toEqual([1, t.nBultos, t.nCajas, t.nPallets, Math.round(t.peso), Math.round(t.pesoBruto), +t.utilPeso.toFixed(1), +t.m3.toFixed(2), +t.m3Cap.toFixed(2), +t.ocupacion.toFixed(1), +t.cgLargo.toFixed(0)]);

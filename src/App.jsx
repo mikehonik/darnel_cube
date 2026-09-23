@@ -13,6 +13,7 @@ import { libroResultados, etapasDe, htmlInstructivo, htmlInstructivoCompleto, no
 import { EJEMPLOS, PALLETS_INICIALES, VEHICULOS, nuevoItem } from "./ui/referencia.js";
 import { PALETAS, generarColores } from "./ui/colores.js";
 import { T } from "./ui/tema.js";
+import { VERSION, VERSION_COMPLETA } from "./version.js";
 import { FS_DISPONIBLE, descargarArchivo, idb } from "./ui/navegador.js";
 import { guardarProyectoNube, cargarProyectoNube, cerrarSesion, guardarMaestroNube, cargarMaestroNube } from "./nube/nube.js";
 import { fleteTotal, tarifaVacia, METODOS_FLETE } from "./archivos/flete.js";
@@ -868,6 +869,7 @@ export default function Estiba3D({ usuario }) {
         <div className="flex items-center gap-2 mr-2">
           <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><path d="M13 2 L24 8 L24 19 L13 25 L2 19 L2 8 Z" fill="none" stroke={T.acento} strokeWidth="2" /><path d="M2 8 L13 14 L24 8 M13 14 L13 25" fill="none" stroke={T.acento} strokeWidth="2" /></svg>
           <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 22, fontWeight: 700, letterSpacing: "0.01em" }}>DarnelCube 3D</span>
+          <button onClick={() => setSeccion("ayuda")} className="text-xs px-1.5 py-0.5 rounded" style={{ color: T.acento, border: `1px solid ${T.acento}66` }} title={`Versión ${VERSION_COMPLETA}. Clic para ver las novedades.`}>v{VERSION}</button>
         </div>
         <input value={proyecto} onChange={(e) => setProyecto(e.target.value)} aria-label="Nombre del proyecto"
           className="hidden md:block bg-transparent text-sm px-2 py-1 rounded-md outline-none" style={{ color: "#fff", border: "1px solid rgba(255,255,255,.15)", width: 240 }} />

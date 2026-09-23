@@ -4,6 +4,7 @@
 // Ambos son renderers del reporte: no leen el resultado crudo del motor.
 import * as XLSX from "xlsx";
 import { clave } from "./celdas.js";
+import { NOMBRE_VERSION, BUILD } from "../version.js";
 
 // Libro de una sola hoja, para listados simples (revisión del pedido)
 export function libroSimple(filas, hoja, anchos) {
@@ -20,7 +21,7 @@ const hoja = (wb, nombre, filas, anchos) => { const ws = XLSX.utils.aoa_to_sheet
 // Excel con Resumen, Lista de carga, Pallets (si hay) y Pasos de carga. Devuelve el archivo como bytes.
 export function libroResultados({ reporte: R, proyecto, nombreVeh, nivel, fecha = new Date().toLocaleString("es-MX") }) {
   const wb = XLSX.utils.book_new();
-  const r1 = [["DarnelCube 3D · Resultados"], ["Carga", proyecto], ["Fecha", fecha], ["Vehículo", nombreVeh], ["Nivel de optimización", nivel], [],
+  const r1 = [[`${NOMBRE_VERSION} · Resultados`], ["Carga", proyecto], ["Fecha", fecha], ["Vehículo", nombreVeh], ["Nivel de optimización", nivel], [],
     ["Vehículo", "Bultos", "Cajas", "Pallets", "Peso carga (kg)", "Peso bruto (kg)", "Utilización de peso (%)", "Volumen cargado (m³)", "Capacidad (m³)", "Utilización volumétrica (%)", "Centro de gravedad (% del fondo)"]];
   R.contenedores.forEach((t) => r1.push([t.num, t.nBultos, t.nCajas, t.nPallets, Math.round(t.peso), Math.round(t.pesoBruto), t.utilPeso == null ? "" : +t.utilPeso.toFixed(1), +t.m3.toFixed(2), +t.m3Cap.toFixed(2), +t.ocupacion.toFixed(1), +t.cgLargo.toFixed(0)]));
   const tot = R.totales;
@@ -85,7 +86,7 @@ const docInstructivo = (titulo, cuerpo) => `<!DOCTYPE html><html lang="es"><head
 <style>${ESTILO_INSTRUCTIVO}</style></head><body>
 <p class="noimp nota">Para guardar en PDF: Imprimir → Guardar como PDF.</p>
 ${cuerpo}
-<p class="nota">Generado con DarnelCube 3D.</p></body></html>`;
+<p class="nota">Generado con ${NOMBRE_VERSION}${BUILD ? ` (${BUILD})` : ""}.</p></body></html>`;
 
 // Instructivo de un solo contenedor. `imagenes[i]` es la captura del visor al terminar la etapa i (data URL).
 export function htmlInstructivo({ reporte, sel, modoPallet, proyecto, nombreVeh, etapas, imagenes, fecha = new Date().toLocaleString("es-MX") }) {

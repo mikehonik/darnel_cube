@@ -1,101 +1,131 @@
-# Estiba 3D — publicarlo con usuarios, gratis
+# DarnelCube 3D · cómo se publica y cómo se actualiza
 
-Sigue esto en orden. Son tres cuentas (Supabase, Netlify, GitHub — el de GitHub ya lo tienes) y
-unos 20-30 minutos. Al final tienes un link, y cada persona entra con su correo y contraseña.
+DarnelCube 3D vive en tres lugares:
 
----
+| Dónde | Qué hace |
+|---|---|
+| **GitHub** (`mikehonik/darnel_cube`) | Guarda el código. Es la fuente de todo. |
+| **Cloudflare Pages** | Toma el código de GitHub, lo compila y lo publica en el link que usa la gente. Se actualiza solo cada vez que cambia GitHub. |
+| **Supabase** | Guarda los usuarios, el maestro de cada uno y sus escenarios. |
 
-## 1. Crear el proyecto en Supabase (10 min)
-
-1. Ve a **supabase.com** → *Start your project* → crea tu cuenta (puedes usar tu cuenta de GitHub).
-2. **New Project**. Ponle nombre (por ejemplo `estiba3d`), crea una contraseña de base de datos
-   (guárdala, no la vas a necesitar de nuevo salvo emergencia) y elige la región más cercana.
-3. Espera 1-2 minutos a que el proyecto quede listo (dice *Active*).
-4. En el menú de la izquierda: **SQL Editor** → *New query*. Pega **todo** el contenido del
-   archivo `supabase_setup.sql` que te dejo junto a esta guía, y presiona *Run*.
-   Esto crea la tabla donde se guarda el proyecto de cada usuario, y la regla de que cada uno
-   solo vea el suyo.
-5. **Settings** (el engrane) → **API**. Ahí ves dos datos que vas a necesitar en el paso 3:
-   - **Project URL** (algo como `https://xxxxx.supabase.co`)
-   - **anon public key** (una clave larga que empieza con `eyJ...`)
-
-   No son secretos: están hechas para ir en la página. Lo que protege los datos es la regla
-   que acabas de crear con el SQL, no que esta clave esté oculta.
-
-### Crear las cuentas de tus usuarios
-
-**Authentication** (el ícono de personas) → **Users** → **Add user** → **Create new user**.
-Pon el correo de la persona y una contraseña temporal (que la cambien después si quieres, o
-avísales cuál es). Repite uno por uno. No hay registro abierto: solo entra quien tú agregues aquí.
+Las secciones 1 a 3 solo se hacen una vez. La sección 4 (publicar un cambio) es la que se repite.
 
 ---
 
-## 2. Subir el proyecto a GitHub (5 min)
+## 1. Supabase (una sola vez)
 
-1. En GitHub, **New repository**. Nómbralo como quieras (por ejemplo `estiba3d`) y márcalo
-   como **Private**.
-2. Sube el contenido de la carpeta `estiba3d-main` que te entrego (todo el proyecto). Si nunca
-   has hecho esto desde tu computadora, la forma más simple es arrastrar los archivos desde la
-   página del repositorio en GitHub ("uploading an existing file") — no necesitas usar la
-   terminal para este primer paso.
+1. En **supabase.com**, crea un proyecto (por ejemplo `darnelcube`) en la región más cercana.
+2. **SQL Editor → New query**. Pega y corre (*Run*), en este orden, el contenido de:
+   1. `supabase_setup.sql` (proyecto guardado por usuario)
+   2. `supabase_escenarios.sql` (varios escenarios con nombre por usuario)
+   3. `supabase_maestro.sql` (maestro permanente por usuario)
 
-Con el repositorio **privado**, el código no lo ve nadie que tú no invites. Esto es distinto a
-"GitHub Pages", que solo es gratis con repositorios públicos — por eso el siguiente paso usa
-Netlify en vez de GitHub Pages.
+   Los tres se pueden volver a correr sin borrar nada.
+3. **Settings → API**. Anota el **Project URL** y la **anon public key**. No son secretos: están
+   hechos para ir en la página. Lo que protege los datos son las reglas que crean los SQL, y cada
+   usuario solo ve lo suyo.
+
+### Dar de alta usuarios
+
+**Authentication → Users → Add user → Create new user**, con el correo de la persona y una
+contraseña temporal. No hay registro abierto: solo entra quien se agregue aquí.
 
 ---
 
-## 3. Publicar con Netlify (5 min)
+## 2. GitHub (una sola vez)
 
-1. Ve a **netlify.com** → crea tu cuenta (puedes entrar con tu cuenta de GitHub, así quedan
-   conectadas automáticamente).
-2. **Add new site** → **Import an existing project** → **GitHub** → autoriza a Netlify a ver
-   tus repositorios → elige el repositorio que subiste.
-3. Netlify va a preguntar cómo construir el sitio. Pon:
+El repositorio es `github.com/mikehonik/darnel_cube`. Se recomienda dejarlo **privado**
+(Settings → General → Danger Zone → Change visibility): tiene la lógica de cubicaje calibrada con
+datos reales de Darnel. Cloudflare sigue publicando igual con el repositorio privado.
+
+El archivo `.env` (llaves locales de Supabase) nunca se sube: `.gitignore` lo excluye.
+
+---
+
+## 3. Cloudflare Pages (una sola vez)
+
+1. En **dash.cloudflare.com → Workers & Pages → Create → Pages → Connect to Git**, autoriza
+   GitHub y elige `darnel_cube`.
+2. Configuración de compilación:
+   - **Framework preset:** Vite (o ninguno)
    - **Build command:** `npm run build`
-   - **Publish directory:** `dist`
-4. Antes de darle *Deploy*, agrega dos variables de entorno (busca *Environment variables* /
-   *Advanced settings* en esa misma pantalla, o después en *Site settings* → *Environment
-   variables*):
-   - `VITE_SUPABASE_URL` = tu Project URL del paso 1
-   - `VITE_SUPABASE_ANON_KEY` = tu anon public key del paso 1
-5. **Deploy site**. En 1-2 minutos te da un link (algo como `estiba3d-xyz.netlify.app`). Ese es
-   el link que le mandas a la gente.
+   - **Build output directory:** `dist`
+3. En **Settings → Environment variables** agrega:
+   - `VITE_SUPABASE_URL` = el Project URL del paso 1
+   - `VITE_SUPABASE_ANON_KEY` = la anon public key del paso 1
 
-Cada vez que subas un cambio al repositorio de GitHub, Netlify vuelve a publicar solo.
+   Con estas dos variables, nadie tiene que pegar las llaves de Supabase al abrir la app: entra
+   directo a la pantalla de correo y contraseña.
+4. **Save and Deploy**. En 1 o 2 minutos queda el link (algo como `darnelcube.pages.dev`).
 
----
-
-## 4. La primera vez que alguien abre el link
-
-La aplicación va a pedir, **una sola vez por navegador**, la Project URL y la anon key de
-Supabase (los mismos dos datos del paso 1). Después de eso, pide correo y contraseña — los que
-tú creaste en Authentication → Users.
-
-Si prefieres que la gente no tenga que pegar esos dos datos la primera vez, dímelo: puedo
-dejarlos ya puestos en el código antes de que lo subas a GitHub, usando las variables de entorno
-del paso 3, y la pantalla de configuración desaparece por completo.
+Cloudflare guarda cada publicación. Si una versión sale mal, en **Deployments** puedes regresar a
+la anterior con **Rollback**, sin tocar el código.
 
 ---
 
-## Qué guarda y qué no
+## 4. Publicar un cambio (cada vez)
 
-El botón **Guardar** sube a Supabase: el maestro de productos, el pedido, los vehículos, las
-tarimas y las reglas — todo el proyecto tal como está en pantalla. El botón **Cargar** trae lo
-último que guardaste. Cada persona solo ve lo que ella misma guardó, nunca lo de otro usuario.
+### 4.1 Subir el número de versión
 
-Al entrar, si ya habías guardado algo antes, se carga solo.
+La versión se ve arriba, junto al nombre (por ejemplo **v1.1.0**), y sale en el Excel de
+resultados y en el instructivo de carga. Así, cuando alguien reporta algo, sabemos qué versión
+tenía.
+
+Antes de subir un cambio, edita dos archivos:
+
+1. **`package.json`**, el campo `"version"`:
+   - Corrección pequeña (un error, un texto): `1.1.0` → `1.1.1`
+   - Funcionalidad nueva: `1.1.0` → `1.2.0`
+   - Cambio grande que cambia la forma de trabajar: `1.1.0` → `2.0.0`
+2. **`src/version.js`**, la lista `NOVEDADES`: agrega arriba una entrada con la versión, la fecha
+   y lo que cambió, escrito para quien usa la herramienta. Se muestra en **Ayuda → Novedades**
+   (también se llega con un clic en el número de versión).
+
+Además del número, cada publicación lleva un **código de build** que cambia solo (el commit que
+compiló Cloudflare). Se ve al pasar el mouse sobre la versión y al pie del instructivo. Si alguien
+olvida subir el número, el código de build igual dice exactamente qué código está publicado.
+
+### 4.2 Subir los archivos a GitHub
+
+Desde la página del repositorio: **Add file → Upload files**, arrastra los archivos o carpetas que
+cambiaron (GitHub respeta las carpetas y reemplaza los que ya existen), escribe un mensaje que diga
+qué cambió y presiona **Commit changes**.
+
+Windows no arrastra archivos que empiezan con punto (como `.gitignore`). Si hace falta cambiar uno,
+créalo o edítalo desde GitHub con **Add file → Create new file**.
+
+### 4.3 Revisar que se publicó
+
+En Cloudflare → tu proyecto → **Deployments**, el último debe decir **Success**. Si dice
+**Failed**, el sitio se queda con la versión anterior (el usuario no ve nada roto) y el log de ahí
+dice por qué falló. Abre el link y confirma que arriba aparece el número de versión nuevo.
+
+### 4.4 Publicar la nota de versión (recomendado)
+
+En GitHub → **Releases → Draft a new release**, crea una etiqueta con el número (por ejemplo
+`v1.2.0`), pega las mismas novedades de `src/version.js` y publica. Queda el historial de qué salió
+en cada versión, útil para avisarle al equipo.
 
 ---
 
-## Si algo no prende
+## 5. Si algo no prende
 
-- **"Failed to fetch" al entrar:** la Project URL o la anon key están mal copiadas, o les falta
-  un espacio de sobra. Revísalas en Settings → API.
-- **"Correo o contraseña incorrectos":** verifica el correo exacto en Authentication → Users.
-- **El sitio en Netlify no carga nada / pantalla blanca:** revisa en Netlify → tu sitio →
-  *Deploys* que el último *deploy* diga "Published" y no "Failed". Si falló, el log de ahí dice
-  por qué (casi siempre son las variables de entorno del paso 3, punto 4).
-- **Después de una semana sin que nadie entre, el primer intento del día falla:** Supabase pausa
-  los proyectos gratis tras 7 días sin uso. Entra un momento a tu panel de Supabase para
-  reactivarlo, o dile a alguien que reintente a los 30 segundos.
+- **"Failed to fetch" al entrar:** revisa `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY` en
+  Cloudflare (sin espacios de más). Después de cambiarlas, hay que volver a publicar
+  (Deployments → Retry deployment).
+- **"Correo o contraseña incorrectos":** verifica el correo exacto en Supabase → Authentication → Users.
+- **Pantalla blanca:** revisa en Cloudflare → Deployments que el último diga Success. Si falló,
+  el log dice por qué; mientras tanto puedes hacer **Rollback** a la versión anterior.
+- **La versión nueva no aparece:** recarga con Ctrl+F5; el navegador a veces guarda la anterior.
+- **El primer intento del día falla después de una semana sin uso:** Supabase pausa los proyectos
+  gratuitos tras 7 días sin actividad. Entra al panel de Supabase para reactivarlo, o reintenta a
+  los 30 segundos.
+
+---
+
+## Para programadores
+
+- `npm run dev` abre la app local; `npm test` corre las pruebas (Vitest); `npm run build` compila a `dist/`.
+- `npm run html` genera `dist/DarnelCube3D.html`, un solo archivo que se abre sin servidor.
+- La versión la inyecta `vite.config.js` al compilar (`__VERSION__` de `package.json` y
+  `__BUILD__` de `CF_PAGES_COMMIT_SHA` o de git). Se lee en `src/version.js`.
