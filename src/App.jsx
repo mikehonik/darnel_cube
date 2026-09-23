@@ -291,7 +291,12 @@ export default function Estiba3D({ usuario }) {
     elegirVehiculo(e.veh, e.vehExtra || {});
     setMenuEj(false); setVerMedidas(true); setSeccion("mercancia");
   };
-  const nuevo = () => { setItems([nuevoItem({ nombre: "SKU 1" })]); setProyecto("Carga sin título"); setRevision(null); invalidar(); setVerMedidas(true); setSeccion("mercancia"); };
+  // Con el botón a la vista es fácil darle sin querer: si ya hay un pedido capturado, se pregunta antes de borrarlo.
+  const nuevo = () => {
+    const hayPedido = items.length > 1 || items.some((it) => (it.qty || 0) > 0 && it.nombre !== "SKU 1");
+    if (hayPedido && !window.confirm("¿Empezar una carga nueva? Se borra el pedido actual. Si lo quieres conservar, guárdalo antes en Escenarios.")) return;
+    setItems([nuevoItem({ nombre: "SKU 1" })]); setProyecto("Carga sin título"); setRevision(null); invalidar(); setVerMedidas(true); setSeccion("mercancia");
+  };
 
   const importar = () => {
     const filas = textoPegado.split(/\r?\n/).map((l) => l.split(/\t|;|,/).map((c) => c.trim())).filter((f) => f.length >= 6 && f[0]);
@@ -902,14 +907,17 @@ export default function Estiba3D({ usuario }) {
         @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }`}</style>
 
       {/* ============ Barra superior ============ */}
-      <header className="flex items-center gap-3 px-4 flex-none" style={{ height: 56, background: T.nav, color: "#fff" }}>
+      <header className="flex items-center gap-2 lg:gap-3 px-3 lg:px-4 flex-none" style={{ height: 56, background: T.nav, color: "#fff" }}>
         <div className="flex items-center gap-2 mr-2">
           <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><path d="M13 2 L24 8 L24 19 L13 25 L2 19 L2 8 Z" fill="none" stroke={T.acento} strokeWidth="2" /><path d="M2 8 L13 14 L24 8 M13 14 L13 25" fill="none" stroke={T.acento} strokeWidth="2" /></svg>
           <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 22, fontWeight: 700, letterSpacing: "0.01em", whiteSpace: "nowrap" }}>DarnelCube 3D</span>
           <button onClick={() => setSeccion("ayuda")} className="text-xs px-1.5 py-0.5 rounded" style={{ color: T.acento, border: `1px solid ${T.acento}66` }} title={`Versión ${VERSION_COMPLETA}. Clic para ver las novedades.`}>v{VERSION}</button>
         </div>
         <input value={proyecto} onChange={(e) => setProyecto(e.target.value)} aria-label="Nombre del proyecto" title={proyecto}
-          className="hidden md:block bg-transparent text-sm px-2 py-1 rounded-md outline-none min-w-0" style={{ color: "#fff", border: "1px solid rgba(255,255,255,.15)", width: 220, flexShrink: 1 }} />
+          className="hidden lg:block bg-transparent text-sm px-2 py-1 rounded-md outline-none min-w-0" style={{ color: "#fff", border: "1px solid rgba(255,255,255,.15)", width: 220, flexShrink: 1 }} />
+        <button onClick={nuevo} className="flex flex-none items-center gap-1.5 text-sm px-2.5 py-1.5 rounded-md whitespace-nowrap" style={{ color: T.navTexto, border: "1px solid rgba(255,255,255,.2)" }} title="Empezar una carga nueva desde cero" aria-label="Nueva carga">
+          <FilePlus size={15} /><span className="hidden lg:inline">Nueva carga</span>
+        </button>
         <div className="flex-1" />
         {/* Encabezado ligero: solo lo que se usa en cada carga. Lo demás vive en el menú «Más». */}
         <div className="hidden sm:flex flex-none rounded-md overflow-hidden text-xs whitespace-nowrap" role="group" aria-label="Sistema de unidades" style={{ border: "1px solid rgba(255,255,255,.25)" }}>
@@ -925,7 +933,7 @@ export default function Estiba3D({ usuario }) {
           <Truck size={15} /><span className="hidden lg:inline">Recomendar</span>
         </button>
         <div className="relative flex-none">
-          <button onClick={() => setMenuEj(!menuEj)} className="flex items-center gap-1 text-sm px-2.5 py-1.5 rounded-md whitespace-nowrap" style={{ color: T.navTexto }} aria-expanded={menuEj} aria-label="Más opciones" title="Nuevo, ejemplos, sesión">
+          <button onClick={() => setMenuEj(!menuEj)} className="flex items-center gap-1 text-sm px-2.5 py-1.5 rounded-md whitespace-nowrap" style={{ color: T.navTexto }} aria-expanded={menuEj} aria-label="Más opciones" title="Ejemplos, escenarios y sesión">
             <MoreHorizontal size={18} /><span className="hidden xl:inline">Más</span>
           </button>
           {menuEj && (
@@ -933,7 +941,6 @@ export default function Estiba3D({ usuario }) {
               <div className="fixed inset-0 z-10" onClick={() => setMenuEj(false)} aria-hidden="true" />
               <div className="absolute right-0 mt-1 rounded-lg py-1 z-20 shadow-lg text-sm" style={{ background: T.sup, border: `1px solid ${T.linea}`, width: 280, color: T.tinta }}>
                 <div className="px-3 py-2 text-xs" style={{ color: T.suave, borderBottom: `1px solid ${T.linea}` }}>{usuario?.email}</div>
-                <button onClick={() => { setMenuEj(false); nuevo(); }} className="flex items-center gap-2 w-full text-left px-3 py-2 hover:bg-gray-100"><FilePlus size={15} />Nueva carga</button>
                 <button onClick={() => { setMenuEj(false); setVerEscenarios(true); }} className="flex sm:hidden items-center gap-2 w-full text-left px-3 py-2 hover:bg-gray-100"><FolderOpen size={15} />Escenarios</button>
                 <div className="px-3 pt-2 pb-1 text-xs flex items-center gap-1.5" style={{ color: T.suave, borderTop: `1px solid ${T.linea}` }}><BookOpen size={13} />Ejemplos</div>
                 {Object.entries(EJEMPLOS).map(([k, e]) => (

@@ -16,6 +16,12 @@ export const VERSION_COMPLETA = `v${VERSION}${BUILD ? ` · ${BUILD}` : ""}${FECH
 // escrito para quien usa la herramienta (no para programadores).
 export const NOVEDADES = [
   {
+    version: "1.2.4", fecha: "23/09/2026",
+    cambios: [
+      "«Nueva carga» vuelve a estar a la vista, junto al nombre de la carga. Si ya hay un pedido capturado, pregunta antes de borrarlo.",
+    ],
+  },
+  {
     version: "1.2.3", fecha: "23/09/2026",
     cambios: [
       "Los Excel que descarga la herramienta pesan como los de Excel: el maestro completo pasa de 45 MB a unos 5 MB. Aplica al maestro, las plantillas, los vehículos y los resultados; el contenido es el mismo.",
