@@ -16,6 +16,13 @@ export const VERSION_COMPLETA = `v${VERSION}${BUILD ? ` · ${BUILD}` : ""}${FECH
 // escrito para quien usa la herramienta (no para programadores).
 export const NOVEDADES = [
   {
+    version: "1.1.1", fecha: "23/09/2026",
+    cambios: [
+      "Los escenarios guardados antes de la 1.1.0 ya muestran los vehículos nuevos (53FT-DryVan y 48FT-DryVan) sin perder los que tenían.",
+      "El nombre de la herramienta ya no se parte en dos líneas en pantallas medianas.",
+    ],
+  },
+  {
     version: "1.1.0", fecha: "23/09/2026",
     cambios: [
       "Bundles (BDL): al cargar un pedido, los SKUs de manufactura propia se dividen solos en Bundles completos y cajas sueltas. Nuevo importador del archivo CS-BDL en Maestro.",
