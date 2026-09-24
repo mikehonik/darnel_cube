@@ -189,3 +189,20 @@ describe("leerBundleMaestro", () => {
     expect(r.productos[0]).toMatchObject({ bundleCantidadEstandar: 20, bundleL: 1085.85, bundleW: 882.65, bundleH: 2762.25 });
   });
 });
+
+describe("plantilla de Bundles", () => {
+  it("se descarga con los SKUs que tienen Bundle y se vuelve a subir con Importar → Bundle", async () => {
+    const { plantillaBundles } = await import("./maestro.js");
+    const con = [productoVacio({ sku: "DU-1", desc: "Charola", bundleCantidadEstandar: 24, bundleL: 900, bundleW: 600, bundleH: 1000, bundlePeso: 130 })];
+    const buf = plantillaBundles(con);
+    const r = leerBundleMaestro([productoVacio({ sku: "DU-1" }), productoVacio({ sku: "OTRO" })], buf);
+    expect(r.errores).toEqual([]);
+    expect(r.actualizados).toBe(1);
+    expect(r.productos[0]).toMatchObject({ bundleCantidadEstandar: 24, bundleL: 900, bundleW: 600, bundleH: 1000, bundlePeso: 130 });
+  });
+  it("sin SKUs con Bundle trae dos filas de ejemplo", async () => {
+    const { plantillaBundles } = await import("./maestro.js");
+    const wb = XLSX.read(plantillaBundles([]), { type: "array" });
+    expect(XLSX.utils.sheet_to_json(wb.Sheets.Bundles, { header: 1 })).toHaveLength(3);
+  });
+});

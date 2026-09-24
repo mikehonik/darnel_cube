@@ -276,6 +276,32 @@ export function libroMaestro(productos, tarimas, conversiones = null, sis = SIST
   return escribirXlsx(wb);
 }
 
+// ================= Plantilla de Bundles =================
+// La hoja Bundles sola (con los SKUs que ya tienen Bundle, o dos filas de ejemplo) más instrucciones. Se llena y se
+// sube con «Importar → Bundle»; al guardar el maestro queda en su hoja Bundles.
+export function plantillaBundles(productos = [], sis = SISTEMAS.metrico) {
+  const wb = XLSX.utils.book_new();
+  const con = productos.filter((p) => p.bundleCantidadEstandar > 0 && p.bundleL > 0 && p.bundleW > 0 && p.bundleH > 0);
+  const filas = con.length ? con.map((p) => [p.sku, p.desc, p.bundleCantidadEstandar, enL(p.bundleL, sis), enL(p.bundleW, sis), enL(p.bundleH, sis), enP(p.bundlePeso, sis)])
+    : [["DU2014501", "Ejemplo: charola escolar", 20, enL(1085.85, sis), enL(882.65, sis), enL(2762.25, sis), 0], ["DU401101", "Ejemplo: contenedor G-1", 32, enL(1492.25, sis), enL(1282.7, sis), enL(2501.9, sis), 0]];
+  const cols = ["SKU", "Descripción", "Cajas por Bundle", "Largo Bundle (mm)", "Ancho Bundle (mm)", "Alto Bundle (mm)", "Peso Bundle (kg)"];
+  const ws = XLSX.utils.aoa_to_sheet([cols.map((h) => encabezadoEn(h, sis)), ...filas]);
+  ws["!cols"] = [{ wch: 16 }, { wch: 40 }, { wch: 16 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 16 }];
+  XLSX.utils.book_append_sheet(wb, ws, "Bundles");
+  const wi = XLSX.utils.aoa_to_sheet([["Plantilla de Bundles · DarnelCube 3D"], [],
+    ["Una fila por SKU que se carga en Bundle (cajas grandes una encima de otra, sin pallet)."],
+    ["Cajas por Bundle: cuántas cajas del SKU forman un Bundle completo. Largo, Ancho y Alto: medidas del Bundle armado."],
+    ["Peso Bundle: en 0 se calcula como el peso de la caja × cajas por Bundle. La descripción es solo de referencia."],
+    [`La unidad va en el encabezado: si cambias (${sis.l}) por (mm), (cm) o (in), la herramienta convierte sola.`], [],
+    ["Cómo subirla:"],
+    ["1. En DarnelCube 3D, sección Maestro, usa «Importar ▾ → Bundle (BDL)» y elige este archivo."],
+    ["2. Solo se actualizan los SKUs que ya están en el maestro. Presiona Guardar para dejarlo en tu cuenta."],
+    ["3. En el pedido, esos SKUs aparecen en Bundle. No se captura porcentaje: el mix Bundle / suelto sale en el resultado."]]);
+  wi["!cols"] = [{ wch: 110 }];
+  XLSX.utils.book_append_sheet(wb, wi, "Instrucciones");
+  return escribirXlsx(wb);
+}
+
 // ================= Dimensiones (lo que en el futuro podría venir del ERP) =================
 // Plantilla mínima: SKU, ID producto, Descripción, medidas y peso. Nada de reglas de estiba.
 // Sirve tanto para dar de alta productos nuevos desde el ERP como para refrescar después las
@@ -348,12 +374,13 @@ export function leerBundleMaestro(productosActuales, buf, unidades = "auto") {
   if (hi < 0) throw new Error("No se encontró la columna del artículo (ID Artículo o SKU).");
   const heads = filas[hi].map(clave);
   const iSku = heads.findIndex((h) => ID_SKU.includes(h));
-  const iCsBdl = heads.findIndex((h) => h === "csbdl");
+  const iCsBdl = heads.findIndex((h) => h === "csbdl" || h === "cajasporbundle" || h === "cantidadestandarporbundle");
   const iRel = heads.findIndex((h) => h === "rel" || h === "relacion");
   const iFactor = heads.findIndex((h) => h === "factor");
-  const iAlto = heads.findIndex((h) => h === "alto");
-  const iLargo = heads.findIndex((h) => h === "largo");
-  const iAncho = heads.findIndex((h) => h === "ancho");
+  const iAlto = heads.findIndex((h) => h === "alto" || h === "altobundle");
+  const iLargo = heads.findIndex((h) => h === "largo" || h === "largobundle");
+  const iAncho = heads.findIndex((h) => h === "ancho" || h === "anchobundle");
+  const iPeso = heads.findIndex((h) => h === "pesobundle");
   if (iAlto < 0 || iLargo < 0 || iAncho < 0) throw new Error("Faltan las columnas de dimensiones del Bundle (Alto, Largo, Ancho).");
   // El archivo CS-BDL dice su unidad en el encabezado ("Alto (mm)"); si no dice nada, se asume mm.
   const fL = factorColumna(filas[hi][iLargo], "largo", unidades), fW = factorColumna(filas[hi][iAncho], "largo", unidades), fH = factorColumna(filas[hi][iAlto], "largo", unidades);
@@ -371,7 +398,7 @@ export function leerBundleMaestro(productosActuales, buf, unidades = "auto") {
     const bundleL = numero(f[iLargo]) * fL, bundleW = numero(f[iAncho]) * fW, bundleH = numero(f[iAlto]) * fH;
     if (!(cantidadEstandar > 0) || !(bundleL > 0 && bundleW > 0 && bundleH > 0)) { errores.push(`${sku}: fila incompleta (cantidad estándar o dimensiones); no se importó.`); continue; }
     // Copia nueva del producto (nunca mutar el que ya está en el estado de React)
-    const pos = productos.findIndex((p) => p.pid === existente.pid), nuevo = { ...productos[pos], bundleCantidadEstandar: cantidadEstandar, bundleL, bundleW, bundleH };
+    const pos = productos.findIndex((p) => p.pid === existente.pid), nuevo = { ...productos[pos], bundleCantidadEstandar: cantidadEstandar, bundleL, bundleW, bundleH, ...(iPeso >= 0 ? { bundlePeso: numero(f[iPeso]) * factorColumna(filas[hi][iPeso], "peso", unidades) } : {}) };
     productos[pos] = nuevo;
     actualizados++;
   }

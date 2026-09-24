@@ -1540,5 +1540,19 @@ export const EN = {
  "Se carga en Bundles de {0} cajas": "Loaded in Bundles of {0} boxes",
  "{0} vehículo": "{0} vehicle",
  "{0} vehículos": "{0} vehicles",
- "Cuántas cajas de este SKU forman un Bundle completo. Al importar un archivo CS-BDL sale de la columna CS / BDL, o de Rel ÷ Factor.": "How many boxes of this SKU make a full Bundle. When importing a CS-BDL file it comes from the CS / BDL column, or from Rel ÷ Factor."
+ "Cuántas cajas de este SKU forman un Bundle completo. Al importar un archivo CS-BDL sale de la columna CS / BDL, o de Rel ÷ Factor.": "How many boxes of this SKU make a full Bundle. When importing a CS-BDL file it comes from the CS / BDL column, or from Rel ÷ Factor.",
+ "«Nueva carga» ahora sí deja el pedido vacío (antes quedaba una línea «SKU 1» de 50 cajas) y pide confirmación con una ventana propia de la página, que el navegador no puede bloquear.": "“New load” now really leaves the order empty (before, a 50-box “SKU 1” line was left) and asks for confirmation with the page's own window, which the browser can't block.",
+ "¿Empezar una carga nueva?": "Start a new load?",
+ "Se borra el pedido actual ({0} {1}) y su resultado. El maestro no cambia. Si lo quieres conservar, guárdalo antes en Escenarios.": "The current order ({0} {1}) and its result are cleared. The master doesn't change. If you want to keep it, save it first in Scenarios.",
+ "Borrar y empezar": "Clear and start",
+ "Empezar una carga nueva": "Start a new load",
+ "Con el pedido listo, en lugar del cuadro «Para calcular la carga» encima del 3D aparece un botón chico abajo, para no tapar la imagen mientras se ajusta.": "With the order ready, instead of the “To calculate the load” box over the 3D view, a small button appears at the bottom so it doesn't cover the image while you adjust.",
+ "Guardar el maestro muestra «Guardando…» mientras sube (con un maestro grande tarda unos segundos y parecía no hacer nada). Guardar lo deja en tu cuenta; el Excel con su hoja Bundles se baja con «Descargar ▾ → Copia del maestro en Excel».": "Saving the master shows “Saving…” while it uploads (with a large master it takes a few seconds and seemed to do nothing). Save keeps it in your account; the Excel with its Bundles sheet is downloaded with “Download ▾ → Copy of the master in Excel”.",
+ "Nueva «Descargar ▾ → Plantilla de Bundles» (SKU, cajas por Bundle, medidas y peso), que se sube con «Importar ▾ → Bundle».": "New “Download ▾ → Bundles template” (SKU, boxes per Bundle, dimensions and weight), uploaded with “Import ▾ → Bundle”.",
+ "Guardando…": "Saving…",
+ "Plantilla de Bundles": "Bundles template",
+ "SKU, cajas por Bundle y medidas; se sube con Importar ▾ → Bundle": "SKU, boxes per Bundle and dimensions; upload it with Import ▾ → Bundle",
+ "Guardar deja tu maestro en tu cuenta (no descarga un archivo): lo tienes cada vez que entres, desde cualquier computadora. Para tener el Excel, con sus hojas Datos, Parámetros y Bundles, usa «Descargar ▾ → Copia del maestro en Excel».": "Save keeps your master in your account (it doesn't download a file): you have it every time you sign in, from any computer. To get the Excel, with its Datos, Parámetros and Bundles sheets, use “Download ▾ → Copy of the master in Excel”.",
+ "{0} SKUs · {1} cajas · {2}": "{0} SKUs · {1} boxes · {2}",
+ "Los menús «Importar ▾» y «Descargar ▾» se abren hacia arriba cuando están al final del panel; antes se cortaban y al bajar para verlos se cerraban.": "The “Import ▾” and “Download ▾” menus open upward when they're at the bottom of the panel; before, they were cut off and closed when you scrolled down to see them."
 };

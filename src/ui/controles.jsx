@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 // ================= Controles =================
 // Piezas chicas de formulario y tarjetas que usa toda la interfaz.
 import { T } from "./tema.js";
@@ -123,16 +123,28 @@ export function SelectorIdioma({ idioma, onCambiar, oscuro = true }) {
 
 export function MenuBoton({ etiqueta, icono: Icono, acciones }) {
   const [abierto, setAbierto] = useState(false);
+  // Abre hacia arriba si abajo no cabe (el botón suele quedar al final del panel y el menú se cortaba;
+  // al querer bajar para verlo, el menú se cerraba)
+  const [arriba, setArriba] = useState(false);
+  const boton = useRef(null);
+  const lista = acciones.filter(Boolean);
+  const abrir = () => {
+    if (!abierto && boton.current) {
+      const r = boton.current.getBoundingClientRect(), alto = lista.length * 50 + 12;
+      setArriba(window.innerHeight - r.bottom < alto && r.top > window.innerHeight - r.bottom);
+    }
+    setAbierto(!abierto);
+  };
   return (
     <div className="relative inline-block">
-      <button onClick={() => setAbierto(!abierto)} aria-expanded={abierto} className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md" style={{ border: `1px solid ${T.linea}`, background: T.sup }}>
-        {Icono && <Icono size={15} />}{etiqueta}<span style={{ fontSize: 10, color: T.suave }}>▾</span>
+      <button ref={boton} onClick={abrir} aria-expanded={abierto} className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md" style={{ border: `1px solid ${T.linea}`, background: T.sup }}>
+        {Icono && <Icono size={15} />}{etiqueta}<span style={{ fontSize: 10, color: T.suave }}>{abierto && arriba ? "▴" : "▾"}</span>
       </button>
       {abierto && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setAbierto(false)} aria-hidden="true" />
-          <div className="absolute left-0 mt-1 rounded-lg py-1 z-20 shadow-lg text-sm" style={{ background: T.sup, border: `1px solid ${T.linea}`, minWidth: 260 }}>
-            {acciones.filter(Boolean).map(([t, fn, ayuda, deshabilitado]) => (
+          <div className={`absolute left-0 rounded-lg py-1 z-20 shadow-lg text-sm ${arriba ? "bottom-full mb-1" : "top-full mt-1"}`} style={{ background: T.sup, border: `1px solid ${T.linea}`, minWidth: 260 }}>
+            {lista.map(([t, fn, ayuda, deshabilitado]) => (
               <button key={t} onClick={() => { setAbierto(false); fn(); }} disabled={deshabilitado} title={ayuda} className="block w-full text-left px-3 py-1.5 hover:bg-gray-100" style={{ opacity: deshabilitado ? 0.45 : 1 }}>
                 {t}{ayuda && <span className="block text-xs" style={{ color: T.suave }}>{ayuda}</span>}
               </button>

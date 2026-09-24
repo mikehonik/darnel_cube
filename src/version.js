@@ -16,6 +16,16 @@ export const VERSION_COMPLETA = `v${VERSION}${BUILD ? ` · ${BUILD}` : ""}${FECH
 // escrito para quien usa la herramienta (no para programadores).
 export const NOVEDADES = [
   {
+    version: "1.5.1", fecha: "24/09/2026",
+    cambios: [
+      "Con el pedido listo, en lugar del cuadro «Para calcular la carga» encima del 3D aparece un botón chico abajo, para no tapar la imagen mientras se ajusta.",
+      "Guardar el maestro muestra «Guardando…» mientras sube (con un maestro grande tarda unos segundos y parecía no hacer nada). Guardar lo deja en tu cuenta; el Excel con su hoja Bundles se baja con «Descargar ▾ → Copia del maestro en Excel».",
+      "Nueva «Descargar ▾ → Plantilla de Bundles» (SKU, cajas por Bundle, medidas y peso), que se sube con «Importar ▾ → Bundle».",
+      "Los menús «Importar ▾» y «Descargar ▾» se abren hacia arriba cuando están al final del panel; antes se cortaban y al bajar para verlos se cerraban.",
+      "«Nueva carga» ahora sí deja el pedido vacío (antes quedaba una línea «SKU 1» de 50 cajas) y pide confirmación con una ventana propia de la página, que el navegador no puede bloquear.",
+    ],
+  },
+  {
     version: "1.5.0", fecha: "24/09/2026",
     cambios: [
       "Bundles desde el maestro: nueva hoja «Bundles» (SKU, cajas por Bundle, medidas y peso). En cada línea del pedido se elige cómo se carga: suelta, pallet de un SKU, pallet mixto o Bundle (solo para los SKUs de esa hoja).",

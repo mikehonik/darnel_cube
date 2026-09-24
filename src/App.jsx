@@ -6,7 +6,7 @@ import MotorWorker from "./motor/motor.worker.js?worker&inline";
 import { armarReporte } from "./motor/reporte.js";
 import { rotar, mover, pegar as pegarBulto, quitar, colocar, validar, recalcularContenedor } from "./motor/edicion.js";
 import { clave, claveSku, indiceSku, buscarSku, conversionDe, numero } from "./archivos/celdas.js";
-import { ARCHIVO_MAESTRO, ARCHIVO_RESPALDO, productoVacio, leerMaestro, libroMaestro, leerCubeMaster, plantillaDimensiones, actualizarDimensiones, leerBundleMaestro } from "./archivos/maestro.js";
+import { ARCHIVO_MAESTRO, ARCHIVO_RESPALDO, productoVacio, leerMaestro, libroMaestro, leerCubeMaster, plantillaDimensiones, plantillaBundles, actualizarDimensiones, leerBundleMaestro } from "./archivos/maestro.js";
 import { tieneBundle } from "./archivos/bundle.js";
 import { leerVehiculos, libroVehiculos, plantillaVehiculos, vehiculoVacio } from "./archivos/vehiculos.js";
 import { leerPedido, libroPlantilla } from "./archivos/pedido.js";
@@ -332,11 +332,13 @@ export default function Estiba3D({ usuario }) {
     setMenuEj(false); setVerMedidas(true); setSeccion("mercancia");
   };
   // Con el botón a la vista es fácil darle sin querer: si ya hay un pedido capturado, se pregunta antes de borrarlo.
-  const nuevo = () => {
-    const hayPedido = items.length > 1 || items.some((it) => (it.qty || 0) > 0 && it.nombre !== "SKU 1");
-    if (hayPedido && !window.confirm(tr("¿Empezar una carga nueva? Se borra el pedido actual. Si lo quieres conservar, guárdalo antes en Escenarios."))) return;
-    setItems([nuevoItem({ nombre: "SKU 1" })]); setProyecto(tr("Carga sin título")); setRevision(null); invalidar(); setVerMedidas(true); setSeccion("mercancia");
+  // Nueva carga: deja el pedido vacío (antes quedaba una línea «SKU 1» de 50 cajas que parecía un pedido).
+  // La confirmación es propia de la página: el confirm() del navegador se puede bloquear y entonces no hacía nada.
+  const [confirmarNueva, setConfirmarNueva] = useState(false);
+  const empezarNueva = () => {
+    setConfirmarNueva(false); setAviso(""); setError(""); setItems([]); setProyecto(tr("Carga sin título")); setRevision(null); invalidar(); setVistaHerr(null); setEdicion(null); setSeccion("mercancia");
   };
+  const nuevo = () => { if (items.length) setConfirmarNueva(true); else empezarNueva(); };
 
   const importar = () => {
     const filas = textoPegado.split(/\r?\n/).map((l) => l.split(/\t|;|,/).map((c) => c.trim())).filter((f) => f.length >= 6 && f[0]);
@@ -398,13 +400,18 @@ export default function Estiba3D({ usuario }) {
     catch (err) { setError("No se pudo leer el archivo: " + err.message); }
   };
   // Guardar = a la cuenta del usuario, y nada más. Es lo que usa todo el mundo.
+  // Guardar tarda unos segundos con un maestro grande: el botón lo dice mientras tanto (antes parecía no hacer nada)
+  const [guardandoMaestro, setGuardandoMaestro] = useState(false);
   const guardarMaestro = async () => {
-    setError("");
+    if (guardandoMaestro) return;
+    setError(""); setGuardandoMaestro(true);
+    await new Promise((r) => setTimeout(r, 30));   // deja pintar «Guardando…» antes de comprimir
     try {
       await guardarMaestroNube({ productos: maestro.productos, tarimas: pallets, conversiones: maestro.conversiones });
       setMaestro((m) => ({ ...m, sucio: false, guardado: new Date() }));
       setAviso("Maestro guardado en tu cuenta. Está disponible cada vez que entres, en cualquier computadora.");
     } catch (e) { setError("No se pudo guardar el maestro en tu cuenta: " + e.message); }
+    finally { setGuardandoMaestro(false); }
   };
 
   // Aparte y a propósito: bajar el maestro como Excel, o escribirlo en la carpeta conectada.
@@ -1001,6 +1008,18 @@ export default function Estiba3D({ usuario }) {
             style={{ width: 36, height: 36, color: "#fff", border: "1px solid rgba(255,255,255,.3)", background: "transparent" }}><X size={16} /></button>
         )}
       </header>
+      {confirmarNueva && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-24 px-4" style={{ background: "rgba(20,33,61,.35)" }} onClick={() => setConfirmarNueva(false)} onKeyDown={(e) => { if (e.key === "Escape") setConfirmarNueva(false); }}>
+          <div role="alertdialog" aria-label="Empezar una carga nueva" className="rounded-lg shadow-xl p-4 text-sm" style={{ background: T.sup, width: 380, maxWidth: "100%" }} onClick={(e) => e.stopPropagation()}>
+            <p className="font-semibold mb-1">¿Empezar una carga nueva?</p>
+            <p className="mb-3" style={{ color: T.suave }}>Se borra el pedido actual ({items.length} {items.length === 1 ? "línea" : "líneas"}) y su resultado. El maestro no cambia. Si lo quieres conservar, guárdalo antes en Escenarios.</p>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setConfirmarNueva(false)} className="px-3 py-1.5 rounded-md" style={{ border: `1px solid ${T.linea}` }}>Cancelar</button>
+              <button onClick={empezarNueva} autoFocus className="px-3 py-1.5 rounded-md font-medium" style={{ background: T.error, color: "#fff" }}>Borrar y empezar</button>
+            </div>
+          </div>
+        </div>
+      )}
       {verEscenarios && (
         <Escenarios
           nombreActual={proyecto}
@@ -1068,10 +1087,10 @@ export default function Estiba3D({ usuario }) {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button onClick={() => inputMaestro.current?.click()} className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md" style={{ border: `1px solid ${T.linea}`, background: T.sup }}><Upload size={15} />Abrir archivo</button>
-                  <button onClick={guardarMaestro} disabled={!maestro.productos.length} className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md font-semibold"
-                    style={{ background: maestro.sucio ? T.acento : T.sup, color: T.nav, border: `1px solid ${maestro.sucio ? T.acento : T.linea}`, opacity: maestro.productos.length ? 1 : 0.5 }}><Save size={15} />Guardar</button>
+                  <button onClick={guardarMaestro} disabled={!maestro.productos.length || guardandoMaestro} className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md font-semibold"
+                    style={{ background: maestro.sucio ? T.acento : T.sup, color: T.nav, border: `1px solid ${maestro.sucio ? T.acento : T.linea}`, opacity: maestro.productos.length ? 1 : 0.5 }}>{guardandoMaestro ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}{guardandoMaestro ? "Guardando…" : "Guardar"}</button>
                 </div>
-                <Nota titulo="Cómo se guarda">Guardar deja tu maestro en tu cuenta: lo tienes cada vez que entres, desde cualquier computadora. «Descargar copia en Excel», abajo, baja una copia sin cambiar lo guardado.</Nota>
+                <Nota titulo="Cómo se guarda">Guardar deja tu maestro en tu cuenta (no descarga un archivo): lo tienes cada vez que entres, desde cualquier computadora. Para tener el Excel, con sus hojas Datos, Parámetros y Bundles, usa «Descargar ▾ → Copia del maestro en Excel».</Nota>
                 {maestro.errores?.length > 0 && <p className="text-xs mt-2" style={{ color: T.aviso }}>Revisar: {maestro.errores.slice(0, 4).join(" ")}{maestro.errores.length > 4 ? ` y ${maestro.errores.length - 4} más.` : ""}</p>}
               </Tarjeta>
 
@@ -1136,6 +1155,7 @@ export default function Estiba3D({ usuario }) {
                   ["Copia del maestro en Excel", exportarMaestro, "Tu maestro en la cuenta no cambia", !maestro.productos.length],
                   ["Plantilla de carga (pedido)", () => descargarArchivo(libroPlantilla(maestro.productos, vehiculos), "plantilla_carga.xlsx", MIME_XLSX), "SKU y cantidad; las medidas salen del maestro"],
                   ["Plantilla de dimensiones", () => descargarArchivo(plantillaDimensiones(maestro.productos, SISTEMAS[sistema]), "plantilla_dimensiones.xlsx", MIME_XLSX), "Solo SKU, descripción y medidas"],
+                  ["Plantilla de Bundles", () => descargarArchivo(plantillaBundles(maestro.productos, SISTEMAS[sistema]), "plantilla_bundles.xlsx", MIME_XLSX), "SKU, cajas por Bundle y medidas; se sube con Importar ▾ → Bundle"],
                 ]} />
               </div>
             </>
@@ -1399,7 +1419,18 @@ export default function Estiba3D({ usuario }) {
                 ))}
               </div>
             </div>
-            {!res && !vistaHerr && !calculando && (
+            {/* Con el pedido listo (por ejemplo, mientras se ajusta después de calcular) basta un botón chico abajo, para no tapar el 3D */}
+            {!res && !vistaHerr && !calculando && items.some((it) => it.qty > 0) && (
+              <div className="absolute bottom-3 left-0 right-0 flex justify-center pointer-events-none px-3">
+                <div className="pointer-events-auto flex items-center gap-3 rounded-full pl-4 pr-1.5 py-1.5 shadow-sm text-xs" style={{ background: "rgba(255,255,255,.95)" }}>
+                  <span style={{ color: T.suave }}>{items.length} SKUs · {totales.cajas.toLocaleString("es-MX")} cajas · {nombreVeh}</span>
+                  <button onClick={calcular} className="flex items-center gap-1.5 text-sm font-semibold px-3 py-1 rounded-full" style={{ background: T.acento, color: T.nav }}>
+                    <Play size={14} />{modoPallet ? "Armar pallet" : "Calcular carga"}<span className="text-xs font-normal opacity-70">Ctrl+Enter</span>
+                  </button>
+                </div>
+              </div>
+            )}
+            {!res && !vistaHerr && !calculando && !items.some((it) => it.qty > 0) && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 {/* Primeros pasos: qué falta para calcular, y cada paso lleva a su sección */}
                 <div className="pointer-events-auto rounded-xl px-4 py-3 shadow-sm" style={{ background: "rgba(255,255,255,.95)", minWidth: 280 }}>
