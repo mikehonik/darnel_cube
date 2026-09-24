@@ -58,7 +58,7 @@ function pasosDe(cont, resultado, items, u) {
     const it = items[p.idx] || {}, d = p.pal >= 0 ? resultado.pallets[p.pal] : null;
     const nx = Math.round((p.x1 - p.x0) / p.l), ny = Math.round((p.y1 - p.y0) / p.w), nz = Math.round((p.z1 - p.z0) / p.h);
     const bloque = nx * ny * nz === p.n ? ` en bloque de ${nx} a lo largo × ${ny} a lo ancho × ${nz} de alto` : "";
-    const que = d ? `${p.n} ${p.n === 1 ? "pallet" : "pallets"} «${d.nombre}» (${d.n} cajas c/u, en ${d.tipoPallet})` : `${p.n} ${p.n === 1 ? "caja" : "cajas"} de ${it.nombre}${it.desc ? ` (${it.desc})` : ""}, ${(ORIENTACIONES[(p.ori || 1) - 1] || "").toLowerCase()}`;
+    const que = d ? `${p.n} ${p.n === 1 ? "pallet" : "pallets"} «${d.nombre}» (${d.n} cajas c/u, en ${d.tipoPallet})` : `${p.n} ${it.esBundle ? (p.n === 1 ? "Bundle" : "Bundles") : p.n === 1 ? "caja" : "cajas"} de ${it.nombre}${it.desc ? ` (${it.desc})` : ""}${it.deBundle && it.abiertos ? " (de Bundles abiertos)" : ""}, ${(ORIENTACIONES[(p.ori || 1) - 1] || "").toLowerCase()}`;
     const donde = `a ${mts(p.x0)}–${mts(p.x1)} ${ud} del fondo, ${mts(p.y0)}–${mts(p.y1)} ${ud} del lado derecho (visto desde las puertas), ${p.z0 < 1 ? "sobre el piso" : `a ${mts(p.z0)} ${ud} de altura`}`;
     return { num: k + 1, texto: `Coloca ${que}${bloque}, ${donde}.`, sku: d ? d.nombre : it.nombre, n: p.n, ini: p.ini, fin: p.fin, forma: d ? "Pallet" : ORIENTACIONES[(p.ori || 1) - 1], x0: p.x0, y0: p.y0, z0: p.z0 };
   });

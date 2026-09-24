@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { Package, Truck, Layers, SlidersHorizontal, HelpCircle, Play, FilePlus, ClipboardPaste, AlertTriangle, Loader2, Plus, Trash2, X, ChevronDown, ChevronLeft, ChevronRight, Database, FolderOpen, Save, Upload, FileSpreadsheet, Search, RefreshCw, CheckCircle2, Repeat, Calculator, PackagePlus, MoreHorizontal, LogOut, BookOpen, Hand } from "lucide-react";
-import { correr, ejecutorWorker, ErrorCorrida } from "./motor/corrida.js";
+import { Package, Truck, Layers, SlidersHorizontal, HelpCircle, Play, FilePlus, ClipboardPaste, AlertTriangle, Loader2, Plus, Trash2, X, ChevronDown, ChevronLeft, ChevronRight, Database, FolderOpen, Save, Upload, FileSpreadsheet, Search, RefreshCw, CheckCircle2, Repeat, Calculator, PackagePlus, MoreHorizontal, LogOut, BookOpen, Hand, Download } from "lucide-react";
+import { correr, correrConBundles, ejecutorWorker, ErrorCorrida } from "./motor/corrida.js";
+import { sugerirLlenado, sugerirDisminucion } from "./motor/optimizarPedido.js";
 import MotorWorker from "./motor/motor.worker.js?worker&inline";
 import { armarReporte } from "./motor/reporte.js";
 import { rotar, mover, pegar as pegarBulto, quitar, colocar, validar, recalcularContenedor } from "./motor/edicion.js";
 import { clave, claveSku, indiceSku, buscarSku, conversionDe, numero } from "./archivos/celdas.js";
 import { ARCHIVO_MAESTRO, ARCHIVO_RESPALDO, productoVacio, leerMaestro, libroMaestro, leerCubeMaster, plantillaDimensiones, actualizarDimensiones, leerBundleMaestro } from "./archivos/maestro.js";
-import { transformarPedidoBundle } from "./archivos/bundle.js";
+import { tieneBundle } from "./archivos/bundle.js";
 import { leerVehiculos, libroVehiculos, plantillaVehiculos, vehiculoVacio } from "./archivos/vehiculos.js";
 import { leerPedido, libroPlantilla } from "./archivos/pedido.js";
 import { leerConversiones, aCajas, UM_CAJA_DEF, normalizaUM, nombreUM } from "./archivos/conversiones.js";
@@ -16,13 +17,14 @@ import { PALETAS, generarColores } from "./ui/colores.js";
 import { T } from "./ui/tema.js";
 import { VERSION, VERSION_COMPLETA } from "./version.js";
 import { FS_DISPONIBLE, descargarArchivo, idb } from "./ui/navegador.js";
+import { idiomaActual, idiomaGuardado, guardarIdioma, fijarIdioma, traducirPantalla, tr } from "./i18n/index.js";
 import { guardarProyectoNube, cargarProyectoNube, cerrarSesion, guardarMaestroNube, cargarMaestroNube, guardarPreferencias } from "./nube/nube.js";
 import { unidadesDe, SISTEMAS, UNIDADES_ARCHIVO } from "./unidades.js";
 import { ProveedorUnidades } from "./ui/unidadesContexto.jsx";
 import { fleteTotal, tarifaVacia, METODOS_FLETE } from "./archivos/flete.js";
 import { Escenarios } from "./nube/Escenarios.jsx";
 import { Visor } from "./visor/Visor.jsx";
-import { Confirmacion, Tarjeta, Nota, estInp, inp } from "./ui/controles.jsx";
+import { Confirmacion, Tarjeta, Nota, MenuBoton, SelectorIdioma, estInp, inp } from "./ui/controles.jsx";
 import { SeccionVehiculo } from "./ui/secciones/SeccionVehiculo.jsx";
 import { RevisionPedido } from "./ui/secciones/RevisionPedido.jsx";
 import { SeccionPaletizado } from "./ui/secciones/SeccionPaletizado.jsx";
@@ -31,11 +33,9 @@ import { SeccionReglas } from "./ui/secciones/SeccionReglas.jsx";
 import { SeccionHerramientas } from "./ui/secciones/SeccionHerramientas.jsx";
 import { PanelResultados } from "./ui/secciones/PanelResultados.jsx";
 import { PanelEdicion } from "./ui/secciones/PanelEdicion.jsx";
+import { OptimizarPedido } from "./ui/secciones/OptimizarPedido.jsx";
 import { FilaItem, FilaMaestro } from "./ui/filas.jsx";
 
-// Un vehículo que termina usándose por debajo de este % es la señal de "casi no hacía falta":
-// ahí vale la pena ofrecer intentar consolidar todo en un vehículo menos.
-const UMBRAL_CONSOLIDAR = 0.05;
 // Hasta cuántos vehículos se muestran como botones sobre el visor; con más, se cambia a un selector con flechas.
 const MAX_BOTONES_VEH = 3;
 
@@ -56,12 +56,23 @@ export default function Estiba3D({ usuario }) {
     try { localStorage.setItem("darnelcube.unidades", id); } catch { /* sin almacenamiento local: no pasa nada */ }
     guardarPreferencias({ unidades: id }).catch(() => {});
   };
+  // Idioma: lo último que se eligió en este navegador (también en la pantalla de entrada), si no el de la cuenta. El texto se traduce en pantalla (i18n/index.js).
+  const [idioma, setIdioma] = useState(() => { const l = idiomaGuardado() || usuario?.user_metadata?.idioma || "es"; fijarIdioma(l); return idiomaActual(); });
+  const cambiarIdioma = (l) => {
+    guardarIdioma(l); setIdioma(idiomaActual()); traducirPantalla();
+    guardarPreferencias({ idioma: idiomaActual() }).catch(() => {});
+  };
+  useEffect(() => { traducirPantalla(); }, [idioma]);
+  // Al cambiar de pestaña, el panel empieza arriba (antes conservaba el desplazamiento de la anterior)
+  const panelIzq = useRef(null);
   // Unidad de los archivos que se suben (maestro, dimensiones, Bundle, vehículos). "auto" = según el encabezado.
   const [unidadesArchivo, setUnidadesArchivo] = useState("auto");
   const conUnidades = (texto) => (texto && texto !== "milímetros y kilogramos" ? ` Medidas leídas en ${texto} y guardadas en mm y kg.` : "");
-  const [proyecto, setProyecto] = useState("Carga sin título");
+  const [proyecto, setProyecto] = useState(() => tr("Carga sin título"));
   const [seccion, setSeccion] = useState("mercancia");
-  const [verMedidas, setVerMedidas] = useState(true); // columnas Largo/Ancho/Alto/Kg; se ocultan cuando el pedido viene del maestro
+  useEffect(() => { if (panelIzq.current) panelIzq.current.scrollTop = 0; }, [seccion]);
+  const [verMedidas, setVerMedidas] = useState(true);
+  const [verRutaManual, setVerRutaManual] = useState(false);   // columnas Entrega/Pedido/Destino aunque estén vacías // columnas Largo/Ancho/Alto/Kg; se ocultan cuando el pedido viene del maestro
   const [vehId, setVehId] = useState("53CS");
   const [veh, setVeh] = useState({ ...VEHICULOS[3], maxVolPct: 0, maxSkus: 0, maxPiezas: 0 });
   const [pallets, setPallets] = useState(PALLETS_INICIALES);
@@ -91,9 +102,8 @@ export default function Estiba3D({ usuario }) {
   const [paso, setPaso] = useState(0);
   const [progreso, setProgreso] = useState(null);
   const [corrida, setCorrida] = useState(null); // { resultado, carga } de la última corrida
-  const [espacios, setEspacios] = useState(null); // alternativas para completar espacios vacíos
-  const [calculandoEspacios, setCalculandoEspacios] = useState(false);
-  const [consolidar, setConsolidar] = useState(null); // intento de meter todo en un solo vehículo
+  // Llenar con pedido sugerido / sugerir disminución (ver motor/optimizarPedido.js y OptimizarPedido.jsx)
+  const [optim, setOptim] = useState(null);
   const [error, setError] = useState("");
   const [resaltado, setResaltado] = useState(null);
   const [pestana, setPestana] = useState("resumen");
@@ -102,6 +112,9 @@ export default function Estiba3D({ usuario }) {
   const [maestro, setMaestro] = useState({ productos: [], origen: null, sucio: false, guardado: null, errores: [], conversiones: null });
   const [reconectar, setReconectar] = useState(null);
   const [aviso, setAviso] = useState("");
+  // Los avisos se van solos; más tiempo mientras más largos, para alcanzar a leerlos. Solo se borra el mismo
+  // aviso: si leer un archivo grande bloqueó la pantalla, el temporizador viejo no debe borrar el mensaje nuevo.
+  useEffect(() => { if (!aviso) return; const t = setTimeout(() => setAviso((a) => (a === aviso ? "" : a)), Math.min(14000, 4000 + aviso.length * 45)); return () => clearTimeout(t); }, [aviso]);
   const [busqueda, setBusqueda] = useState("");
   const [abiertoP, setAbiertoP] = useState(null);
   const [skuNuevo, setSkuNuevo] = useState("");
@@ -145,6 +158,10 @@ export default function Estiba3D({ usuario }) {
   const palSel = modoPallet ? pallets[palIdx] : null;
   const vehCalc = useMemo(() => (!palSel ? veh : { L: palSel.L + 2 * palSel.ovL, W: palSel.W + 2 * palSel.ovW, H: Math.max(1, palSel.altMax - palSel.esp), tara: 0, maxKg: palSel.maxKg, maxVolPct: 0, maxSkus: 0, maxPiezas: 0, esPallet: true }), [veh, palSel]);
   const nombreVeh = modoPallet ? palSel?.nombre : vehiculos.find((v) => v.id === vehId)?.nombre || veh.nombre;
+  // Entrega, pedido y destino solo se muestran si alguna línea los usa (o si se piden): para la mayoría de las
+  // cargas son columnas vacías que obligaban a deslizar la tabla de lado.
+  const rutaEnUso = items.some((it) => it.orden > 0 || it.grupo || it.destino);
+  const verRuta = rutaEnUso || verRutaManual;
   const totales = useMemo(() => {
     let m3 = 0, kg = 0, cajas = 0;
     items.forEach((it) => { cajas += it.qty; m3 += (it.L * it.W * it.H * it.qty) / 1e9; kg += it.peso * it.qty; });
@@ -165,7 +182,7 @@ export default function Estiba3D({ usuario }) {
   const invalidar = () => {
     setEdicion(null);
     setRecomendacion(null); setRes(null); setCorrida(null); setResaltado(null); setVista(null);
-    setEspacios(null); setConsolidar(null); setCalculandoEspacios(false); intentoRef.current++; };
+    setOptim(null); intentoRef.current++; };
   // La carga tal como la recibe el motor en una corrida normal. Con «orden de la lista», la posición de la
   // fila manda (la de arriba entra primero, al fondo); si además hay entregas, la parada sigue mandando y
   // la lista solo desempata dentro de cada parada.
@@ -196,7 +213,7 @@ export default function Estiba3D({ usuario }) {
   };
   // Vuelca en pantalla un escenario guardado (el mismo formato que estadoParaGuardar).
   const aplicarEstado = (e) => {
-    setProyecto(e.proyecto ?? "Carga sin título");
+    setProyecto(e.proyecto ?? tr("Carga sin título"));
     setItems(e.items ?? []);
     setVehiculos(conDeFabrica(e.vehiculos));
     setVehId(e.vehId ?? "53CS");
@@ -216,7 +233,7 @@ export default function Estiba3D({ usuario }) {
       const r = await cargarProyectoNube();
       if (!r) { if (!silencioso) setAviso("Todavía no tienes nada guardado en tu cuenta."); setGuardandoNube(false); return; }
       const e = r.estado;
-      setProyecto(e.proyecto ?? "Carga sin título");
+      setProyecto(e.proyecto ?? tr("Carga sin título"));
       setItems(e.items ?? []);
       setVehiculos(conDeFabrica(e.vehiculos));
       setVehId(e.vehId ?? "53CS");
@@ -286,7 +303,8 @@ export default function Estiba3D({ usuario }) {
   };
   // Desde la lista de carga: prender o apagar una orientación de ese SKU y recalcular
   const editarOrisDeLinea = (idx, k) => {
-    const it = items[idx]; if (!it) return;
+    const ic = (corrida?.carga.items || items)[idx]; if (!ic) return;
+    const it = items.find((x) => x.id === (ic.lineaId ?? ic.id)); if (!it) return;
     const nuevas = it.oris.map((v, i) => (i === k ? !v : v));
     if (!nuevas.some(Boolean)) { setError(`${it.nombre} necesita al menos una orientación permitida.`); return; }
     setItems((a) => a.map((x) => (x.id === it.id ? { ...x, oris: nuevas } : x)));
@@ -316,8 +334,8 @@ export default function Estiba3D({ usuario }) {
   // Con el botón a la vista es fácil darle sin querer: si ya hay un pedido capturado, se pregunta antes de borrarlo.
   const nuevo = () => {
     const hayPedido = items.length > 1 || items.some((it) => (it.qty || 0) > 0 && it.nombre !== "SKU 1");
-    if (hayPedido && !window.confirm("¿Empezar una carga nueva? Se borra el pedido actual. Si lo quieres conservar, guárdalo antes en Escenarios.")) return;
-    setItems([nuevoItem({ nombre: "SKU 1" })]); setProyecto("Carga sin título"); setRevision(null); invalidar(); setVerMedidas(true); setSeccion("mercancia");
+    if (hayPedido && !window.confirm(tr("¿Empezar una carga nueva? Se borra el pedido actual. Si lo quieres conservar, guárdalo antes en Escenarios."))) return;
+    setItems([nuevoItem({ nombre: "SKU 1" })]); setProyecto(tr("Carga sin título")); setRevision(null); invalidar(); setVerMedidas(true); setSeccion("mercancia");
   };
 
   const importar = () => {
@@ -422,7 +440,9 @@ export default function Estiba3D({ usuario }) {
   const itemDeProducto = (p, extra, lista = pallets) => {
     const pi = lista.findIndex((t) => clave(t.nombre) === clave(p.tarima));
     const { pid, sku, desc, tarima, ...reglasP } = p;
-    return nuevoItem({ ...reglasP, nombre: sku, desc, palletId: pi < 0 ? 0 : pi, ...extra });
+    // Un SKU con Bundle configurado se carga en Bundle por omisión (así lo hace el andén); se cambia en su línea.
+    const bundle = tieneBundle(p) && extra.paletizar === undefined && extra.enBundle !== false;
+    return nuevoItem({ ...reglasP, nombre: sku, desc, palletId: pi < 0 ? 0 : pi, ...(bundle ? { enBundle: true, paletizar: false } : {}), ...extra });
   };
   const agregarSkuDelMaestro = () => {
     const p = buscarSku(mapaMaestro, skuNuevo);
@@ -501,7 +521,7 @@ export default function Estiba3D({ usuario }) {
       const r = leerBundleMaestro(maestro.productos, await f.arrayBuffer(), unidadesArchivo);
       if (!r.actualizados) { setError(`No se importó ningún SKU. ${r.errores.join(" ")}`); return; }
       setMaestro((m) => ({ ...m, productos: r.productos, sucio: true }));
-      setAviso(`Bundle importado: ${r.actualizados} SKU${r.actualizados === 1 ? "" : "s"} con Bundle activado. Falta capturar el % máximo de Bundle por SKU y presionar Guardar.`
+      setAviso(`Bundle importado: ${r.actualizados} SKU${r.actualizados === 1 ? "" : "s"} con Bundle configurado. Falta presionar Guardar.`
         + (r.errores.length ? ` ${r.errores.length} línea${r.errores.length === 1 ? "" : "s"} con problemas: ${r.errores.join(" ")}` : ""));
     } catch (err) { setError("No se pudo leer el archivo de Bundle: " + err.message); }
   };
@@ -553,12 +573,9 @@ export default function Estiba3D({ usuario }) {
         filas.push(fila);
       });
       if (!nuevos.length) { setError(`Ningún SKU del pedido está en el maestro${maestro.productos.length ? "" : " (conecta o abre el maestro primero)"}.`); setRevision({ filas, archivo: f.name }); return; }
-      // Bundle (BDL): antes de cargar la mercancía, cada SKU con Bundle activado se divide en su
-      // parte de Bundles completos y su parte suelta (ver archivos/bundle.js). Se hace aquí, sobre
-      // las cantidades ya convertidas a cajas, y no dentro del motor de cubicaje.
-      const { items: itemsFinal, avisos: avisosBundle } = transformarPedidoBundle(nuevos, porSku, claveSku);
-      const bundlesFormados = itemsFinal.filter((it) => it.esBundle).length;
-      setItems(itemsFinal);
+      // Las líneas de SKUs con Bundle quedan en Bundle; cuántos se abren lo decide el cálculo (ver archivos/bundle.js)
+      const bundlesFormados = nuevos.filter((it) => it.enBundle).length;
+      setItems(nuevos);
       setProyecto(datos.nombre || f.name.replace(/\.[^.]+$/, ""));
       const v = datos.vehiculo && vehiculos.find((x) => clave(x.nombre) === clave(datos.vehiculo) || clave(x.id) === clave(datos.vehiculo));
       if (v) elegirVehiculo(v.id); else invalidar();
@@ -566,9 +583,8 @@ export default function Estiba3D({ usuario }) {
       setRevision({ filas, archivo: f.name });
       setError("");
       setAviso(`Pedido cargado: ${nuevos.length} de ${filas.length} líneas, ${nuevos.reduce((a, x) => a + x.qty, 0).toLocaleString("es-MX")} cajas${v ? `, vehículo ${v.nombre}` : ""}.`
-        + (bundlesFormados ? ` ${bundlesFormados} línea${bundlesFormados === 1 ? "" : "s"} de Bundle formada${bundlesFormados === 1 ? "" : "s"}.` : "")
-        + (revisar ? ` ${revisar} ${revisar === 1 ? "línea necesita" : "líneas necesitan"} revisión: abajo está el detalle.` : " Todas las cantidades cuadraron exactas.")
-        + (avisosBundle.length ? ` Bundle: ${avisosBundle.join(" ")}` : ""));
+        + (bundlesFormados ? ` ${bundlesFormados} ${bundlesFormados === 1 ? "línea va" : "líneas van"} en Bundle.` : "")
+        + (revisar ? ` ${revisar} ${revisar === 1 ? "línea necesita" : "líneas necesitan"} revisión: abajo está el detalle.` : " Todas las cantidades cuadraron exactas."));
       setVerMedidas(false); setSeccion("mercancia");
     } catch (err) { setError("No se pudo leer el pedido: " + err.message); }
   };
@@ -608,7 +624,7 @@ export default function Estiba3D({ usuario }) {
         const v = { ...candidatos[i], maxVolPct: veh.maxVolPct, maxSkus: veh.maxSkus, maxPiezas: veh.maxPiezas };
         setProgreso({ i, n: candidatos.length });
         try {
-          const c = await correr({ items, vehiculo: v, tarimas: pallets, reglas: { ...reglas, nivel: 1 } }, { ejecutor, signal: ctrl.signal });
+          const c = await correrConBundles({ items, vehiculo: v, tarimas: pallets, reglas: { ...reglas, nivel: 1 } }, { ejecutor, signal: ctrl.signal });
           const r = c.resultado, volV = v.L * v.W * v.H;
           const usados = r.contenedores.length, ocup = usados ? (r.contenedores.reduce((a, x) => a + x.vol, 0) / (volV * usados)) * 100 : 0;
           // Flete de toda la corrida con ese vehículo: es lo que de verdad decide cuando dos opciones caben.
@@ -646,10 +662,10 @@ export default function Estiba3D({ usuario }) {
   };
 
   const calcular = async () => {
-    setVistaHerr(null); setEdicion(null); setError(""); setProgreso({ i: 0, n: 1 }); setResaltado(null); setVista(null); setConsolidar(null); setEspacios(null); setCalculandoEspacios(false); intentoRef.current++;
+    setVistaHerr(null); setEdicion(null); setError(""); setProgreso({ i: 0, n: 1 }); setResaltado(null); setVista(null); setOptim(null); intentoRef.current++;
     const ctrl = new AbortController(); corridaRef.current = ctrl;
     try {
-      const c = await correr(cargaPara(items, reglas), { ejecutor, signal: ctrl.signal, onProgreso: (i, n) => setProgreso({ i, n }) });
+      const c = await correrConBundles(cargaPara(items, reglas), { ejecutor, signal: ctrl.signal, onProgreso: (i, n) => setProgreso((x) => ({ ...x, i, n })), onFase: (fase) => setProgreso((x) => ({ ...x, fase })) });
       const r = c.resultado; setCorrida(c); setRes(r); setSel(0); setPaso(r.contenedores[0]?.cajas.length || 0);
       setPestana(r.avisos.length || r.sinCargar || r.noCaben.length ? "avisos" : "resumen");
     } catch (e) {
@@ -660,6 +676,12 @@ export default function Estiba3D({ usuario }) {
     corridaRef.current = null; setProgreso(null);
   };
   calcularRef.current = calcular;
+  // Ctrl+Enter (o Cmd+Enter) calcula desde cualquier parte
+  useEffect(() => {
+    const tecla = (e) => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); if (!corridaRef.current) calcularRef.current?.(); } };
+    window.addEventListener("keydown", tecla);
+    return () => window.removeEventListener("keydown", tecla);
+  }, []);
   const cancelarCorrida = () => corridaRef.current?.abort();
 
   // ---------- Herramientas con cálculo completo ----------
@@ -670,12 +692,13 @@ export default function Estiba3D({ usuario }) {
     setError(""); setProgreso({ i: 0, n: 1 });
     const ctrl = new AbortController(); corridaRef.current = ctrl;
     const extra = tipo === "pallets"
-      ? { qty, paletizar: true, palletId: palletIdx, porPallet: config.porPallet || 0, porCapa: config.porCapa || 0, capasPallet: config.capasPallet || 0, resto: "sueltas" }
-      : { qty, paletizar: false, ...(oris ? { oris } : {}) };
+      ? { qty, enBundle: false, paletizar: true, palletId: palletIdx, porPallet: config.porPallet || 0, porCapa: config.porCapa || 0, capasPallet: config.capasPallet || 0, resto: "sueltas" }
+      : { qty, enBundle: false, paletizar: false, ...(oris ? { oris } : {}) };
     const it = { ...itemDeProducto(producto, extra), id: 0, color: null };
     const vehiculo = { ...vHerr, maxVolPct: vHerr.maxVolPct || 0, maxSkus: vHerr.maxSkus || 0, maxPiezas: vHerr.maxPiezas || 0 };
     try {
-      const c = await correr({ items: [it], vehiculo, tarimas: pallets, reglas: { ...reglas, usarLista: false, _maxContenedores: 1 } },
+      // Nivel rápido: con miles de cajas de un solo SKU el nivel alto no cambia el resultado y tardaba hasta 40 s
+      const c = await correr({ items: [it], vehiculo, tarimas: pallets, reglas: { ...reglas, nivel: Math.min(reglas.nivel, 2), usarLista: false, _maxContenedores: 1 } },
         { ejecutor, signal: ctrl.signal, onProgreso: (i, n) => setProgreso({ i, n }) });
       const r = c.resultado, k = r.contenedores[0] || { cajas: [], peso: 0, vol: 0 };
       const nPallets = k.cajas.filter((x) => x.pal >= 0).length;
@@ -683,7 +706,8 @@ export default function Estiba3D({ usuario }) {
       const volV = vehiculo.L * vehiculo.W * vehiculo.H, cargaMax = vehiculo.maxKg > 0 ? vehiculo.maxKg - (vehiculo.tara || 0) : 0;
       const resumen = { nCajas, nPallets, piezas: nCajas * (it.piezas || 1), peso: k.peso, vol: k.vol, ocupacion: volV ? (k.vol / volV) * 100 : 0, utilPeso: cargaMax ? (k.peso / cargaMax) * 100 : null,
         cajasPorPallet: nPallets ? r.pallets[k.cajas.find((x) => x.pal >= 0).pal]?.n || 0 : 0, estrategia: r.estrategia };
-      setVistaHerr({ titulo, veh: vehiculo, base: null, cajas: k.cajas, pallets: r.pallets, colores: [color || colores[0] || "#C8102E"], formas: [it.forma || "caja"], resumen });
+      const iPal = k.cajas.find((x) => x.pal >= 0)?.pal;
+      setVistaHerr({ titulo, veh: vehiculo, base: null, cajas: k.cajas, pallets: r.pallets, colores: [color || colores[0] || "#C8102E"], formas: [it.forma || "caja"], resumen, palDef: iPal != null ? r.pallets[iPal] : null, verPallet: false });
       setPaso(k.cajas.length); setResaltado(null); setVista(null);
       return resumen;
     } catch (e) {
@@ -702,188 +726,76 @@ export default function Estiba3D({ usuario }) {
   };
   useEffect(() => () => corridaRef.current?.abort(), []);
 
-  // Completar espacios vacíos: sobre la carga ya calculada, prueba meter más unidades de los SKUs
-  // que ya están en el pedido (nunca uno externo) en lo que sobró de espacio. Se corre con la MISMA carga
-  // y reglas que la corrida mostrada (corrida.carga): una vez con cada SKU solo (alternativas individuales,
-  // en nivel rápido) y una con todos juntos (la combinación, en el nivel de la corrida). El relleno nunca
-  // desplaza la demanda real: ver esRelleno en motor/motor.js (siempre se coloca al final y nunca abre
-  // un vehículo nuevo). Una alternativa solo cuenta si la demanda real quedó igual que en la corrida.
-  const completarEspacios = async () => {
-    if (!res || !corrida || !res.contenedores.length) return;
+  // ---------- Optimizar el pedido (botones sobre el 3D) ----------
+  // Ambas corren en nivel 4 y se comprueban antes de proponerse (ver motor/optimizarPedido.js). La vista
+  // previa muestra qué cambia; «Aplicar» deja puesto el resultado ya calculado y «Deshacer» regresa al anterior.
+  const NIVEL_OPTIMIZAR = 4;
+  const optimizarPedido = async (tipo, fijas = new Set()) => {
+    if (!res || !corrida) return;
     const token = ++intentoRef.current;
-    setError(""); setCalculandoEspacios(true); setEspacios(null);
-    const base = corrida.carga, vb = base.vehiculo, volV = vb.L * vb.W * vb.H, nBase = res.contenedores.length;
-    const ocupacion = (r) => (volV && r.contenedores.length ? (r.contenedores.reduce((a, c) => a + c.vol, 0) / (volV * r.contenedores.length)) * 100 : 0);
-    const comparable = (r) => r.contenedores.length === nBase && r.sinCargar <= res.sinCargar;
-    const candidatos = new Map();
-    base.items.forEach((it) => { if (!it.esBundle && it.qty > 0 && !candidatos.has(it.id)) candidatos.set(it.id, it); });
-    const lista = [...candidatos.values()];
-    const filler = (it) => ({ ...it, id: `rel-${it.id}`, qty: 500000, esRelleno: true, paletizar: false });
-    const correrCon = (fillers, nivel) => correr({ ...base, items: [...base.items, ...fillers], reglas: { ...base.reglas, nivel } }, { ejecutor }).then((c) => c.resultado);
-    // origen[i] es el SKU del que salió el relleno i (va después de las líneas reales de la carga)
-    const contar = (r, origen) => {
-      const cuenta = new Map();
-      r.contenedores.forEach((c) => c.cajas.forEach((k) => {
-        const it = k.relleno ? origen[k.idx - base.items.length] : null; if (!it) return;
-        const e = cuenta.get(it.id) || { id: it.id, nombre: it.nombre, umCaja: it.umCaja, paletizado: !!it.paletizar, cantidad: 0 };
-        e.cantidad++; cuenta.set(it.id, e);
-      }));
-      return [...cuenta.values()].sort((a, b) => b.cantidad - a.cantidad);
-    };
+    const ctrl = new AbortController(); corridaRef.current = ctrl;
+    const reglas4 = { ...reglas, nivel: NIVEL_OPTIMIZAR };
+    const op = { ejecutor, signal: ctrl.signal, onProgreso: (i, n) => setProgreso((x) => ({ ...x, i, n })) };
+    const correrPedido = (lista) => correrConBundles(cargaPara(lista, reglas4), op);
+    const correrCarga = (lista) => correr({ ...corrida.carga, items: lista, reglas: { ...corrida.carga.reglas, nivel: NIVEL_OPTIMIZAR } }, op);
+    const correrRapido = (lista) => correrConBundles(cargaPara(lista, { ...reglas, nivel: 1 }), op);   // solo para buscar la proporción
+    const onFase = (fase) => setProgreso((x) => ({ ...(x || { i: 0, n: 1 }), fase }));
+    setError(""); setOptim({ tipo, calculando: true, fijas }); setProgreso({ i: 0, n: 1 });
     try {
-      const ocupacionActual = ocupacion(res);
-      let descartadas = 0;
-      const individuales = [];
-      for (const it of lista) {
-        // Primero en nivel rápido; si así la demanda real ya no queda igual, se repite en el nivel de la corrida
-        let r = await correrCon([filler(it)], 1);
-        if (token !== intentoRef.current) return;
-        if (!comparable(r) && base.reglas.nivel > 1) { r = await correrCon([filler(it)], base.reglas.nivel); if (token !== intentoRef.current) return; }
-        if (!comparable(r)) { descartadas++; continue; }
-        const [f] = contar(r, [it]);
-        if (f) individuales.push({ ...f, ocupacionAntes: ocupacionActual, ocupacionDespues: ocupacion(r) });
-      }
-      individuales.sort((a, b) => b.cantidad - a.cantidad);
-      let combinacion = [], ocupacionCombinacion = ocupacionActual;
-      if (lista.length > 1) {
-        const r = await correrCon(lista.map(filler), base.reglas.nivel);
-        if (token !== intentoRef.current) return;
-        if (comparable(r)) { combinacion = contar(r, lista); ocupacionCombinacion = ocupacion(r); } else descartadas++;
-      }
-      setEspacios({ ocupacionActual, individuales, combinacion, ocupacionCombinacion, descartadas });
-    } catch (e) {
-      if (token === intentoRef.current) setError("No se pudo calcular el relleno de espacios: " + (e.detalle?.original || e.message));
-    }
-    if (token === intentoRef.current) setCalculandoEspacios(false);
-  };
-  // Aplica una o varias alternativas: suma la cantidad sugerida a cada SKU en la carga actual. El relleno
-  // se calculó suelto: si el SKU va paletizado, lo extra entra como una línea suelta aparte (si se sumara a
-  // la línea paletizada, el motor lo armaría en pallet y ya no cabría igual). Falta recalcular para verlo.
-  const aplicarRelleno = (sugeridas) => {
-    setItems((a) => {
-      let nueva = [...a];
-      sugeridas.forEach(({ id, cantidad }) => {
-        const it = nueva.find((x) => x.id === id);
-        if (!it) return;
-        if (it.paletizar) { const { id: _id, ...resto } = it; nueva.push(nuevoItem({ ...resto, qty: cantidad, paletizar: false })); }
-        else nueva = nueva.map((x) => (x.id === id ? { ...x, qty: x.qty + cantidad } : x));
-      });
-      return nueva;
-    });
-    invalidar();
-    const total = sugeridas.reduce((s, f) => s + f.cantidad, 0);
-    setAviso(`Se agregaron ${total.toLocaleString("es-MX")} unidades más (${sugeridas.map((f) => f.nombre).join(", ")}) para aprovechar el espacio libre. Presiona Calcular para verlas acomodadas.`);
-  };
-
-  // Cuando el último vehículo casi no se usa (menos del 5%), vale la pena preguntarse si todo cabía en uno
-  // menos. Se prueba, de la menos a la más invasiva: más nivel de esfuerzo; relajar las reglas que estén
-  // activas (orden de entrega, lista, pedidos juntos o separados, apilamiento, cajas juntas); cambiar
-  // «simular la carga real»; y permitir girar las cajas en cualquier orientación. Si nada de eso lo logra,
-  // se sugiere qué reducir a partir de lo que de verdad terminó en el último vehículo, y se comprueba.
-  const intentarConsolidar = async () => {
-    if (!res || !corrida || res.contenedores.length < 2) return;
-    const token = ++intentoRef.current;
-    const nBase = res.contenedores.length, objetivo = nBase - 1;
-    const vb = corrida.carga.vehiculo, volV = vb.L * vb.W * vb.H;
-    setError(""); setConsolidar({ intentando: true, objetivo });
-    const hayEntregas = items.some((it) => it.orden > 0), hayPedidos = items.some((it) => it.grupo);
-    const relajadas = [];
-    if (reglas.usarOrden && hayEntregas) relajadas.push("sin respetar el orden de entrega (cambia el orden de descarga)");
-    if (reglas.usarLista) relajadas.push("sin el orden de la lista");
-    if (reglas.agrupar && hayPedidos) relajadas.push("sin mantener juntos los pedidos");
-    if (reglas.separarGrupos && hayPedidos) relajadas.push("mezclando pedidos en el mismo vehículo");
-    if (reglas.apilamiento !== "ninguna") relajadas.push("sin regla de apilamiento");
-    if (reglas.juntos) relajadas.push("permitiendo separar cajas del mismo SKU");
-    const relajar = { usarOrden: false, usarLista: false, agrupar: false, separarGrupos: false, apilamiento: "ninguna", juntos: false };
-    const nivelPrueba = Math.max(2, Math.min(3, reglas.nivel));
-    const simular = reglas.compresionAuto !== false;
-    const girables = (lista) => lista.map((it) => (it.paletizar || (it.forma && it.forma !== "caja") ? it : { ...it, oris: [true, true, true, true, true, true], volteoPiso: true }));
-    const variaciones = [];
-    if (reglas.nivel < 4) variaciones.push({ descripcion: `con más nivel de esfuerzo de cálculo (nivel ${reglas.nivel + 1})`, cambios: { nivel: reglas.nivel + 1 } });
-    if (relajadas.length) variaciones.push({ descripcion: relajadas.join(", "), cambios: { nivel: nivelPrueba, ...relajar } });
-    // Cada variación acumula las reglas relajadas; la descripción dice exactamente qué cambió
-    // «Simular la carga real» reproduce cómo se carga en el piso (bultos de pie, holgura entre SKUs), así
-    // que apagarlo da el óptimo geométrico: más apretado, pero hay que confirmar que el andén lo logre.
-    // Encenderlo nunca ayuda a consolidar, por eso solo se prueba apagarlo, y la rotación libre va encima.
-    const pasos = [...relajadas];
-    if (simular) {
-      pasos.push("desactivando «simular la carga real» (acomodo geométrico óptimo; confirma que el andén lo pueda replicar)");
-      variaciones.push({ descripcion: pasos.join(", "), cambios: { nivel: nivelPrueba, ...relajar, compresionAuto: false } });
-    }
-    pasos.push("permitiendo girar o acostar las cajas en cualquier orientación (confirma que el producto lo aguante)");
-    variaciones.push({ descripcion: pasos.join(", "), cambios: { nivel: nivelPrueba, ...relajar, compresionAuto: false }, items: girables });
-    const cabe = (r) => r.contenedores.length <= objetivo && r.sinCargar <= res.sinCargar && r.noCaben.length <= res.noCaben.length;
-    try {
-      for (const v of variaciones) {
-        const reglasProbar = { ...reglas, ...v.cambios };
-        const itemsProbar = v.items ? v.items(items) : items;
-        const c = await correr(cargaPara(itemsProbar, reglasProbar), { ejecutor });
-        if (token !== intentoRef.current) return;
-        if (cabe(c.resultado)) {
-          const ocupacion = c.resultado.contenedores.reduce((a, k) => a + k.vol, 0) / (volV * c.resultado.contenedores.length) * 100;
-          setConsolidar({ intentando: false, objetivo, exito: { descripcion: v.descripcion, reglas: reglasProbar, items: v.items ? itemsProbar : null, corrida: c }, ocupacion });
-          return;
-        }
-      }
-      // Ninguna variación lo logró: se sugiere quitar lo que de verdad terminó en el último vehículo (sueltas
-      // y el contenido de sus pallets, incluidos los mixtos), contado por línea de la carga.
-      const cargaItems = corrida.carga.items, ultimo = res.contenedores[nBase - 1], cuenta = new Map();
-      const sumar = (idx) => {
-        const it = cargaItems[idx]; if (!it) return;
-        const e = cuenta.get(it.id) || { id: it.id, nombre: it.nombre, umCaja: it.umCaja, cantidad: 0 };
-        e.cantidad++; cuenta.set(it.id, e);
-      };
-      ultimo.cajas.forEach((k) => { if (k.pal >= 0) (res.pallets[k.pal]?.cajas || []).forEach((kk) => sumar(kk.idx)); else sumar(k.idx); });
-      const reduccion = [...cuenta.values()].sort((a, b) => b.cantidad - a.cantidad);
-      // Se comprueba corriendo la carga ya reducida con las reglas actuales: el motor es heurístico y no
-      // siempre reproduce el mismo acomodo, así que se avisa si la reducción no alcanzó por sí sola.
-      const porId = new Map(reduccion.map((r) => [r.id, r.cantidad]));
-      const reducidos = items.map((it) => (porId.has(it.id) ? { ...it, qty: it.qty - porId.get(it.id) } : it)).filter((it) => it.qty > 0);
-      let verificada = false;
-      if (reducidos.length) {
-        const c = await correr(cargaPara(reducidos, reglas), { ejecutor });
-        if (token !== intentoRef.current) return;
-        verificada = c.resultado.contenedores.length <= objetivo;
-      }
-      setConsolidar({ intentando: false, objetivo, exito: null, reduccion, verificada, ultimoPct: (ultimo.vol / volV) * 100 });
+      const r = tipo === "llenar"
+        ? await sugerirLlenado({ items, correrPedido, correrCarga, correrRapido, fijas, onFase })
+        : await sugerirDisminucion({ items, nActual: res.contenedores.length, correrPedido, fijas, onFase });
+      if (token !== intentoRef.current) return;
+      setOptim({ tipo, propuesta: r, fijas });
     } catch (e) {
       if (token !== intentoRef.current) return;
-      setError("No se pudo intentar la consolidación: " + (e.detalle?.original || e.message));
-      setConsolidar(null);
-    }
+      setOptim(null);
+      if (!(e instanceof ErrorCorrida && e.tipo === "cancelada")) setError("No se pudo calcular la sugerencia: " + (e.detalle?.original || e.message));
+    } finally { corridaRef.current = null; setProgreso(null); }
   };
-  // Aplica la variación que sí logró usar un vehículo menos, y deja ya puesto ese resultado.
-  const aplicarConsolidacion = () => {
-    if (!consolidar?.exito) return;
-    const { reglas: r, items: its, corrida: c, descripcion } = consolidar.exito;
+  const mostrarCorrida = (c) => {
+    setCorrida(c); setRes(c.resultado); setSel(0); setPaso(c.resultado.contenedores[0]?.cajas.length || 0); setVista(null); setResaltado(null);
+    setPestana(c.resultado.avisos.length || c.resultado.sinCargar ? "avisos" : "resumen");
+  };
+  const aplicarOptimizacion = () => {
+    const pr = optim?.propuesta; if (!pr) return;
     intentoRef.current++;
-    setReglas(r); if (its) setItems(its);
-    setCorrida(c); setRes(c.resultado); setSel(0); setPaso(c.resultado.contenedores[0]?.cajas.length || 0); setEspacios(null);
-    setPestana(c.resultado.avisos.length ? "avisos" : "resumen");
-    setConsolidar(null);
-    setAviso(`Con ${descripcion}, la carga quedó en ${c.resultado.contenedores.length} ${c.resultado.contenedores.length === 1 ? "vehículo" : "vehículos"} al ${consolidar.ocupacion.toFixed(0)}%. Las reglas${its ? " y orientaciones" : ""} quedaron cambiadas para esta carga.`);
+    const anterior = { items, corrida };
+    setItems(pr.items); mostrarCorrida(pr.corrida);
+    setOptim({ tipo: optim.tipo, aplicado: true, anterior });
+    const n = pr.despues.n;
+    setAviso(pr.tipo === "llenar" ? `Pedido completado: ${pr.cambios.reduce((a, c) => a + c.delta, 0).toLocaleString("es-MX")} cajas más, en ${n} ${n === 1 ? "vehículo" : "vehículos"}.`
+      : pr.tipo === "reacomodo" ? `Reacomodado sin cambiar cantidades: la carga queda en ${n} ${n === 1 ? "vehículo" : "vehículos"}.`
+      : `Pedido ajustado: la carga queda en ${n} ${n === 1 ? "vehículo" : "vehículos"}.`);
   };
-  // Aplica la reducción sugerida cuando ninguna variación alcanzó: baja esas cantidades de cada línea.
-  const aplicarReduccionConsolidar = () => {
-    if (!consolidar?.reduccion) return;
-    const porId = new Map(consolidar.reduccion.map((r) => [r.id, r.cantidad]));
-    setItems((a) => a.map((it) => (porId.has(it.id) ? { ...it, qty: Math.max(0, it.qty - porId.get(it.id)) } : it)).filter((it) => it.qty > 0));
-    invalidar();
-    setAviso("Se redujeron las cantidades sugeridas. Presiona Calcular para ver el resultado con un vehículo menos.");
+  const deshacerOptimizacion = () => {
+    const a = optim?.anterior; if (!a) return;
+    intentoRef.current++;
+    setItems(a.items); mostrarCorrida(a.corrida); setOptim(null);
+    setAviso("Se regresó al pedido anterior.");
   };
 
   const cont = res?.contenedores[sel];
   // El reporte se arma una sola vez por corrida, con la carga exacta que usó el motor.
   const reporte = useMemo(() => (corrida ? armarReporte(corrida, u) : null), [corrida, u]);
+  // Con resultado, el motor numera los bultos según la carga que usó (una línea en Bundle se vuelve dos: Bundles
+  // y sueltas). El 3D y las tablas siguen esa numeración, cada bulto con el color de su línea del pedido.
+  const itemsCarga = corrida?.carga.items || items;
+  const coloresCarga = useMemo(() => {
+    if (!corrida) return colores;
+    const porId = new Map(items.map((it, i) => [it.id, colores[i]]));
+    return corrida.carga.items.map((it, i) => it.color || porId.get(it.lineaId ?? it.extraDe ?? it.id) || coloresBase[i % Math.max(1, coloresBase.length)] || "#8A96A3");
+  }, [corrida, items, colores, coloresBase]);
+  // Cuánto va en Bundle y cuánto suelto en el vehículo que se está viendo (el mix es un resultado, no un dato)
+  const mixBundle = useMemo(() => {
+    const k0 = res?.contenedores[sel];
+    if (!res?.bundles || !k0) return null;
+    let nB = 0, cajasB = 0, sueltas = 0;
+    k0.cajas.forEach((k) => { const it = itemsCarga[k.idx]; if (!it || k.pal >= 0) return; if (it.esBundle) { nB++; cajasB += it.cantidadPorBundle || 1; } else if (it.deBundle) sueltas++; });
+    return cajasB + sueltas ? { nB, sueltas, pct: (cajasB / (cajasB + sueltas)) * 100, abiertos: res.bundles.abiertos } : null;
+  }, [res, sel, itemsCarga]);
+  const formasCarga = useMemo(() => (corrida ? corrida.carga.items.map((it) => it.forma || "caja") : formas), [corrida, formas]);
   const stats = reporte?.contenedores[sel] ?? null;
-  // El último vehículo casi vacío (menos del 5%) es la señal de que tal vez todo cabía en uno solo.
-  const ultimoCasiVacio = useMemo(() => {
-    const vb = corrida?.carga.vehiculo;
-    if (!res || res.contenedores.length < 2 || !vb?.L) return null;
-    const volV = vb.L * vb.W * vb.H, ultimo = res.contenedores[res.contenedores.length - 1];
-    const pct = ultimo.vol / volV;
-    return pct < UMBRAL_CONSOLIDAR ? pct * 100 : null;
-  }, [res, corrida]);
 
   const descargarRevision = () => {
     const filas = [["SKU", "Descripción", "Capturado", "UM capturada", "UM de la caja", "Cajas", "Estado", "Detalle"],
@@ -996,7 +908,11 @@ export default function Estiba3D({ usuario }) {
     return () => window.removeEventListener("keydown", tecla);
   }, [!!edicion]);
   const palVista = vista !== null && res ? res.pallets[vista] : null;
-  const visor = vistaHerr
+  const vistaDePallet = (pv) => ({ veh: { L: pv.palL + 2 * pv.ovL, W: pv.palW + 2 * pv.ovW, H: pv.alto - pv.esp + 50 },
+    base: { esp: pv.esp, x: pv.ovL, y: pv.ovW, l: pv.palL, w: pv.palW },
+    cajas: pv.cajas.map((k) => ({ ...k, x: k.x + pv.ovL - pv.baseX, y: k.y + pv.ovW - pv.baseY, pal: -1 })), total: pv.cajas.length });
+  const visor = vistaHerr?.verPallet && vistaHerr.palDef ? vistaDePallet(vistaHerr.palDef)
+    : vistaHerr
     ? { veh: vistaHerr.veh, base: vistaHerr.base, cajas: vistaHerr.cajas, total: vistaHerr.cajas.length }
     : palVista
     ? { veh: { L: palVista.palL + 2 * palVista.ovL, W: palVista.palW + 2 * palVista.ovW, H: palVista.alto - palVista.esp + 50 },
@@ -1014,7 +930,7 @@ export default function Estiba3D({ usuario }) {
     { id: "vehiculo", icono: Truck, t: modoPallet ? "Pallet" : "Vehículo", d: nombreVeh },
     { id: "pallets", icono: Layers, t: "Paletizado", d: `${pallets.length} ${pallets.length === 1 ? "pallet" : "pallets"} en el catálogo` },
     { id: "reglas", icono: SlidersHorizontal, t: "Reglas", d: `Nivel ${reglas.nivel}${reglasActivas ? ` · ${reglasActivas} activas` : ""}` },
-    { id: "herramientas", icono: Calculator, t: "Herramientas", d: "Capacidad de un SKU" },
+    { id: "herramientas", icono: Calculator, t: "Herramientas", d: "Capacidad, paletizado y datos" },
     { id: "ayuda", icono: HelpCircle, t: "Ayuda", d: "Qué significa cada campo" },
   ];
 
@@ -1049,6 +965,7 @@ export default function Estiba3D({ usuario }) {
               style={{ background: sistema === x.id ? T.acento : "transparent", color: sistema === x.id ? T.nav : "rgba(255,255,255,.8)", fontWeight: sistema === x.id ? 600 : 400 }}>{x.corto}</button>
           ))}
         </div>
+        <div className="hidden lg:flex flex-none"><SelectorIdioma idioma={idioma} onCambiar={cambiarIdioma} /></div>
         <button onClick={() => setVerEscenarios(true)} className="hidden sm:flex flex-none items-center gap-1.5 text-sm px-2.5 py-1.5 rounded-md whitespace-nowrap" style={{ color: T.navTexto }} title="Guardar este escenario con un nombre, o abrir uno anterior">
           <FolderOpen size={15} /><span className="hidden lg:inline">Escenarios</span>
         </button>
@@ -1064,6 +981,7 @@ export default function Estiba3D({ usuario }) {
               <div className="fixed inset-0 z-10" onClick={() => setMenuEj(false)} aria-hidden="true" />
               <div className="absolute right-0 mt-1 rounded-lg py-1 z-20 shadow-lg text-sm" style={{ background: T.sup, border: `1px solid ${T.linea}`, width: 280, color: T.tinta }}>
                 <div className="px-3 py-2 text-xs" style={{ color: T.suave, borderBottom: `1px solid ${T.linea}` }}>{usuario?.email}</div>
+                <div className="flex lg:hidden items-center justify-between gap-2 px-3 py-2" style={{ borderBottom: `1px solid ${T.linea}` }}><span className="text-xs" style={{ color: T.suave }}>Idioma</span><SelectorIdioma idioma={idioma} onCambiar={cambiarIdioma} oscuro={false} /></div>
                 <button onClick={() => { setMenuEj(false); setVerEscenarios(true); }} className="flex sm:hidden items-center gap-2 w-full text-left px-3 py-2 hover:bg-gray-100"><FolderOpen size={15} />Escenarios</button>
                 <div className="px-3 pt-2 pb-1 text-xs flex items-center gap-1.5" style={{ color: T.suave, borderTop: `1px solid ${T.linea}` }}><BookOpen size={13} />Ejemplos</div>
                 {Object.entries(EJEMPLOS).map(([k, e]) => (
@@ -1113,7 +1031,7 @@ export default function Estiba3D({ usuario }) {
 
       <div className="flex flex-col lg:flex-row flex-1 min-h-0">
         {/* ============ Panel de edición ============ */}
-        <section className="flex-none lg:w-[var(--anchoIzq)] lg:overflow-y-auto p-4" style={{ "--anchoIzq": `${anchoIzq}%` }}>
+        <section ref={panelIzq} className="flex-none lg:w-[var(--anchoIzq)] lg:overflow-y-auto p-4" style={{ "--anchoIzq": `${anchoIzq}%` }}>
           <datalist id="categorias-existentes">{[...new Set(maestro.productos.map((p) => p.categoria).filter(Boolean))].map((c) => <option key={c} value={c} />)}</datalist>
           <input ref={inputMaestro} type="file" accept=".xlsx,.xls" className="hidden" onChange={abrirArchivoMaestro} />
           <input ref={inputPedido} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={cargarPedido} />
@@ -1122,8 +1040,9 @@ export default function Estiba3D({ usuario }) {
           <input ref={inputBundle} type="file" accept=".xlsx,.xls" className="hidden" onChange={importarBundle} />
           <input ref={inputVehiculos} type="file" accept=".xlsx,.xls" className="hidden" onChange={importarVehiculos} />
           <input ref={inputConv} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={importarConversiones} />
+          {/* Aviso flotante: ya no empuja el contenido hacia abajo y se va solo (ver useEffect de aviso) */}
           {aviso && (
-            <div className="flex items-start gap-2 text-sm mb-3 rounded-lg px-3 py-2" style={{ background: "#EAF3EC", color: T.ok }}>
+            <div role="status" className="fixed z-40 flex items-start gap-2 text-sm rounded-lg px-3 py-2 shadow-lg" style={{ left: 16, bottom: 16, maxWidth: 460, background: "#EAF3EC", color: T.ok, border: "1px solid #CFE6D5" }}>
               <CheckCircle2 size={16} className="flex-none mt-0.5" /><span className="flex-1">{aviso}</span>
               <button onClick={() => setAviso("")} aria-label="Cerrar aviso"><X size={14} /></button>
             </div>
@@ -1205,15 +1124,19 @@ export default function Estiba3D({ usuario }) {
                   {UNIDADES_ARCHIVO.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
                 </select>
               </label>
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs" style={{ color: T.suave }}>
-                <button className="underline" onClick={pasarCargaAlMaestro}>Pasar SKUs de la carga actual al maestro</button>
-                <button className="underline" onClick={() => descargarArchivo(libroPlantilla(maestro.productos, vehiculos), "plantilla_carga.xlsx", MIME_XLSX)}>Descargar plantilla de carga</button>
-                <button className="underline" onClick={exportarMaestro} disabled={!maestro.productos.length} title="Baja una copia en Excel. Tu maestro en la cuenta no cambia">Descargar copia en Excel</button>
-                <button className="underline" onClick={() => descargarArchivo(plantillaDimensiones(maestro.productos, SISTEMAS[sistema]), "plantilla_dimensiones.xlsx", MIME_XLSX)} title="Solo SKU, ID producto, descripción y medidas: lo que en el futuro podría venir del ERP">Descargar plantilla de dimensiones</button>
-                <button className="underline" onClick={() => inputDims.current?.click()} title="Actualiza SKU, descripción y medidas sin tocar las reglas de estiba ya configuradas">Actualizar dimensiones</button>
-                <button className="underline" onClick={() => inputCube.current?.click()}>Importar plantilla de CubeMaster</button>
-                <button className="underline" onClick={() => inputBundle.current?.click()} title="Excel con ID Artículo, UM, Rel, Factor, CS/BDL y medidas: enciende y configura el Bundle de los SKUs que ya existen">Importar Bundle (BDL)</button>
-                <button className="underline" onClick={() => inputConv.current?.click()}>Importar conversiones de unidad</button>
+              <div className="flex flex-wrap gap-2">
+                <MenuBoton etiqueta="Importar" icono={Upload} acciones={[
+                  ["Actualizar dimensiones", () => inputDims.current?.click(), "Cambia SKU, descripción y medidas sin tocar las reglas de estiba"],
+                  ["Plantilla de CubeMaster", () => inputCube.current?.click(), "Crea productos, pallets y el pedido desde un «Cargo Upload»"],
+                  ["Bundle (BDL)", () => inputBundle.current?.click(), "Enciende y configura el Bundle de los SKUs que ya existen"],
+                  ["Conversiones de unidad", () => inputConv.current?.click(), "Millares, pallets, kilos… a cajas"],
+                  ["SKUs de la carga actual", pasarCargaAlMaestro, "Agrega al maestro los SKUs del pedido que no estén"],
+                ]} />
+                <MenuBoton etiqueta="Descargar" icono={Download} acciones={[
+                  ["Copia del maestro en Excel", exportarMaestro, "Tu maestro en la cuenta no cambia", !maestro.productos.length],
+                  ["Plantilla de carga (pedido)", () => descargarArchivo(libroPlantilla(maestro.productos, vehiculos), "plantilla_carga.xlsx", MIME_XLSX), "SKU y cantidad; las medidas salen del maestro"],
+                  ["Plantilla de dimensiones", () => descargarArchivo(plantillaDimensiones(maestro.productos, SISTEMAS[sistema]), "plantilla_dimensiones.xlsx", MIME_XLSX), "Solo SKU, descripción y medidas"],
+                ]} />
               </div>
             </>
           )}
@@ -1255,13 +1178,16 @@ export default function Estiba3D({ usuario }) {
               <div className="rounded-lg overflow-hidden" style={{ background: T.sup, border: `1px solid ${T.linea}` }}>
                 <div className="flex items-center justify-between gap-2 px-3 py-1.5 text-xs" style={{ color: T.suave, borderBottom: `1px solid ${T.linea}` }}>
                   <span>Toca el nombre de una fila para ver sus reglas de estiba y paletizado.</span>
-                  <button onClick={() => setVerMedidas(!verMedidas)} aria-pressed={verMedidas} className="flex-none underline">{verMedidas ? "Ocultar medidas" : "Ver medidas"}</button>
+                  <span className="flex gap-3 flex-none">
+                    {!rutaEnUso && <button onClick={() => setVerRutaManual(!verRutaManual)} aria-pressed={verRuta} className="underline">{verRuta ? "Ocultar entrega y pedido" : "Entrega y pedido"}</button>}
+                    <button onClick={() => setVerMedidas(!verMedidas)} aria-pressed={verMedidas} className="underline">{verMedidas ? "Ocultar medidas" : "Ver medidas"}</button>
+                  </span>
                 </div>
                 <div className="overflow-auto tabla-ancho" style={{ maxHeight: "calc(100vh - 260px)", minHeight: 200 }}>
-                  <table className="w-full text-sm" style={{ minWidth: (verMedidas ? 640 : 400) + (reglas.usarLista ? 60 : 0), borderCollapse: "separate", borderSpacing: 0 }}>
+                  <table className="w-full text-sm" style={{ minWidth: (verMedidas ? 420 : 180) + (verRuta ? 220 : 0) + (reglas.usarLista ? 60 : 0), borderCollapse: "separate", borderSpacing: 0 }}>
                     <thead className="sticky top-0 z-10" style={{ background: "#F3F5F8" }}>
                       <tr className="text-left text-xs" style={{ color: T.suave }}>
-                        {["SKU", ...(verMedidas ? [`Largo ${u.l}`, `Ancho ${u.l}`, `Alto ${u.l}`, u.p] : []), "Cajas", u.v, "Entrega", "Pedido", "Destino", ...(reglas.usarLista ? ["Orden"] : []), ""].map((h, i) => (
+                        {["SKU", ...(verMedidas ? [`Largo ${u.l}`, `Ancho ${u.l}`, `Alto ${u.l}`, u.p] : []), "Cajas", u.v, ...(verRuta ? ["Entrega", "Pedido", "Destino"] : []), ...(reglas.usarLista ? ["Orden"] : []), ""].map((h, i) => (
                           <th key={h || "x"} className="font-medium px-2 py-2 whitespace-nowrap" style={{ borderBottom: `1px solid ${T.linea}`, textAlign: h === u.v ? "center" : "left", position: "relative", ...(i === 0 ? { position: "sticky", left: 0, background: "#F3F5F8", zIndex: 2, width: anchoSku, minWidth: anchoSku } : {}) }}>
                             {h}
                             {i === 0 && (
@@ -1280,7 +1206,7 @@ export default function Estiba3D({ usuario }) {
                     </thead>
                     <tbody>
                       {items.map((it, i) => (
-                        <FilaItem key={it.id} it={it} color={colores[i]} abierto={abierto === it.id} pallets={pallets} modoPallet={modoPallet} verMedidas={verMedidas}
+                        <FilaItem key={it.id} it={it} color={colores[i]} abierto={abierto === it.id} pallets={pallets} modoPallet={modoPallet} verMedidas={verMedidas} verRuta={verRuta}
                           anchoSku={anchoSku}
                           difiere={!it.esBundle && difiereDeMaestro(it)} enMaestro={!it.esBundle && !!buscarSku(mapaMaestro, it.nombre)} aMaestro={() => guardarEnMaestro(it)} deMaestro={() => volverAlMaestro(it)}
                           mover={reglas.usarLista ? (paso) => moverItem(it.id, paso) : null} primera={i === 0} ultima={i === items.length - 1}
@@ -1376,7 +1302,7 @@ export default function Estiba3D({ usuario }) {
 
           {seccion === "pallets" && <SeccionPaletizado editarPallet={editarPallet} pallets={pallets} setPallets={setPallets} quitarPallet={quitarPallet} usos={pallets.map((_, i) => items.filter((it) => it.paletizar && (it.palletId || 0) === i).length)} />}
 
-          {seccion === "herramientas" && <SeccionHerramientas maestro={maestro} vehiculos={vehiculos} pallets={pallets} reglas={reglas} calcularHerramienta={calcularHerramienta} verPalletHerr={verPalletHerr} calculando={calculando} vistaHerr={vistaHerr} />}
+          {seccion === "herramientas" && <SeccionHerramientas maestro={maestro} vehiculos={vehiculos} pallets={pallets} reglas={reglas} tarifas={tarifas} calcularHerramienta={calcularHerramienta} verPalletHerr={verPalletHerr} calculando={calculando} vistaHerr={vistaHerr} />}
 
           {seccion === "ayuda" && <SeccionAyuda />}
 
@@ -1396,12 +1322,20 @@ export default function Estiba3D({ usuario }) {
         {/* ============ Área de trabajo: visor + resultados ============ */}
         <main className="flex-1 flex flex-col min-w-0 min-h-0">
           <div className="relative flex-1" style={{ minHeight: 360, background: T.visor }}>
-            <Visor veh={visor.veh} base={visor.base} cajas={visor.cajas} pallets={vistaHerr ? vistaHerr.pallets : res?.pallets || []} paso={vistaHerr || res ? paso : 0} colores={vistaHerr ? vistaHerr.colores : colores} formas={vistaHerr ? vistaHerr.formas : formas} resaltado={vistaHerr ? null : resaltado} camara={camara} api={apiVisor}
+            <Visor veh={visor.veh} base={visor.base} cajas={visor.cajas} pallets={vistaHerr ? vistaHerr.pallets : res?.pallets || []} paso={vistaHerr || res ? paso : 0} colores={vistaHerr ? vistaHerr.colores : coloresCarga} formas={vistaHerr ? vistaHerr.formas : formasCarga} resaltado={vistaHerr ? null : resaltado} camara={camara} api={apiVisor}
               seleccion={edicion ? edicion.elegida : null} problemas={edicion ? problemasSet : null} onElegir={edicion ? (i) => setEdicion((e) => ({ ...e, elegida: i, mensaje: null })) : null} />
             <div className="absolute top-3 left-3 right-3 flex flex-wrap items-center gap-2 pointer-events-none">
               {vistaHerr && <>
                 <button onClick={() => { setVistaHerr(null); setPaso(res ? (palVista ? palVista.cajas.length : cont?.cajas.length || 0) : 0); }} className="pointer-events-auto text-xs px-2.5 py-1 rounded-full font-medium shadow-sm" style={{ background: T.nav, color: "#fff" }}>← Volver a mi carga</button>
                 <span className="text-xs px-2.5 py-1 rounded-full shadow-sm" style={{ background: "rgba(255,255,255,.95)" }}>Herramienta: <b>{vistaHerr.titulo}</b></span>
+                {vistaHerr.palDef && (
+                  <div className="pointer-events-auto flex rounded-full shadow-sm overflow-hidden text-xs" style={{ background: "rgba(255,255,255,.95)" }} role="group" aria-label="Qué ver">
+                    {[[false, "Vehículo"], [true, "Pallet armado"]].map(([v, t]) => (
+                      <button key={t} onClick={() => { setVistaHerr((x) => ({ ...x, verPallet: v })); setPaso(v ? vistaHerr.palDef.cajas.length : vistaHerr.cajas.length); }} aria-pressed={vistaHerr.verPallet === v}
+                        className="px-2.5 py-1" style={{ background: vistaHerr.verPallet === v ? T.nav : "transparent", color: vistaHerr.verPallet === v ? "#fff" : T.tinta }}>{t}</button>
+                    ))}
+                  </div>
+                )}
               </>}
               {!vistaHerr && res && !palVista && res.contenedores.length <= MAX_BOTONES_VEH && res.contenedores.map((c, i) => (
                 <button key={i} onClick={() => verVehiculo(i)} className="pointer-events-auto text-xs px-2.5 py-1 rounded-full font-medium shadow-sm"
@@ -1467,8 +1401,28 @@ export default function Estiba3D({ usuario }) {
             </div>
             {!res && !vistaHerr && !calculando && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <p className="text-sm px-4 py-2 rounded-lg" style={{ background: "rgba(255,255,255,.9)", color: T.suave }}>Configura la carga y presiona {modoPallet ? "Armar pallet" : "Calcular carga"}</p>
+                {/* Primeros pasos: qué falta para calcular, y cada paso lleva a su sección */}
+                <div className="pointer-events-auto rounded-xl px-4 py-3 shadow-sm" style={{ background: "rgba(255,255,255,.95)", minWidth: 280 }}>
+                  <p className="text-sm font-semibold mb-2">{modoPallet ? "Para armar el pallet" : "Para calcular la carga"}</p>
+                  {[
+                    ["maestro", "Maestro de productos", maestro.productos.length ? `${maestro.productos.length.toLocaleString("es-MX")} productos` : "Ábrelo una vez; queda en tu cuenta", maestro.productos.length > 0, true],
+                    ["mercancia", "Pedido", items.length ? `${items.length} SKUs · ${totales.cajas.toLocaleString("es-MX")} cajas` : "Carga el Excel o agrega SKUs", items.some((it) => it.qty > 0), false],
+                    ["vehiculo", modoPallet ? "Pallet" : "Vehículo", nombreVeh, true, false],
+                  ].map(([sec, t, d, listo, opcional]) => (
+                    <button key={sec} onClick={() => setSeccion(sec)} className="flex items-center gap-2 w-full text-left py-1">
+                      <span className="flex-none flex items-center justify-center rounded-full" style={{ width: 20, height: 20, background: listo ? T.ok : T.shell, color: listo ? "#fff" : T.suave, border: listo ? "none" : `1px solid ${T.linea}` }}>{listo ? <CheckCircle2 size={13} /> : null}</span>
+                      <span className="flex-1"><span className="text-sm">{t}</span>{opcional && !listo ? <span className="text-xs" style={{ color: T.suave }}> (opcional)</span> : null}<span className="block text-xs" style={{ color: T.suave }}>{d}</span></span>
+                    </button>
+                  ))}
+                  <button onClick={calcular} disabled={!items.length} className="flex items-center justify-center gap-1.5 w-full text-sm font-semibold px-3 py-1.5 rounded-md mt-2" style={{ background: T.acento, color: T.nav, opacity: items.length ? 1 : 0.5 }}>
+                    <Play size={14} />{modoPallet ? "Armar pallet" : "Calcular carga"}<span className="text-xs font-normal opacity-70">Ctrl+Enter</span>
+                  </button>
+                </div>
               </div>
+            )}
+            {res && reporte && !vistaHerr && !palVista && !modoPallet && !edicion && (optim?.calculando || !calculando) && (
+              <OptimizarPedido reporte={reporte} items={items} optim={optim} progreso={progreso} onCalcular={optimizarPedido} onAplicar={aplicarOptimizacion}
+                onDeshacer={deshacerOptimizacion} onCerrar={() => setOptim(null)} onCancelar={() => { cancelarCorrida(); setOptim(null); }} />
             )}
             {edicion && cont && validacion && (
               <PanelEdicion edicion={edicion} setEdicion={setEdicion} cont={cont} validacion={validacion} items={corrida.carga.items} pallets={res.pallets} vehNum={sel + 1}
@@ -1476,15 +1430,14 @@ export default function Estiba3D({ usuario }) {
             )}
             {(res || vistaHerr) && visor.total > 0 && !edicion && (
               <div className="absolute bottom-3 left-3 right-3 flex items-center gap-3 px-3 py-2 rounded-lg" style={{ background: "rgba(255,255,255,.92)" }}>
-                <span className="text-xs whitespace-nowrap" style={{ color: T.suave }}>{palVista || vistaHerr?.esPallet ? "Armado" : "Carga"} {paso}/{visor.total}</span>
+                <span className="text-xs whitespace-nowrap" style={{ color: T.suave }}>{palVista || vistaHerr?.esPallet || vistaHerr?.verPallet ? "Armado" : "Carga"} {paso}/{visor.total}</span>
                 <input type="range" min={0} max={visor.total} value={paso} onChange={(e) => setPaso(Number(e.target.value))} className="flex-1" aria-label="Secuencia" style={{ accentColor: T.nav }} />
               </div>
             )}
           </div>
 
-          <PanelResultados oculto={panelOculto} setOculto={setPanelOculto} editarOris={editarOrisDeLinea} colores={colores} descargarInstructivo={descargarInstructivo} descargarInstructivoCompleto={descargarInstructivoCompleto} descargarResultados={descargarResultados} generando={generando} modoPallet={modoPallet} palVista={palVista} pestana={pestana} reporte={reporte} res={res} resaltado={resaltado} sel={sel} setPestana={setPestana} setResaltado={setResaltado} stats={stats} verPallet={verPallet} vista={vista}
-            espacios={espacios} calculandoEspacios={calculandoEspacios} completarEspacios={completarEspacios} aplicarRelleno={aplicarRelleno}
-            ultimoCasiVacio={ultimoCasiVacio} consolidar={consolidar} intentarConsolidar={intentarConsolidar} aplicarConsolidacion={aplicarConsolidacion} aplicarReduccionConsolidar={aplicarReduccionConsolidar} />
+          <PanelResultados mixBundle={mixBundle} modoPalletRes={modoPallet} oculto={panelOculto} setOculto={setPanelOculto} editarOris={editarOrisDeLinea} colores={coloresCarga} descargarInstructivo={descargarInstructivo} descargarInstructivoCompleto={descargarInstructivoCompleto} descargarResultados={descargarResultados} generando={generando} modoPallet={modoPallet} palVista={palVista} pestana={pestana} reporte={reporte} res={res} resaltado={resaltado} sel={sel} setPestana={setPestana} setResaltado={setResaltado} stats={stats} verPallet={verPallet} vista={vista}
+            />
         </main>
       </div>
     </div>

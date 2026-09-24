@@ -5,7 +5,9 @@ Lista de cambios pedidos que todavía no se programan. Al hacer uno, se borra de
 
 ## Por hacer
 
-Nada pendiente de programar. Lo que salió en la v1.4.0 está en `src/version.js` (NOVEDADES).
+Nada pendiente de programar. Lo que salió en la v1.5.0 está en `src/version.js` (NOVEDADES).
+
+- **Traducción al inglés**: los nombres de ejemplo (productos, pallets, destinos) y las novedades anteriores a la v1.3.0 se quedan en español a propósito. Al agregar texto nuevo a la interfaz, agregar su traducción en `src/i18n/en.js`.
 
 ## En espera de datos
 

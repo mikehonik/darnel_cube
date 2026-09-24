@@ -16,6 +16,23 @@ export const VERSION_COMPLETA = `v${VERSION}${BUILD ? ` · ${BUILD}` : ""}${FECH
 // escrito para quien usa la herramienta (no para programadores).
 export const NOVEDADES = [
   {
+    version: "1.5.0", fecha: "24/09/2026",
+    cambios: [
+      "Bundles desde el maestro: nueva hoja «Bundles» (SKU, cajas por Bundle, medidas y peso). En cada línea del pedido se elige cómo se carga: suelta, pallet de un SKU, pallet mixto o Bundle (solo para los SKUs de esa hoja).",
+      "El Bundle se calcula como en el andén: primero todos los Bundles completos y, solo si así se ocupa un vehículo más, se abren los menos posibles para llenar los huecos con cajas sueltas. El resumen muestra el mix Bundle / suelto que resultó; ya no se captura un porcentaje.",
+      "En el 3D, al terminar el cálculo: «Llenar con pedido sugerido» (agranda el pedido en la misma proporción y llena los huecos) y «Sugerir disminución del pedido» (primero intenta reacomodar sin cambiar cantidades). Calculan en nivel 4, muestran una vista previa, una línea se puede fijar con el candado y se puede deshacer. Reemplazan «¿Qué más cabe?» e «Intentar consolidar».",
+      "Herramientas de capacidad: el cálculo completo tardaba hasta 40 segundos y ahora tarda unos pocos. En pallets completos se puede ver el vehículo lleno o el pallet armado.",
+      "Botón ES | EN arriba (y en la pantalla de entrada): toda la herramienta en inglés, también el Excel de resultados, el instructivo y el PDF. Las plantillas de intercambio (maestro, carga y vehículos) siguen en español para que se puedan volver a subir.",
+      "Primeros pasos en el 3D vacío: una lista con lo que falta (maestro, pedido y vehículo) y el botón Calcular. Ctrl+Enter calcula desde cualquier lugar.",
+      "Las columnas Entrega, Pedido y Destino solo aparecen si se usan (o con «Entrega y pedido»), para que la tabla del pedido no se salga de la pantalla.",
+      "En Maestro, los ocho enlaces se juntaron en dos menús: «Importar» y «Descargar».",
+      "Los mensajes flotan abajo a la izquierda y se ocultan solos; ya no empujan la pantalla.",
+      "Ayuda empieza con «Cómo se usa» en 4 pasos; el significado de cada campo va plegado por tema y las novedades quedan al final.",
+      "Herramientas nuevas: Calidad del maestro (medidas en cero o de relleno, pesos que no cuadran con el tamaño, SKUs que no caben en ningún vehículo, repetidos), Comparar pallets, Vehículos necesarios (con flete total y por caja si hay tarifas) y Convertidor de unidades.",
+      "El semáforo de paletizado lleva además un símbolo (✓ ! ✕) para quien no distingue bien los colores, y en modo pallet las acciones sugeridas dicen «pallet» en lugar de «vehículo».",
+    ],
+  },
+  {
     version: "1.4.0", fecha: "23/09/2026",
     cambios: [
       "«Mercancía» ahora se llama «Pedido», y en toda la herramienta se dice «pallet» en lugar de «tarima». Los maestros viejos (con la columna «Tarima») se siguen leyendo.",

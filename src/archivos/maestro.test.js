@@ -23,7 +23,7 @@ describe("leerMaestro", () => {
     expect(sinPid(por("PLY-001"))).toEqual({ sku: "PLY-001", idProducto: "1002345", categoria: "", desc: "Playera básica algodón (caja 24 pzas)", L: 600, W: 400, H: 300, peso: 8, piezas: 24, oris: [true, true, false, false, false, false],
       volteoPiso: false, compresion: 0, maxNiveles: 0, valorApilar: 1, pesoMaxEncima: 0, forma: "caja", diametro: 0, anidado: 0, maxAnidado: 0, piso: "libre", soportaEncima: true, umCaja: "CJ", paletizar: true, tarima: "Americano 1219×1016", porPallet: 20, porCapa: 0, capasPallet: 0, resto: "mixto",
       aceptaCajas: true, aceptaPallet: false, color: null,
-      bundleActivo: false, manufacturaPropia: false, bundlePct: 0, bundleCantidadEstandar: 0, bundleL: 0, bundleW: 0, bundleH: 0, bundlePeso: 0 });
+      bundleCantidadEstandar: 0, bundleL: 0, bundleW: 0, bundleH: 0, bundlePeso: 0 });
     expect(por("JNS-010")).toMatchObject({ valorApilar: 2, aceptaPallet: true, porPallet: 16 });
     expect(por("CAL-205")).toMatchObject({ pesoMaxEncima: 60, resto: "parcial", porPallet: 30 });
   });
@@ -51,7 +51,7 @@ describe("libroMaestro", () => {
 
   it("guarda en dos hojas (Datos y Parámetros) y ambas traen la fórmula de volumen o los datos correctos", () => {
     const wb = XLSX.read(libroMaestro([productoVacio({ sku: "X", L: 600, W: 400, H: 400, categoria: "Vasos" })], []), { type: "array" });
-    expect(wb.SheetNames).toEqual(["Datos", "Parámetros", "Pallets", "Instrucciones"]);
+    expect(wb.SheetNames).toEqual(["Datos", "Parámetros", "Bundles", "Pallets", "Instrucciones"]);
     expect(wb.Sheets.Datos.H2).toMatchObject({ f: "ROUND(D2*E2*F2/1000000000,4)", v: 0.096 });
     expect(XLSX.utils.sheet_to_json(wb.Sheets["Parámetros"])[0]).toMatchObject({ SKU: "X", Categoría: "Vasos" });
   });
@@ -124,6 +124,26 @@ describe("dimensiones separadas de los parámetros", () => {
   });
 });
 
+describe("hoja Bundles del maestro", () => {
+  it("se guarda solo con los SKUs que tienen Bundle y se vuelve a leer igual", () => {
+    const productos = [productoVacio({ sku: "DU-1", bundleCantidadEstandar: 24, bundleL: 900, bundleW: 600, bundleH: 1000, bundlePeso: 130 }), productoVacio({ sku: "SIN-BDL" })];
+    const buf = libroMaestro(productos, []);
+    const wb = XLSX.read(buf, { type: "array" });
+    expect(XLSX.utils.sheet_to_json(wb.Sheets.Bundles, { header: 1 })).toEqual([["SKU", "Cajas por Bundle", "Largo Bundle (mm)", "Ancho Bundle (mm)", "Alto Bundle (mm)", "Peso Bundle (kg)"], ["DU-1", 24, 900, 600, 1000, 130]]);
+    expect(XLSX.utils.sheet_to_json(wb.Sheets["Parámetros"], { header: 1 })[0].some((h) => /bundle/i.test(h))).toBe(false);
+    const r = leerMaestro(buf);
+    expect(r.productos[0]).toMatchObject({ bundleCantidadEstandar: 24, bundleL: 900, bundleW: 600, bundleH: 1000, bundlePeso: 130 });
+    expect(r.productos[1]).toMatchObject({ bundleCantidadEstandar: 0 });
+  });
+  it("un maestro viejo con las columnas de Bundle en Parámetros se sigue leyendo (solo si decía Bundle activo)", () => {
+    const buf = libro({ Datos: [["SKU", "Largo (mm)", "Ancho (mm)", "Alto (mm)", "Peso (kg)"], ["A", 300, 300, 250, 5], ["B", 300, 300, 250, 5]],
+      "Parámetros": [["SKU", "Bundle activo", "% máximo Bundle", "Cantidad estándar por Bundle", "Largo Bundle (mm)", "Ancho Bundle (mm)", "Alto Bundle (mm)"], ["A", "Sí", 70, 24, 900, 600, 1000], ["B", "No", 70, 24, 900, 600, 1000]] });
+    const r = leerMaestro(buf);
+    expect(r.productos[0]).toMatchObject({ bundleCantidadEstandar: 24, bundleL: 900 });
+    expect(r.productos[1]).toMatchObject({ bundleCantidadEstandar: 0 });
+  });
+});
+
 describe("leerBundleMaestro", () => {
   const conDU = () => [productoVacio({ sku: "DU2014501", L: 265, W: 213, H: 28, peso: 0.5 }), productoVacio({ sku: "OTRO-SKU", L: 300, W: 200, H: 150, peso: 3 })];
 
@@ -134,10 +154,9 @@ describe("leerBundleMaestro", () => {
     expect(r.errores).toEqual([]);
     expect(r.actualizados).toBe(1);
     const p = r.productos.find((x) => x.sku === "DU2014501");
-    expect(p).toMatchObject({ bundleActivo: true, manufacturaPropia: true, bundleCantidadEstandar: 20, bundleL: 1085.85, bundleW: 882.65, bundleH: 2762.25 });
-    // No toca el SKU que no viene en el archivo, ni el % máximo (eso se ajusta a mano)
-    expect(r.productos.find((x) => x.sku === "OTRO-SKU")).toMatchObject({ bundleActivo: false });
-    expect(p.bundlePct).toBe(0);
+    expect(p).toMatchObject({ bundleCantidadEstandar: 20, bundleL: 1085.85, bundleW: 882.65, bundleH: 2762.25 });
+    // No toca el SKU que no viene en el archivo
+    expect(r.productos.find((x) => x.sku === "OTRO-SKU")).toMatchObject({ bundleCantidadEstandar: 0 });
   });
 
   it("no modifica los productos que recibe (son estado de React)", () => {
@@ -167,6 +186,6 @@ describe("leerBundleMaestro", () => {
     const actuales = [productoVacio({ sku: "DU2014501", L: 265, W: 213, H: 28, peso: 0.5 })];
     const r = leerBundleMaestro(actuales, buf);
     expect(r.actualizados).toBe(1);
-    expect(r.productos[0]).toMatchObject({ bundleActivo: true, bundleCantidadEstandar: 20, bundleL: 1085.85, bundleW: 882.65, bundleH: 2762.25 });
+    expect(r.productos[0]).toMatchObject({ bundleCantidadEstandar: 20, bundleL: 1085.85, bundleW: 882.65, bundleH: 2762.25 });
   });
 });

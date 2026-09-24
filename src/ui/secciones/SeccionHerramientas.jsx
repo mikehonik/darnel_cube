@@ -5,7 +5,8 @@
 //   · «Calcular carga», que corre el motor completo (el nivel y las reglas activas en la pestaña Reglas,
 //     igual que una carga normal) y muestra el resultado en el visor 3D.
 import { useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Play, Loader2, Package, Layers, Boxes } from "lucide-react";
+import { ChevronDown, ChevronRight, Play, Loader2, Package, Layers, Boxes, Truck, Scale, Repeat, ShieldCheck } from "lucide-react";
+import { CompararPallets, VehiculosNecesarios, ConvertidorUnidades, CalidadMaestro } from "./HerramientasExtra.jsx";
 import { claveSku, indiceSku, buscarSku } from "../../archivos/celdas.js";
 import { capacidadSuelta, capacidadPalletCompleto } from "../../motor/motor.js";
 import { paraMotor } from "./herramientasComun.js";
@@ -97,20 +98,22 @@ function BotonCalcular({ onClick, calculando, deshabilitado, texto = "Calcular c
   );
 }
 
-export function SeccionHerramientas({ maestro, vehiculos, pallets, reglas, calcularHerramienta, verPalletHerr, calculando, vistaHerr }) {
+export function SeccionHerramientas({ maestro, vehiculos, pallets, reglas, tarifas = [], calcularHerramienta, verPalletHerr, calculando, vistaHerr }) {
   const u = useUnidades();
   const [skuSel, setSkuSel] = useState(maestro.productos[0]?.sku || "");
+  const [versionBuscador, setVersionBuscador] = useState(0);   // para reiniciar el buscador cuando otra herramienta elige un SKU
   const [abierta, setAbierta] = useState(null);
   const producto = useMemo(() => maestro.productos.find((p) => claveSku(p.sku) === claveSku(skuSel)) || null, [maestro.productos, skuSel]);
+  const elegirDeFuera = (sku) => { setSkuSel(sku); setVersionBuscador((v) => v + 1); setAbierta("suelta"); window.scrollTo?.(0, 0); };
 
   if (!maestro.productos.length) return <p className="text-sm" style={{ color: T.suave }}>Necesitas productos en el maestro para usar estas herramientas.</p>;
+  const P = (id, icono, titulo, resumen, hijo) => <Plegable id={id} abierta={abierta} setAbierta={setAbierta} icono={icono} titulo={titulo} resumen={resumen}>{hijo}</Plegable>;
 
   return (
     <>
-      <h2 className="text-lg font-semibold mb-1">Herramientas</h2>
-      <p className="text-xs mb-3" style={{ color: T.suave }}>Preguntas rápidas sobre un solo SKU, sin necesidad de cargar un pedido. Abre la herramienta que necesites.</p>
+      <h2 className="text-lg font-semibold mb-3">Herramientas</h2>
       <div className="rounded-lg p-3 mb-3" style={{ background: T.sup, border: `1px solid ${T.linea}` }}>
-        <BuscadorSku productos={maestro.productos} valor={producto ? producto.sku : ""} onElegir={setSkuSel} />
+        <BuscadorSku key={versionBuscador} productos={maestro.productos} valor={producto ? producto.sku : ""} onElegir={setSkuSel} />
         {producto && (
           <p className="text-xs mt-2" style={{ color: T.suave }}>
             {producto.desc ? `${producto.desc} · ` : ""}{u.fLLL(producto.L, producto.W, producto.H)} · {u.fP(producto.peso, 2)}
@@ -124,16 +127,24 @@ export function SeccionHerramientas({ maestro, vehiculos, pallets, reglas, calcu
       </div>
 
       {producto && <>
-        <Plegable id="suelta" abierta={abierta} setAbierta={setAbierta} icono={Package} titulo="Capacidad máxima suelta" resumen="¿Cuántas cajas de este SKU caben sueltas en un vehículo?">
-          <CapacidadSuelta key={producto.sku} producto={producto} vehiculos={vehiculos} reglas={reglas} calcularHerramienta={calcularHerramienta} calculando={calculando} vistaHerr={vistaHerr} />
-        </Plegable>
-        <Plegable id="pallets" abierta={abierta} setAbierta={setAbierta} icono={Layers} titulo="Capacidad en pallets completos" resumen="¿Cuántos pallets completos de este SKU caben en un vehículo?">
-          <CapacidadPallets key={producto.sku} producto={producto} vehiculos={vehiculos} pallets={pallets} reglas={reglas} calcularHerramienta={calcularHerramienta} calculando={calculando} vistaHerr={vistaHerr} />
-        </Plegable>
-        <Plegable id="optimo" abierta={abierta} setAbierta={setAbierta} icono={Boxes} titulo="Pallet óptimo y paletizado para fabricación" resumen="Mejor acomodo por pallet, estabilidad, centro de gravedad y resistencia; listado de SKUs y PDF.">
-          <PalletFabricacion producto={producto} productos={maestro.productos} pallets={pallets} reglas={reglas} verPalletHerr={verPalletHerr} />
-        </Plegable>
+        <p className="text-xs font-semibold mb-2" style={{ color: T.suave }}>CAPACIDAD</p>
+        {P("suelta", Package, "Capacidad máxima suelta", "¿Cuántas cajas caben sueltas en un vehículo?",
+          <CapacidadSuelta key={producto.sku} producto={producto} vehiculos={vehiculos} reglas={reglas} calcularHerramienta={calcularHerramienta} calculando={calculando} vistaHerr={vistaHerr} />)}
+        {P("pallets", Layers, "Capacidad en pallets completos", "¿Cuántos pallets completos caben en un vehículo?",
+          <CapacidadPallets key={producto.sku} producto={producto} vehiculos={vehiculos} pallets={pallets} reglas={reglas} calcularHerramienta={calcularHerramienta} calculando={calculando} vistaHerr={vistaHerr} />)}
+        {P("necesarios", Truck, "Vehículos necesarios", "¿Cuántos vehículos para una cantidad, y cuánto cuesta por caja?",
+          <VehiculosNecesarios key={producto.sku} producto={producto} pallets={pallets} vehiculos={vehiculos} reglas={reglas} tarifas={tarifas} />)}
+        <p className="text-xs font-semibold mb-2 mt-4" style={{ color: T.suave }}>PALETIZADO</p>
+        {P("optimo", Boxes, "Pallet óptimo y paletizado para fabricación", "Patrones con semáforo de estabilidad, centro de gravedad y compresión; listado y PDF.",
+          <PalletFabricacion producto={producto} productos={maestro.productos} pallets={pallets} reglas={reglas} verPalletHerr={verPalletHerr} />)}
+        {P("comparar", Scale, "Comparar pallets", "¿En qué pallet del catálogo conviene este SKU?",
+          <CompararPallets key={producto.sku} producto={producto} pallets={pallets} vehiculos={vehiculos} reglas={reglas} />)}
+        <p className="text-xs font-semibold mb-2 mt-4" style={{ color: T.suave }}>DATOS</p>
+        {P("unidades", Repeat, "Convertidor de unidades", "Millares, pallets, kilos… a cajas de este SKU.",
+          <ConvertidorUnidades key={producto.sku} producto={producto} conversiones={maestro.conversiones} />)}
       </>}
+      {P("calidad", ShieldCheck, "Calidad del maestro", "Medidas vacías o de relleno, pesos que no cuadran, SKUs repetidos.",
+        <CalidadMaestro productos={maestro.productos} pallets={pallets} vehiculos={vehiculos} onVerSku={elegirDeFuera} />)}
     </>
   );
 }

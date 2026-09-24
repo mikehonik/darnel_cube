@@ -22,8 +22,10 @@ const COLORES_SEM = { verde: "#2F8C46", amarillo: "#E2A000", rojo: "#B3261E", gr
 const NOMBRES = { estabilidad: "Estabilidad", cg: "Centro de gravedad", compresion: "Compresión" };
 const pct = (v) => (v == null ? "—" : `${Math.round(v * 100)}%`);
 
+// Cada color lleva además su símbolo, para quien no distingue bien rojo de verde
+const SIMBOLO = { verde: "✓", amarillo: "!", rojo: "✕", gris: "?" };
 function Punto({ color, titulo }) {
-  return <span title={titulo} style={{ display: "inline-block", width: 11, height: 11, borderRadius: 99, background: COLORES_SEM[color], flex: "none" }} />;
+  return <span title={titulo} aria-label={titulo} className="inline-flex items-center justify-center" style={{ width: 15, height: 15, borderRadius: 99, background: COLORES_SEM[color], flex: "none", color: "#fff", fontSize: 9, fontWeight: 700, lineHeight: 1 }}>{SIMBOLO[color]}</span>;
 }
 function Semaforo({ s, compacto }) {
   if (compacto) return <span className="flex gap-1">{["estabilidad", "cg", "compresion"].map((k) => <Punto key={k} color={s[k].color} titulo={`${NOMBRES[k]}: ${s[k].texto}`} />)}</span>;

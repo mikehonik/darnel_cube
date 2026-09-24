@@ -2,6 +2,7 @@ import { useState } from "react";
 // ================= Controles =================
 // Piezas chicas de formulario y tarjetas que usa toda la interfaz.
 import { T } from "./tema.js";
+import { IDIOMAS } from "../i18n/index.js";
 import { useUnidades } from "./unidadesContexto.jsx";
 
 export const inp = "w-full rounded-md px-2 py-1.5 text-sm border outline-none";
@@ -102,6 +103,43 @@ export function Nota({ children, titulo = "Cómo funciona" }) {
         {titulo}
       </button>
       {ver && <p className="text-xs mt-1" style={{ color: T.suave }}>{children}</p>}
+    </div>
+  );
+}
+
+// Botón con menú desplegable de acciones: junta varias acciones parecidas (importar, descargar) en un solo
+// botón, en vez de una fila de enlaces subrayados.
+// ES | EN. Cambia el idioma de toda la pantalla y de los archivos que se generan.
+export function SelectorIdioma({ idioma, onCambiar, oscuro = true }) {
+  return (
+    <div className="flex flex-none rounded-md overflow-hidden text-xs whitespace-nowrap" role="group" aria-label="Idioma" style={{ border: `1px solid ${oscuro ? "rgba(255,255,255,.25)" : T.linea}` }}>
+      {IDIOMAS.map(([id, corto, nombre]) => (
+        <button key={id} onClick={() => onCambiar(id)} aria-pressed={idioma === id} title={nombre} lang={id} className="px-2 py-1"
+          style={{ background: idioma === id ? T.acento : "transparent", color: idioma === id ? T.nav : oscuro ? "rgba(255,255,255,.8)" : T.suave, fontWeight: idioma === id ? 600 : 400 }}>{corto}</button>
+      ))}
+    </div>
+  );
+}
+
+export function MenuBoton({ etiqueta, icono: Icono, acciones }) {
+  const [abierto, setAbierto] = useState(false);
+  return (
+    <div className="relative inline-block">
+      <button onClick={() => setAbierto(!abierto)} aria-expanded={abierto} className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md" style={{ border: `1px solid ${T.linea}`, background: T.sup }}>
+        {Icono && <Icono size={15} />}{etiqueta}<span style={{ fontSize: 10, color: T.suave }}>▾</span>
+      </button>
+      {abierto && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setAbierto(false)} aria-hidden="true" />
+          <div className="absolute left-0 mt-1 rounded-lg py-1 z-20 shadow-lg text-sm" style={{ background: T.sup, border: `1px solid ${T.linea}`, minWidth: 260 }}>
+            {acciones.filter(Boolean).map(([t, fn, ayuda, deshabilitado]) => (
+              <button key={t} onClick={() => { setAbierto(false); fn(); }} disabled={deshabilitado} title={ayuda} className="block w-full text-left px-3 py-1.5 hover:bg-gray-100" style={{ opacity: deshabilitado ? 0.45 : 1 }}>
+                {t}{ayuda && <span className="block text-xs" style={{ color: T.suave }}>{ayuda}</span>}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

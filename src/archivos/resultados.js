@@ -2,6 +2,7 @@
 // Salidas de una corrida para quien no está frente a la app: el Excel de resultados (todos los
 // vehículos) y el instructivo de carga en HTML (un vehículo, con imágenes del visor).
 // Ambos son renderers del reporte: no leen el resultado crudo del motor.
+import { traducir, traducirFilas, traducirHtml } from "../i18n/index.js";
 import * as XLSX from "xlsx";
 import { escribirXlsx } from "./escribir.js";
 import { clave } from "./celdas.js";
@@ -19,15 +20,16 @@ const conv = (u) => ({
 
 // Libro de una sola hoja, para listados simples (revisión del pedido)
 export function libroSimple(filas, hoja, anchos) {
-  const wb = XLSX.utils.book_new(), ws = XLSX.utils.aoa_to_sheet(filas);
+  const wb = XLSX.utils.book_new(), ws = XLSX.utils.aoa_to_sheet(traducirFilas(filas));
   if (anchos) ws["!cols"] = anchos.map((w) => ({ wch: w }));
-  XLSX.utils.book_append_sheet(wb, ws, hoja);
+  XLSX.utils.book_append_sheet(wb, ws, traducir(hoja).slice(0, 31));
   return escribirXlsx(wb);
 }
 export const MIME_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 export const nombreArchivo = (t) => clave(t).slice(0, 40) || "carga";
 const esc = (t) => String(t ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const hoja = (wb, nombre, filas, anchos) => { const ws = XLSX.utils.aoa_to_sheet(filas); ws["!cols"] = anchos.map((wch) => ({ wch })); XLSX.utils.book_append_sheet(wb, ws, nombre); };
+// En inglés cada celda de texto y el nombre de la hoja salen traducidos
+const hoja = (wb, nombre, filas, anchos) => { const ws = XLSX.utils.aoa_to_sheet(traducirFilas(filas)); ws["!cols"] = anchos.map((wch) => ({ wch })); XLSX.utils.book_append_sheet(wb, ws, traducir(nombre).slice(0, 31)); };
 
 // Excel con Resumen, Lista de carga, Pallets (si hay) y Pasos de carga. Devuelve el archivo como bytes.
 export function libroResultados({ reporte: R, proyecto, nombreVeh, nivel, fecha = new Date().toLocaleString("es-MX"), u = unidadesDe("metrico") }) {
@@ -95,11 +97,11 @@ table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #DCE2E8;
 .nota{color:#5B6B7B;font-size:11px}.contenedor+.contenedor{page-break-before:always;margin-top:28px}
 @media print{body{margin:10mm}.noimp{display:none}}`;
 
-const docInstructivo = (titulo, cuerpo) => `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Instructivo de carga · ${esc(titulo)}</title>
+const docInstructivo = (titulo, cuerpo) => traducirHtml(`<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Instructivo de carga · ${esc(titulo)}</title>
 <style>${ESTILO_INSTRUCTIVO}</style></head><body>
 <p class="noimp nota">Para guardar en PDF: Imprimir → Guardar como PDF.</p>
 ${cuerpo}
-<p class="nota">Generado con ${NOMBRE_VERSION}${BUILD ? ` (${BUILD})` : ""}.</p></body></html>`;
+<p class="nota">Generado con ${NOMBRE_VERSION}${BUILD ? ` (${BUILD})` : ""}.</p></body></html>`);
 
 // Instructivo de un solo contenedor. `imagenes[i]` es la captura del visor al terminar la etapa i (data URL).
 export function htmlInstructivo({ reporte, sel, modoPallet, proyecto, nombreVeh, etapas, imagenes, fecha = new Date().toLocaleString("es-MX"), u }) {

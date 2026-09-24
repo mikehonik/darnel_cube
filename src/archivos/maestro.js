@@ -43,8 +43,10 @@ export const ARCHIVO_RESPALDO = "maestro_productos_respaldo.xlsx";
 // Archivos viejos con una sola hoja "Productos" se siguen leyendo (ver leerMaestro).
 export const COLS_DATOS = ["SKU", "ID producto", "Descripción", "Largo (mm)", "Ancho (mm)", "Alto (mm)", "Peso (kg)", "Volumen (m³)"];
 export const COLS_PARAMETROS = ["SKU", "Categoría", "Forma", "Piezas por caja", "Orientaciones", "Volteo en piso", "Compresión bajo carga (%)", "Anidado: sube por pieza (mm)", "Máx. piezas anidadas", "Máx. cajas apiladas",
-  "Prioridad de apilamiento", "Peso máx. encima (kg)", "Posición", "Soporta carga encima", "UM de la caja", "Paletizar", "Pallet", "Cajas por pallet", "Cajas por nivel", "Niveles", "Sobrantes", "Acepta cajas encima", "Acepta pallet encima", "Color",
-  "Bundle activo", "Manufactura propia", "% máximo Bundle", "Cantidad estándar por Bundle", "Largo Bundle (mm)", "Ancho Bundle (mm)", "Alto Bundle (mm)", "Peso Bundle (kg)"];
+  "Prioridad de apilamiento", "Peso máx. encima (kg)", "Posición", "Soporta carga encima", "UM de la caja", "Paletizar", "Pallet", "Cajas por pallet", "Cajas por nivel", "Niveles", "Sobrantes", "Acepta cajas encima", "Acepta pallet encima", "Color"];
+// Hoja «Bundles»: solo los SKUs que se pueden cargar en Bundle (ver archivos/bundle.js). Si un SKU está aquí,
+// en el pedido aparece la opción Bundle. No lleva porcentaje: el mix Bundle / suelto es un resultado del cálculo.
+export const COLS_BUNDLES = ["SKU", "Cajas por Bundle", "Largo Bundle (mm)", "Ancho Bundle (mm)", "Alto Bundle (mm)", "Peso Bundle (kg)"];
 // Compatibilidad: los archivos de una sola hoja (anteriores a la separación) usan este orden.
 export const COLS_MAESTRO = ["SKU", "ID producto", "Descripción", "Categoría", "Forma", "Largo (mm)", "Ancho (mm)", "Alto (mm)", "Peso (kg)", "Volumen (m³)", "Piezas por caja", "Orientaciones", "Volteo en piso", "Compresión bajo carga (%)", "Anidado: sube por pieza (mm)", "Máx. piezas anidadas", "Máx. cajas apiladas",
   "Prioridad de apilamiento", "Peso máx. encima (kg)", "Posición", "Soporta carga encima", "UM de la caja", "Paletizar", "Pallet", "Cajas por pallet", "Cajas por nivel", "Niveles", "Sobrantes", "Acepta cajas encima", "Acepta pallet encima", "Color"];
@@ -90,11 +92,9 @@ export const AYUDA = [
   ["Pedido (plantilla de carga)", "Paletizar y Cajas por pallet (opcionales)", "Solo si en esta carga quieres algo distinto a lo que dice el maestro. Vacío = se usa el maestro.", "Mixto · 20", "Se usa el maestro"],
   ["Pedido (plantilla de carga)", "Pedido / destino", "Número de pedido, tienda o cliente. Con la regla «Mantener juntos los pedidos» los SKUs de un mismo pedido se cargan seguidos, dentro de su parada. Un pedido no queda en un solo bloque perfecto: queda agrupado dentro de su zona.", "PED-4471 Norte", "Sin pedido"],
   ["Categorías", "Qué sí hace", "La categoría solo controla apilamiento: con la regla «Solo sobre la misma categoría» activa, un producto solo recibe encima otro de su misma categoría, sin importar el SKU. Compresión, anidado y demás siguen siendo campos por SKU, no por categoría.", "Tejas sobre tejas", "—"],
-  ["Bundle (BDL)", "Qué es", "Un Bundle agrupa varias cajas del mismo SKU en un bulto más grande, con sus propias medidas y peso (por ejemplo, un pallet o caja máster de varias cajas). Al cargar un pedido, la herramienta forma la mayor cantidad de Bundles completos posible (sin pasarse del porcentaje configurado) y el resto del pedido se cubica como cajas sueltas normales: la misma línea puede terminar dividida en Bundle y Suelto.", "13 BDL + 59 sueltas", "No se forman Bundles"],
-  ["Bundle (BDL)", "Bundle activo", "Habilita la transformación a Bundle para este SKU. Sin esto, el SKU se cubica siempre como lo indican sus reglas normales, aunque tenga los demás campos de Bundle llenos.", "Sí", "No"],
-  ["Bundle (BDL)", "Manufactura propia", "El Bundle solo aplica a SKUs de manufactura propia (en la práctica, los que empiezan con DU). Si no está marcado, el SKU se queda como suelto aunque tenga Bundle activo.", "Sí", "No"],
-  ["Bundle (BDL)", "% máximo Bundle", "Qué parte de la cantidad pedida se intenta convertir a Bundles completos; el resto siempre se cubica suelto. Debe ser mayor a 0% y menor a 100%.", "70", "Sin Bundle (0, inválido)"],
-  ["Bundle (BDL)", "Cantidad estándar por Bundle", "Cuántas cajas de este SKU entran en un Bundle completo. Equivale al factor de conversión del Bundle entre el factor de conversión de la caja, ya resuelto a cajas (ver «Importar Bundle desde CS-BDL»).", "10", "Sin Bundle (0, inválido)"],
+  ["Bundle (BDL)", "Qué es", "Un Bundle agrupa varias cajas del mismo SKU en un bulto más grande, sin pallet, con sus propias medidas y peso. Se configura en la hoja Bundles del maestro: si un SKU está ahí, en cada línea del pedido se puede elegir cargarlo en Bundle.", "—", "El SKU no tiene la opción Bundle"],
+  ["Bundle (BDL)", "Cómo se calcula", "Como en el andén: primero se cargan todos los Bundles completos (lo que no completa un Bundle va suelto). Solo si así la carga necesita un vehículo más, se abren los menos Bundles posibles y sus cajas se acomodan sueltas en los huecos. Si abrirlos no ahorra un vehículo, no se abre ninguno. El mix Bundle / suelto sale en el resultado; no se define antes.", "36 BDL + 4 abiertos", "—"],
+  ["Bundle (BDL)", "Cajas por Bundle", "Cuántas cajas de este SKU forman un Bundle completo. Al importar un archivo CS-BDL sale de la columna CS / BDL, o de Rel ÷ Factor.", "24", "Sin Bundle"],
   ["Bundle (BDL)", "Largo, Ancho, Alto Bundle (mm)", "Medidas del Bundle ya armado, independientes de la caja suelta. El cubicaje usa estas medidas para los cargos tipo Bundle.", "1200 · 1000 · 1500", "Sin Bundle (inválido)"],
   ["Bundle (BDL)", "Peso Bundle (kg)", "Peso del Bundle completo. En 0, se calcula como el peso de la caja suelta × la cantidad estándar por Bundle.", "220", "Peso de caja × cantidad estándar"],
   ["Categorías", "Qué no hace todavía", "Dos limitaciones a propósito: (1) el anidado (una pieza dentro de otra) solo funciona entre piezas del mismo SKU, no entre SKUs distintos de la misma categoría — por ejemplo, tanques de tamaños diferentes que embonan uno en otro no se resuelve en esta versión. (2) No hay una matriz de compatibilidad entre categorías distintas (tejas sobre tanques, por ejemplo); solo «misma categoría sí» o la regla general. Para bolsas (BL) con compresión, sigue usando el campo Compresión de cada SKU: no se aplica sola por venir en BL.", "—", "—"],
@@ -142,14 +142,18 @@ let sigPid = 1;
 export const productoVacio = (d = {}) => ({
   pid: sigPid++, sku: "", idProducto: "", categoria: "", desc: "", L: 600, W: 400, H: 400, peso: 10, piezas: 1, oris: [...ORIS_STD], volteoPiso: false, compresion: 0, maxNiveles: 0, valorApilar: 0, pesoMaxEncima: 0,
   forma: "caja", diametro: 0, anidado: 0, maxAnidado: 0, piso: "libre", soportaEncima: true, umCaja: UM_CAJA_DEF, paletizar: false, tarima: "", porPallet: 0, porCapa: 0, capasPallet: 0, resto: "parcial", aceptaCajas: true, aceptaPallet: false, color: null,
-  bundleActivo: false, manufacturaPropia: false, bundlePct: 0, bundleCantidadEstandar: 0, bundleL: 0, bundleW: 0, bundleH: 0, bundlePeso: 0, ...d,
+  bundleCantidadEstandar: 0, bundleL: 0, bundleW: 0, bundleH: 0, bundlePeso: 0, ...d,
 });
 
 // Arma un producto a partir de la fila de Datos (identidad y medidas) y, si existe, la fila de
 // Parámetros que le corresponde por SKU. Sin fila de parámetros, se usan los valores por omisión
 // (igual que un producto nuevo): así un SKU que solo tiene medidas no se cae, solo llega "sin configurar".
-function productoDeFilas(dOne, pOne) {
+// La fila de la hoja Bundles (bOne), si existe, manda sobre las columnas de Bundle de los maestros viejos.
+function productoDeFilas(dOne, pOne, bOne) {
   const o = pOne || {};
+  const viejo = siNo(o.bundleactivo, false);   // maestros anteriores: columnas de Bundle en Parámetros
+  const b = bOne ? { c: numero(bOne.cajasporbundle ?? bOne.cantidadestandarporbundle ?? bOne.csbdl), L: numero(bOne.largobundle ?? bOne.largo), W: numero(bOne.anchobundle ?? bOne.ancho), H: numero(bOne.altobundle ?? bOne.alto), p: numero(bOne.pesobundle ?? bOne.peso) }
+    : viejo ? { c: numero(o.cantidadestandarporbundle), L: numero(o.largobundle), W: numero(o.anchobundle), H: numero(o.altobundle), p: numero(o.pesobundle) } : { c: 0, L: 0, W: 0, H: 0, p: 0 };
   return productoVacio({
     sku: dOne.sku, idProducto: dOne.idProducto, desc: dOne.desc, L: dOne.L, W: dOne.W, H: dOne.H, peso: dOne.peso,
     categoria: String(o.categoria ?? "").trim(), piezas: numero(o.piezasporcaja, 1) || 1,
@@ -158,8 +162,7 @@ function productoDeFilas(dOne, pOne) {
     pesoMaxEncima: numero(o.pesomaxencima), piso: leerPiso(o.posicion), soportaEncima: siNo(o.soportacargaencima, true), umCaja: normalizaUM(o.umdelacaja) || UM_CAJA_DEF, paletizar: leerPaletizar(o.paletizar),
     tarima: String(o.pallet ?? o.tarima ?? "").trim(), porPallet: numero(o.cajasporpallet), porCapa: numero(o.cajaspornivel), capasPallet: numero(o.niveles), resto: leerResto(o.sobrantes), aceptaCajas: siNo(o.aceptacajasencima, true),
     aceptaPallet: siNo(o.aceptapalletencima, false), color: hexColor(o.color),
-    bundleActivo: siNo(o.bundleactivo, false), manufacturaPropia: siNo(o.manufacturapropia, false), bundlePct: numero(o.maximobundle),
-    bundleCantidadEstandar: numero(o.cantidadestandarporbundle), bundleL: numero(o.largobundle), bundleW: numero(o.anchobundle), bundleH: numero(o.altobundle), bundlePeso: numero(o.pesobundle),
+    bundleCantidadEstandar: b.c, bundleL: b.L, bundleW: b.W, bundleH: b.H, bundlePeso: b.p,
   });
 }
 
@@ -183,6 +186,8 @@ export function leerMaestro(buf, unidades = "auto") {
   const conversiones = conversionesDeHoja(buscarHoja(wb, [clave(HOJA_CONVERSIONES)]));
   const hd = buscarHoja(wb, ["datos", "medidas", "dimensiones"]);
   const hpar = buscarHoja(wb, ["parametros", "parámetros", "reglas"]);
+  const hb = buscarHoja(wb, ["bundles", "bundle"]), fb = factoresDeHoja(hb, unidades), porSkuBundle = new Map();
+  if (hb) hojaAObjetos(hb).map((o) => aMetrico(o, fb.factores)).forEach((o) => { const sku = String(o.sku ?? o.idarticulo ?? "").trim(); if (sku && !porSkuBundle.has(claveSku(sku))) porSkuBundle.set(claveSku(sku), o); });
   const productos = [], errores = [], vistos = new Set();
 
   if (hd) {
@@ -196,7 +201,7 @@ export function leerMaestro(buf, unidades = "auto") {
       if (vistos.has(claveSku(sku))) { errores.push(`${sku} está repetido; se usa la primera fila.`); return; }
       vistos.add(claveSku(sku));
       const dOne = { sku, idProducto: String(o.idproducto ?? o.id ?? o.idarticulo ?? o.codigodearticulo ?? "").trim(), desc: String(o.descripcion ?? ""), L: numero(o.largo), W: numero(o.ancho), H: numero(o.alto), peso: numero(o.peso) };
-      const p = productoDeFilas(dOne, porSku.get(claveSku(sku)));
+      const p = productoDeFilas(dOne, porSku.get(claveSku(sku)), porSkuBundle.get(claveSku(sku)));
       if (!(p.L > 0 && p.W > 0 && p.H > 0)) errores.push(`${sku}: faltan medidas (largo, ancho o alto).`);
       productos.push(p);
     });
@@ -212,7 +217,7 @@ export function leerMaestro(buf, unidades = "auto") {
     if (vistos.has(claveSku(sku))) { errores.push(`${sku} está repetido; se usa la primera fila.`); return; }
     vistos.add(claveSku(sku));
     const dOne = { sku, idProducto: String(o.idproducto ?? o.id ?? o.idarticulo ?? o.codigodearticulo ?? "").trim(), desc: String(o.descripcion ?? ""), L: numero(o.largo), W: numero(o.ancho), H: numero(o.alto), peso: numero(o.peso) };
-    const p = productoDeFilas(dOne, o);
+    const p = productoDeFilas(dOne, o, porSkuBundle.get(claveSku(sku)));
     if (!(p.L > 0 && p.W > 0 && p.H > 0)) errores.push(`${sku}: faltan medidas (largo, ancho o alto).`);
     productos.push(p);
   });
@@ -243,12 +248,16 @@ export function libroMaestro(productos, tarimas, conversiones = null, sis = SIST
 
   const filasParam = [COLS_PARAMETROS.map((h) => encabezadoEn(h, sis)), ...productos.map((p) => [p.sku, p.categoria, FORMA_TXT[p.forma] || "Caja", p.piezas, orisTxt(p.oris), p.volteoPiso ? "Sí" : "No", p.compresion, enL(p.anidado, sis), p.maxAnidado, p.maxNiveles,
     p.valorApilar, enP(p.pesoMaxEncima, sis), PISO_TXT[p.piso], p.soportaEncima ? "Sí" : "No", p.umCaja || UM_CAJA_DEF, paletizarTxt(p.paletizar), p.tarima, p.porPallet, p.porCapa, p.capasPallet, RESTO_TXT[p.resto],
-    p.aceptaCajas ? "Sí" : "No", p.aceptaPallet ? "Sí" : "No", p.color ? p.color.replace("#", "") : "",
-    p.bundleActivo ? "Sí" : "No", p.manufacturaPropia ? "Sí" : "No", p.bundlePct, p.bundleCantidadEstandar, enL(p.bundleL, sis), enL(p.bundleW, sis), enL(p.bundleH, sis), enP(p.bundlePeso, sis)])];
+    p.aceptaCajas ? "Sí" : "No", p.aceptaPallet ? "Sí" : "No", p.color ? p.color.replace("#", "") : ""])];
   const wp = XLSX.utils.aoa_to_sheet(filasParam);
   wp["!cols"] = COLS_PARAMETROS.map((h, i) => ({ wch: i === 4 ? 16 : Math.max(10, h.length + 2) }));
-  wp["!autofilter"] = { ref: `A1:AF${Math.max(2, productos.length + 1)}` };
+  wp["!autofilter"] = { ref: `A1:X${Math.max(2, productos.length + 1)}` };
   XLSX.utils.book_append_sheet(wb, wp, "Parámetros");
+
+  const conBundle = productos.filter((p) => p.bundleCantidadEstandar > 0 && p.bundleL > 0 && p.bundleW > 0 && p.bundleH > 0);
+  const wb2 = XLSX.utils.aoa_to_sheet([COLS_BUNDLES.map((h) => encabezadoEn(h, sis)), ...conBundle.map((p) => [p.sku, p.bundleCantidadEstandar, enL(p.bundleL, sis), enL(p.bundleW, sis), enL(p.bundleH, sis), enP(p.bundlePeso, sis)])]);
+  wb2["!cols"] = COLS_BUNDLES.map((h, i) => ({ wch: i === 0 ? 18 : Math.max(12, h.length + 2) }));
+  XLSX.utils.book_append_sheet(wb, wb2, "Bundles");
 
   const TARIMA_PESO = ["peso", "maxKg"];
   const wt = XLSX.utils.aoa_to_sheet([COLS_TARIMAS.map((c) => encabezadoEn(c[0], sis)), ...tarimas.map((t) => COLS_TARIMAS.map(([, k]) => (k === "nombre" ? t[k] : TARIMA_PESO.includes(k) ? enP(t[k], sis) : enL(t[k], sis))))]);
@@ -326,11 +335,10 @@ export function actualizarDimensiones(productosActuales, buf, unidades = "auto")
 
 // Importa los parámetros de Bundle desde un Excel de referencia (formato "CS-BDL": ID Artículo, UM,
 // Rel, Factor, CS/BDL, Alto/Largo/Ancho en mm). Solo actualiza SKUs que YA existen en el maestro: este
-// archivo no da de alta productos nuevos, solo enciende y configura el Bundle de los que ya tienen
+// archivo no da de alta productos nuevos, solo configura el Bundle de los que ya tienen
 // sus medidas y reglas normales. La cantidad estándar por Bundle sale de la columna "CS / BDL" si
 // viene en el archivo; si no, se calcula como Rel ÷ Factor (la misma fórmula del documento funcional,
-// ya resuelta a cajas). El % máximo de Bundle NO se toca aquí: es una decisión operativa por SKU que
-// se captura o ajusta a mano en el maestro.
+// ya resuelta a cajas). Lo importado queda en la hoja Bundles del maestro al guardar.
 export function leerBundleMaestro(productosActuales, buf, unidades = "auto") {
   const wb = XLSX.read(buf, { type: "array" });
   const ws = buscarHoja(wb, ["csbdl", "bundle", "maestrobundle"]) || wb.Sheets[wb.SheetNames[0]];
@@ -363,7 +371,7 @@ export function leerBundleMaestro(productosActuales, buf, unidades = "auto") {
     const bundleL = numero(f[iLargo]) * fL, bundleW = numero(f[iAncho]) * fW, bundleH = numero(f[iAlto]) * fH;
     if (!(cantidadEstandar > 0) || !(bundleL > 0 && bundleW > 0 && bundleH > 0)) { errores.push(`${sku}: fila incompleta (cantidad estándar o dimensiones); no se importó.`); continue; }
     // Copia nueva del producto (nunca mutar el que ya está en el estado de React)
-    const pos = productos.findIndex((p) => p.pid === existente.pid), nuevo = { ...productos[pos], bundleActivo: true, manufacturaPropia: true, bundleCantidadEstandar: cantidadEstandar, bundleL, bundleW, bundleH };
+    const pos = productos.findIndex((p) => p.pid === existente.pid), nuevo = { ...productos[pos], bundleCantidadEstandar: cantidadEstandar, bundleL, bundleW, bundleH };
     productos[pos] = nuevo;
     actualizados++;
   }

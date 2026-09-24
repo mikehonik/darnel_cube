@@ -43,7 +43,7 @@ describe("unidades de archivo", () => {
 });
 
 describe("maestro en pulgadas y libras", () => {
-  const p = productoVacio({ sku: "DU-1", desc: "Caja", L: 600, W: 400, H: 350, peso: 14, pesoMaxEncima: 60, bundleL: 1085.85, bundlePeso: 220 });
+  const p = productoVacio({ sku: "DU-1", desc: "Caja", L: 600, W: 400, H: 350, peso: 14, pesoMaxEncima: 60, bundleCantidadEstandar: 20, bundleL: 1085.85, bundleW: 882.65, bundleH: 2762.25, bundlePeso: 220 });
   const tarimas = [{ nombre: "T", L: 1219, W: 1016, esp: 150, peso: 25, altMax: 1800, maxKg: 1200, ovL: 0, ovW: 0 }];
   it("se descarga en pulgadas y se vuelve a leer en mm sin elegir nada", () => {
     const buf = libroMaestro([p], tarimas, null, AM);

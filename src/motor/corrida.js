@@ -9,6 +9,8 @@
 //   "motor"             → el motor lanzó; detalle.original trae el mensaje
 //   "cancelada"         → la señal de cancelación se activó
 
+import { lineasBundle, repartirAbiertos, expandirBundles } from "../archivos/bundle.js";
+
 export class ErrorCorrida extends Error {
   constructor(tipo, mensaje, detalle = {}) {
     super(mensaje);
@@ -152,4 +154,42 @@ export async function correr(carga, { ejecutor, signal, onProgreso } = {}) {
   }
   // Se devuelve la carga tal cual entró: resultado.contenedores[].cajas[].idx apunta a carga.items[idx].
   return { resultado, carga };
+}
+
+// ---------- Corrida con Bundles ----------
+// Igual que correr(), pero las líneas que van en Bundle se optimizan como en el andén: primero todos los
+// Bundles completos y, solo si con eso se usa un vehículo más, se abren los MENOS Bundles posibles para que
+// sus cajas sueltas llenen los huecos y la carga quepa en menos vehículos (ver archivos/bundle.js).
+// La búsqueda de cuántos abrir se hace en nivel rápido; el resultado final, en el nivel pedido.
+// El resultado lleva `bundles`: { lineas: [{ id, nombre, bundles, abiertos, cajasPorBundle }], abiertos, ahorro }.
+export async function correrConBundles(carga, { ejecutor, signal, onProgreso, onFase } = {}) {
+  const lineas = lineasBundle(carga.items);
+  const con = (abiertos, reglas = carga.reglas) => correr({ ...carga, reglas, items: expandirBundles(carga.items, abiertos) }, { ejecutor, signal, onProgreso });
+  const conInfo = (c, abiertos, ahorro = 0) => {
+    if (lineas.length) c.resultado.bundles = { lineas: lineas.map((l) => ({ ...l, abiertos: abiertos[l.id] || 0 })), abiertos: Object.values(abiertos).reduce((a, b) => a + b, 0), ahorro };
+    return c;
+  };
+  const base = await con({});
+  const n0 = base.resultado.contenedores.length, total = lineas.reduce((a, l) => a + l.bundles, 0);
+  if (!lineas.length || n0 < 2 || carga.reglas._maxContenedores) return conInfo(base, {});
+
+  onFase?.("Probando abrir Bundles para usar menos vehículos…");
+  const rapido = { ...carga.reglas, nivel: 1 };
+  const usados = (c) => c.resultado.contenedores.length + (c.resultado.sinCargar > base.resultado.sinCargar ? 1000 : 0);
+  const cuenta = async (k) => usados(await con(repartirAbiertos(lineas, k), rapido));
+  const nRef = carga.reglas.nivel === 1 ? n0 : await cuenta(0);
+  if ((await cuenta(total)) >= nRef) return conInfo(base, {});   // ni abriendo todos se ahorra un vehículo: no se abre ninguno
+  let lo = 0, hi = total;
+  while (hi - lo > 1) { const m = Math.floor((lo + hi) / 2); if ((await cuenta(m)) < nRef) hi = m; else lo = m; }
+
+  onFase?.("Calculando el acomodo final…");
+  for (const k of [...new Set([hi, Math.min(total, Math.ceil(hi * 1.25)), total])]) {
+    const abiertos = repartirAbiertos(lineas, k), c = await con(abiertos);
+    if (usados(c) < n0) {
+      const n = c.resultado.contenedores.length, detalle = lineas.filter((l) => abiertos[l.id]).map((l) => `${l.nombre}: ${abiertos[l.id]}`).join(", ");
+      c.resultado.avisos = [...(c.resultado.avisos || []), `Para usar ${n} ${n === 1 ? "vehículo" : "vehículos"} en lugar de ${n0} se abren ${k} ${k === 1 ? "Bundle" : "Bundles"} (${detalle}); sus cajas van sueltas en los huecos.`];
+      return conInfo(c, abiertos, n0 - n);
+    }
+  }
+  return conInfo(base, {});
 }

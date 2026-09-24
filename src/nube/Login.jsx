@@ -1,11 +1,15 @@
 import { useState } from "react";
 import { iniciarSesion, borrarConfig, usaConfigDeEntorno } from "./nube.js";
+import { idiomaActual, guardarIdioma, traducirPantalla } from "../i18n/index.js";
+import { SelectorIdioma } from "../ui/controles.jsx";
 
 export function Login({ onEntrar }) {
   const [correo, setCorreo] = useState("");
   const [contrasena, setContrasena] = useState("");
   const [error, setError] = useState("");
   const [cargando, setCargando] = useState(false);
+  const [idioma, setIdioma] = useState(idiomaActual());
+  const cambiarIdioma = (l) => { guardarIdioma(l); setIdioma(idiomaActual()); traducirPantalla(); };
 
   const enviar = async (e) => {
     e.preventDefault();
@@ -22,7 +26,10 @@ export function Login({ onEntrar }) {
   return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#EEF1F5", fontFamily: "system-ui, sans-serif" }}>
       <form onSubmit={enviar} style={{ background: "#fff", borderRadius: 12, padding: 32, width: 380, boxShadow: "0 2px 12px rgba(0,0,0,.08)" }}>
-        <h1 style={{ fontSize: 20, margin: "0 0 20px" }}>DarnelCube 3D</h1>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "0 0 20px" }}>
+          <h1 style={{ fontSize: 20, margin: 0 }}>DarnelCube 3D</h1>
+          <SelectorIdioma idioma={idioma} onCambiar={cambiarIdioma} oscuro={false} />
+        </div>
         <label style={{ display: "block", fontSize: 13, color: "#5B6B7B", marginBottom: 12 }}>
           <span style={{ display: "block", marginBottom: 4 }}>Correo</span>
           <input type="email" required value={correo} onChange={(e) => setCorreo(e.target.value)}

@@ -3,6 +3,7 @@
 // de estabilidad, centro de gravedad y compresión. Toma como referencia el reporte «Pallet Load» de
 // CubeMaster, con la identidad de DarnelCube. Si son varios SKUs, la primera hoja es un índice con todos.
 // jsPDF se carga solo cuando se genera un reporte, para no hacer más pesada la herramienta al abrirla.
+import { traducir } from "../i18n/index.js";
 
 const COLOR = { nav: [20, 33, 61], acento: [242, 183, 5], tinta: [22, 32, 44], suave: [91, 107, 123], linea: [220, 226, 232], fondo: [246, 248, 251] };
 const SEMAFORO = { verde: [47, 140, 70], amarillo: [226, 160, 0], rojo: [179, 38, 30], gris: [150, 160, 170] };
@@ -15,6 +16,9 @@ const pct = (v) => (v == null ? "—" : `${(v * 100).toLocaleString("es-MX", { m
 export async function pdfPaletizado({ filas, pallet, opciones, u, version, fecha = new Date(), titulo = "Reporte de paletizado" }) {
   const { jsPDF } = await import("jspdf");
   const doc = new jsPDF({ unit: "mm", format: "letter" });
+  // En inglés, todo lo que se escribe en el PDF pasa por el diccionario
+  const escribirTexto = doc.text.bind(doc);
+  doc.text = (t, ...resto) => escribirTexto(typeof t === "string" ? traducir(t) : t, ...resto);
   const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), M = 12;
   const fechaTxt = fecha.toLocaleString("es-MX", { dateStyle: "medium", timeStyle: "short" });
   const set = (c) => doc.setTextColor(...c);
@@ -33,15 +37,15 @@ export async function pdfPaletizado({ filas, pallet, opciones, u, version, fecha
   };
   const tarjeta = (x, y, w, h, tituloT, colorBorde = COLOR.linea) => {
     doc.setDrawColor(...colorBorde); doc.setFillColor(255, 255, 255); doc.roundedRect(x, y, w, h, 2, 2, "FD");
-    if (tituloT) { doc.setFont("helvetica", "bold"); doc.setFontSize(7.5); set(colorBorde === COLOR.linea ? COLOR.suave : colorBorde); doc.text(tituloT.toUpperCase(), x + 4, y + 6); }
+    if (tituloT) { doc.setFont("helvetica", "bold"); doc.setFontSize(7.5); set(colorBorde === COLOR.linea ? COLOR.suave : colorBorde); doc.text(traducir(tituloT).toUpperCase(), x + 4, y + 6); }
   };
   const dato = (x, y, k, v) => { doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); set(COLOR.suave); doc.text(k, x, y); doc.setFontSize(11); set(COLOR.tinta); doc.text(String(v), x, y + 5); };
   const circulo = (x, y, color) => { doc.setFillColor(...SEMAFORO[color]); doc.circle(x, y, 2, "F"); };
   const condiciones = () => {
     const partes = [`Pallet ${pallet.nombre} (${u.fLL(pallet.L, pallet.W)})`, `altura objetivo ${u.fL(opciones.alturaMax || pallet.altMax, 0)}`];
     if (opciones.apilaEncima) partes.push(`${opciones.apilaEncima} pallet${opciones.apilaEncima > 1 ? "s" : ""} encima en el transporte`);
-    if (opciones.humedadTxt) partes.push(`humedad ${opciones.humedadTxt.toLowerCase()}`);
-    if (opciones.tiempoTxt) partes.push(`almacén ${opciones.tiempoTxt.toLowerCase()}`);
+    if (opciones.humedadTxt) partes.push(`humedad ${traducir(opciones.humedadTxt).toLowerCase()}`);
+    if (opciones.tiempoTxt) partes.push(`almacén ${traducir(opciones.tiempoTxt).toLowerCase()}`);
     return partes.join(" · ");
   };
 

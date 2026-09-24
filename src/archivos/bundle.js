@@ -1,83 +1,58 @@
 // ================= Bundle (BDL) =================
-// Un Bundle agrupa varias cajas del mismo SKU en un solo bulto más grande, con sus propias
-// dimensiones y peso. Un SKU marcado como Bundle puede generar, dentro del mismo pedido, dos tipos
-// de carga distintos: Bundle (bultos completos) y Suelto (lo que no alcanzó para formar otro bulto).
-// La transformación ocurre ANTES de correr el motor de cubicaje: por eso vive aquí, junto a los demás
-// lectores de archivos, y no dentro del motor.
+// Un Bundle agrupa varias cajas del mismo SKU en un solo bulto más grande (cajas grandes una encima de
+// otra, sin pallet), con sus propias medidas y peso. Se configura en la hoja «Bundles» del maestro:
+//   bundleCantidadEstandar     Cuántas cajas del SKU forman UN Bundle
+//   bundleL, bundleW, bundleH  Medidas del Bundle armado, en mm
+//   bundlePeso                 Peso del Bundle armado, en kg (0 = peso de la caja × cajas por Bundle)
 //
-// Parámetros del SKU (ver maestro.js):
-//   bundleActivo            "Activar agrupación en Bundle"
-//   manufacturaPropia       El Bundle solo aplica a manufactura propia (en la práctica, SKUs que
-//                           empiezan con DU; ver leerBundleMaestro)
-//   bundlePct               "Porcentaje máximo de cantidad en Bundle" (0 a 100, sin incluir extremos)
-//   bundleCantidadEstandar  Cuántas cajas (unidad de la caja del SKU) entran en UN Bundle. Equivale a
-//                           "Factor conversión BDL / Factor conversión unidad del pedido" del documento
-//                           funcional, ya resuelto a cajas porque a esta altura el pedido ya se convirtió
-//                           a cajas (ver archivos/conversiones.js: aCajas).
-//   bundleL, bundleW, bundleH  Medidas del Bundle armado, en mm (independientes de la caja suelta).
-//   bundlePeso              Peso del Bundle armado, en kg.
+// Cómo se carga en el andén, que es lo que reproduce la herramienta:
+//   1. Todo lo pedido de ese SKU se lleva en Bundles completos; lo que no completa un Bundle va suelto.
+//   2. Si con eso la carga ocupa un vehículo más, se abren los Bundles necesarios (los menos posibles) y sus
+//      cajas se acomodan sueltas en los huecos, para usar menos vehículos. Si abrirlos no ahorra un vehículo,
+//      no se abre ninguno: abrir un Bundle cuesta mano de obra.
+// El mix Bundle / suelto NO se define antes: es un resultado del cálculo (ver motor/corrida.js: correrConBundles).
+//
+// En el pedido, cada línea elige cómo se carga: suelta, pallet de un SKU, pallet mixto o Bundle (`enBundle`).
+// La opción Bundle solo existe para los SKUs que están en la hoja Bundles.
 
-// Cantidad de Bundles completos y cantidad suelta restante, a partir de la cantidad pedida (en cajas).
-// Fórmulas del documento funcional:
-//   Bundles = parte entera ((cantidad pedido × % máximo) / (100 × cantidad estándar por Bundle))
-//   Suelta  = cantidad pedido - (Bundles × cantidad estándar por Bundle)
-// Nunca se generan Bundles parciales, y la suma siempre reproduce el 100% de lo pedido.
-export function calcularBundle(cantidadPedido, pct, cantidadEstandar) {
-  if (!(cantidadPedido > 0) || !(pct > 0) || !(cantidadEstandar > 0)) return { cantidadBundles: 0, cantidadSuelta: Math.max(0, cantidadPedido) || 0 };
-  const cantidadBundles = Math.floor((cantidadPedido * pct) / (100 * cantidadEstandar));
-  const cantidadSuelta = cantidadPedido - cantidadBundles * cantidadEstandar;
-  return { cantidadBundles, cantidadSuelta };
+// ¿El SKU (producto del maestro o línea del pedido) tiene su Bundle configurado?
+export const tieneBundle = (p) => !!p && p.bundleCantidadEstandar > 0 && p.bundleL > 0 && p.bundleW > 0 && p.bundleH > 0;
+
+// Líneas del pedido que se cargan en Bundle y cuántos Bundles completos forman
+export const lineasBundle = (items) => items
+  .filter((it) => it.enBundle && tieneBundle(it) && it.qty >= it.bundleCantidadEstandar)
+  .map((it) => ({ id: it.id, nombre: it.nombre, bundles: Math.floor(it.qty / it.bundleCantidadEstandar), cajasPorBundle: it.bundleCantidadEstandar }));
+
+// Reparte k Bundles abiertos entre las líneas, en proporción a cuántos Bundles tiene cada una (restos mayores).
+export function repartirAbiertos(lineas, k) {
+  const total = lineas.reduce((a, l) => a + l.bundles, 0), abiertos = {};
+  if (!(k > 0) || !total) return abiertos;
+  const n = Math.min(k, total);
+  const base = lineas.map((l) => { const exacto = (n * l.bundles) / total; return { l, piso: Math.floor(exacto), resto: exacto - Math.floor(exacto) }; });
+  let faltan = n - base.reduce((a, b) => a + b.piso, 0);
+  base.sort((a, b) => b.resto - a.resto).forEach((b) => { if (faltan > 0 && b.piso < b.l.bundles) { b.piso++; faltan--; } });
+  base.forEach((b) => { if (b.piso > 0) abiertos[b.l.id] = b.piso; });
+  return abiertos;
 }
 
-// Qué le falta a un SKU para poder procesarse como Bundle. Devuelve un arreglo de textos (vacío = listo).
-// No valida bundleActivo: eso lo decide quien llama, para poder distinguir "no aplica" de "mal configurado".
-export function validarBundleSku(p) {
-  const faltan = [];
-  if (!p.manufacturaPropia) faltan.push("no es manufactura propia");
-  if (!(p.bundleCantidadEstandar > 0)) faltan.push("falta la cantidad estándar por Bundle");
-  if (!(p.bundleL > 0 && p.bundleW > 0 && p.bundleH > 0)) faltan.push("faltan las dimensiones del Bundle");
-  if (!(p.bundlePct > 0 && p.bundlePct < 100)) faltan.push("el porcentaje máximo de Bundle debe estar entre 0% y 100%");
-  return faltan;
-}
-
-// Transforma un solo item (una línea del pedido, ya en cajas) en uno, dos o los mismos items,
-// según si su producto está habilitado y correctamente configurado para Bundle.
-// Devuelve { items, aviso } — aviso es null cuando no hay nada que reportar (SKU normal, o Bundle
-// exitoso sin nada que avisar aparte del resumen que ya se ve en la carga).
-export function transformarItemBundle(item, producto) {
-  if (!producto || !producto.bundleActivo) return { items: [item], aviso: null };
-  const faltan = validarBundleSku(producto);
-  if (faltan.length) return { items: [item], aviso: `${item.nombre}: Bundle activado pero ${faltan.join("; ")}; se cargó como suelto.` };
-
-  const { cantidadBundles, cantidadSuelta } = calcularBundle(item.qty, producto.bundlePct, producto.bundleCantidadEstandar);
-  if (cantidadBundles <= 0) return { items: [item], aviso: `${item.nombre}: no alcanzó para formar un Bundle completo (${item.qty} cajas, ${producto.bundleCantidadEstandar} por Bundle); se cargó como suelto.` };
-
-  const base = { grupo: item.grupo, orden: item.orden, destino: item.destino, categoria: item.categoria, color: item.color };
-  const bundle = {
-    ...item, ...base,
-    L: producto.bundleL, W: producto.bundleW, H: producto.bundleH,
-    peso: producto.bundlePeso > 0 ? producto.bundlePeso : item.peso * producto.bundleCantidadEstandar,
-    qty: cantidadBundles, umCaja: "BDL", piezas: (item.piezas || 1) * producto.bundleCantidadEstandar,
-    // El Bundle ya es un bulto armado: no se paletiza con el estándar de la caja suelta, ni anida, y
-    // se trata como caja aunque la pieza suelta sea un barril o un tubo.
-    paletizar: false, porPallet: 0, porCapa: 0, capasPallet: 0, anidado: 0, maxAnidado: 0, forma: "caja", diametro: 0,
-    esBundle: true, skuOrigen: item.nombre, cantidadPorBundle: producto.bundleCantidadEstandar,
-    id: item.id,
-  };
-  if (cantidadSuelta <= 0) return { items: [bundle], aviso: null };
-  const suelto = { ...item, id: `${item.id}-suelto`, qty: cantidadSuelta, skuOrigen: item.nombre };
-  return { items: [bundle, suelto], aviso: null };
-}
-
-// Aplica transformarItemBundle a toda la lista de items de una carga.
-// mapaMaestro: Map de SKU normalizado (clave()) → producto. Devuelve { items, avisos }.
-export function transformarPedidoBundle(items, mapaMaestro, clave) {
-  const resultado = [], avisos = [];
-  items.forEach((item) => {
-    const p = mapaMaestro.get(clave(item.nombre));
-    const { items: nuevos, aviso } = transformarItemBundle(item, p);
-    resultado.push(...nuevos);
-    if (aviso) avisos.push(aviso);
+// Convierte las líneas en Bundle en lo que carga el motor: un renglón de Bundles completos (con las medidas
+// del Bundle) y uno de cajas sueltas (lo que no completa un Bundle más las cajas de los Bundles abiertos).
+// El resto de las líneas pasa igual. `abiertos`: { idLínea: cuántos Bundles se abren }.
+export function expandirBundles(items, abiertos = {}) {
+  const salida = [];
+  items.forEach((it) => {
+    if (!(it.enBundle && tieneBundle(it))) { salida.push(it.enBundle ? { ...it, enBundle: false } : it); return; }
+    const c = it.bundleCantidadEstandar, completos = Math.floor(it.qty / c);
+    const nAbiertos = Math.min(abiertos[it.id] || 0, completos), nBundles = completos - nAbiertos, sueltas = it.qty - nBundles * c;
+    if (nBundles > 0) salida.push({
+      ...it, L: it.bundleL, W: it.bundleW, H: it.bundleH,
+      peso: it.bundlePeso > 0 ? it.bundlePeso : (it.peso || 0) * c,
+      qty: nBundles, umCaja: "BDL", piezas: (it.piezas || 1) * c,
+      // El Bundle ya es un bulto armado: no se paletiza, no anida y se trata como caja aunque la pieza sea un barril.
+      paletizar: false, porPallet: 0, porCapa: 0, capasPallet: 0, anidado: 0, maxAnidado: 0, forma: "caja", diametro: 0,
+      enBundle: false, esBundle: true, lineaId: it.id, cantidadPorBundle: c,
+    });
+    if (sueltas > 0) salida.push({ ...it, id: `${it.id}-suelto`, qty: sueltas, paletizar: false, enBundle: false, lineaId: it.id, deBundle: true, abiertos: nAbiertos });
   });
-  return { items: resultado, avisos };
+  return salida;
 }

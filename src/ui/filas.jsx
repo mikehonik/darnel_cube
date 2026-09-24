@@ -7,6 +7,7 @@ import { clave } from "../archivos/celdas.js";
 import { T } from "./tema.js";
 import { UM_COMUNES } from "../archivos/conversiones.js";
 import { RESTOS } from "./referencia.js";
+import { tieneBundle } from "../archivos/bundle.js";
 import { Num, Sel, Interruptor } from "./controles.jsx";
 import { useUnidades } from "./unidadesContexto.jsx";
 
@@ -36,7 +37,7 @@ function SelUM({ etiqueta, valor, onChange }) {
   );
 }
 
-export function FilaItem({ it, color, abierto, pallets, modoPallet, verMedidas = true, anchoSku = 200, onToggle, editar, quitar, difiere, enMaestro, aMaestro, deMaestro, mover, primera, ultima }) {
+export function FilaItem({ it, color, abierto, pallets, modoPallet, verMedidas = true, verRuta = true, anchoSku = 200, onToggle, editar, quitar, difiere, enMaestro, aMaestro, deMaestro, mover, primera, ultima }) {
   const sinOri = !it.oris.some(Boolean);
   const u = useUnidades();
   const num = (k) => (e) => editar(k, Math.max(0, Number(e.target.value) || 0));
@@ -58,7 +59,7 @@ export function FilaItem({ it, color, abierto, pallets, modoPallet, verMedidas =
             </label>
             <input value={it.nombre} onChange={(e) => editar("nombre", e.target.value)} className={celda} style={{ minWidth: 76, textOverflow: "ellipsis" }} title={it.nombre} />
             {it.paletizar && !modoPallet && <span className="flex-none text-xs px-1.5 rounded" style={{ background: "#FFF4CC", color: T.aviso }} title={it.paletizar === "mixto" ? "Pallet mixto" : "Pallet de un SKU"}>{it.paletizar === "mixto" ? "PM" : `P${it.porPallet || ""}`}</span>}
-            {it.esBundle && <span className="flex-none text-xs px-1.5 rounded" style={{ background: "#E6D9F7", color: "#5B3A9E" }} title={`Bundle: ${it.qty} × ${it.cantidadPorBundle} cajas`}>BDL</span>}
+            {(it.esBundle || (it.enBundle && tieneBundle(it))) && !modoPallet && <span className="flex-none text-xs px-1.5 rounded" style={{ background: "#E6D9F7", color: "#5B3A9E" }} title={it.esBundle ? `Bundle: ${it.qty} × ${it.cantidadPorBundle} cajas` : `Se carga en Bundles de ${it.bundleCantidadEstandar} cajas`}>BDL</span>}
             {difiere && <span className="flex-none text-xs px-1.5 rounded" style={{ background: "#E8EEF8", color: T.nav }} title="Tiene ajustes solo para esta carga">ajustado</span>}
           </div>
         </td>
@@ -70,11 +71,13 @@ export function FilaItem({ it, color, abierto, pallets, modoPallet, verMedidas =
           {u.V(it.L * it.W * it.H * it.qty).toLocaleString("es-MX", { maximumFractionDigits: 2 })}
           {it.umPedido && <span className="block" style={{ fontSize: 10 }}>{it.qtyPedido.toLocaleString("es-MX")} {it.umPedido}</span>}
         </td>
+        {verRuta && <>
         <td className="px-0.5" style={{ ...td, width: 52, minWidth: 52 }} title="Parada de la ruta: la 1 queda junto a las puertas. Vacío = se acomoda donde convenga, al fondo">
           <input type="number" value={it.orden || ""} placeholder="—" onChange={num("orden")} className={celda} style={{ fontWeight: it.orden ? 600 : 400 }} />
         </td>
         <td className="px-0.5" style={{ ...td, minWidth: 78 }}><input value={it.grupo} onChange={(e) => editar("grupo", e.target.value)} className={celda} placeholder="—" title="Número de pedido. Con «Mantener juntos los pedidos» activa, sus SKUs se cargan seguidos" /></td>
         <td className="px-0.5" style={{ ...td, minWidth: 92 }}><input value={it.destino || ""} onChange={(e) => editar("destino", e.target.value)} className={celda} placeholder="—" title="Ciudad o punto de entrega, para el resumen de entregas y el flete" /></td>
+        </>}
         {mover && (
           <td className="px-0.5 whitespace-nowrap" style={td}>
             <button onClick={() => mover(-1)} disabled={primera} aria-label="Subir esta línea" title="Subir: se carga antes, más al fondo" style={{ color: primera ? T.linea : T.suave }}><ChevronUp size={14} /></button>
@@ -85,7 +88,7 @@ export function FilaItem({ it, color, abierto, pallets, modoPallet, verMedidas =
       </tr>
       {abierto && (
         <tr>
-          <td colSpan={(verMedidas ? 11 : 7) + (mover ? 1 : 0)} className="p-0" style={{ background: "#F7F9FB", borderBottom: `1px solid ${T.linea}` }}>
+          <td colSpan={(verMedidas ? 11 : 7) - (verRuta ? 0 : 3) + (mover ? 1 : 0)} className="p-0" style={{ background: "#F7F9FB", borderBottom: `1px solid ${T.linea}` }}>
             <div className="p-3" style={{ position: "sticky", left: 0, width: "var(--anchoPanel, 100%)", boxSizing: "border-box" }}>
             {enMaestro && (
               <div className="flex flex-wrap items-center gap-2 mb-3 text-xs rounded-md px-2 py-1.5" style={{ background: difiere ? "#E8EEF8" : "#F1F3F6", color: T.suave }}>
@@ -172,21 +175,32 @@ function aplicarDiametro(it, d, editar) {
   if (it.forma === "barril") { editar("L", d); editar("W", d); }
   else if (it.forma === "tubo") { editar("W", d); editar("H", d); }
 }
-const MODOS_PAL = [["no", "No, se carga suelta"], ["uno", "Pallet de un solo SKU"], ["mixto", "Pallet mixto (con otros SKUs)"]];
+const MODOS_PAL = [["no", "Suelta"], ["uno", "Pallet de un solo SKU"], ["mixto", "Pallet mixto (con otros SKUs)"]];
+const MODO_BUNDLE = ["bundle", "Bundle"];
 export const modoPal = (v) => (v === "mixto" ? "mixto" : v ? "uno" : "no");
 export const valorPal = (m) => (m === "mixto" ? "mixto" : m === "uno");
 
 // Lo avanzado (apilado, resistencia, posición) se pliega salvo que el SKU ya tenga algo distinto de lo normal
 const tieneAvanzado = (it) => it.maxNiveles > 0 || it.valorApilar > 0 || it.pesoMaxEncima > 0 || (it.piezas || 1) !== 1 || it.compresion > 0 || (it.piso || "libre") !== "libre" || !it.soportaEncima || !!it.volteoPiso;
 function ReglasSku({ it, editar, pallets, modoPallet }) {
-  const m = modoPal(it.paletizar);
+  const conBundle = tieneBundle(it);
+  const m = it.enBundle && conBundle ? "bundle" : modoPal(it.paletizar);
+  const elegirModo = (v) => {
+    if (v === "bundle") { editar("enBundle", true); editar("paletizar", false); }
+    else { if (it.enBundle) editar("enBundle", false); editar("paletizar", valorPal(v)); }
+  };
   const [avanzado, setAvanzado] = useState(() => tieneAvanzado(it));
   return (
     <>
       {!modoPallet && (
         <div className="mb-3">
-          <Sel etiqueta="Paletizar antes de cargar" valor={m} onChange={(v) => editar("paletizar", valorPal(v))} opciones={MODOS_PAL} />
-          {m !== "no" && (
+          <Sel etiqueta="Cómo se carga" valor={m} onChange={elegirModo} opciones={conBundle ? [...MODOS_PAL, MODO_BUNDLE] : MODOS_PAL} />
+          {m === "bundle" && (
+            <p className="text-xs mt-1.5" style={{ color: T.suave }}>
+              Bundles de {it.bundleCantidadEstandar} cajas ({Math.floor(it.qty / it.bundleCantidadEstandar)} completos con esta cantidad{it.qty % it.bundleCantidadEstandar ? `; ${it.qty % it.bundleCantidadEstandar} cajas van sueltas` : ""}). Se cargan primero los Bundles; solo si así se ocupa un vehículo más, se abren los menos posibles para llenar los huecos con cajas sueltas.
+            </p>
+          )}
+          {(m === "uno" || m === "mixto") && (
             <div className="grid grid-cols-3 gap-2 mt-2">
               <Sel etiqueta="Pallet" valor={it.palletId} onChange={(v) => editar("palletId", Number(v))} opciones={pallets.map((p, i) => [i, p.nombre])} />
               {m === "uno" && <Num etiqueta="Cajas por pallet" valor={it.porPallet} onChange={(v) => editar("porPallet", v)} ayuda="Total de cajas del pallet. 0 = las que quepan" />}
@@ -240,31 +254,27 @@ function ReglasSku({ it, editar, pallets, modoPallet }) {
   );
 }
 
-// Parámetros de Bundle (BDL): solo se configuran en el maestro, por SKU. Ver archivos/bundle.js.
+// Bundle (BDL): se configura en el maestro (hoja Bundles). Con cajas por Bundle y medidas, el SKU tiene la
+// opción Bundle en el pedido. Ver archivos/bundle.js.
 function BloqueBundle({ p, editar }) {
-  const [abierto, setAbierto] = useState(() => !!p.bundleActivo);
+  const [abierto, setAbierto] = useState(() => tieneBundle(p));
   return (
     <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${T.linea}` }}>
       <button onClick={() => setAbierto(!abierto)} aria-expanded={abierto} className="flex items-center gap-1 text-xs mb-2" style={{ color: T.suave }}>
         <ChevronDown size={14} style={{ transform: abierto ? "none" : "rotate(-90deg)", transition: "transform .15s" }} />
-        Bundle (BDL){p.bundleActivo ? " · activo" : ""}
+        Bundle (BDL){tieneBundle(p) ? " · configurado" : ""}
       </button>
       {abierto && (
         <>
-          <div className="grid grid-cols-2 gap-x-4 mb-2">
-            <Interruptor etiqueta="Activar agrupación en Bundle" valor={p.bundleActivo} onChange={(v) => editar("bundleActivo", v)} />
-            <Interruptor etiqueta="Manufactura propia" detalle="El Bundle solo aplica a manufactura propia" valor={p.manufacturaPropia} onChange={(v) => editar("manufacturaPropia", v)} />
+          <p className="text-xs mb-2" style={{ color: T.suave }}>Con cajas por Bundle y sus medidas, este SKU se puede cargar en Bundle desde el pedido. Déjalo en 0 si no se maneja en Bundle.</p>
+          <div className="grid grid-cols-3 gap-2">
+            <Num etiqueta="Cajas por Bundle" valor={p.bundleCantidadEstandar} onChange={(v) => editar("bundleCantidadEstandar", v)} ayuda="Cuántas cajas de este SKU forman un Bundle completo" />
+            <Num etiqueta="Peso Bundle" tipo="peso" valor={p.bundlePeso} onChange={(v) => editar("bundlePeso", v)} ayuda="0 = se calcula como el peso de la caja × cajas por Bundle" />
+            <span />
+            <Num etiqueta="Largo Bundle" tipo="largo" valor={p.bundleL} onChange={(v) => editar("bundleL", v)} />
+            <Num etiqueta="Ancho Bundle" tipo="largo" valor={p.bundleW} onChange={(v) => editar("bundleW", v)} />
+            <Num etiqueta="Alto Bundle" tipo="largo" valor={p.bundleH} onChange={(v) => editar("bundleH", v)} />
           </div>
-          {p.bundleActivo && (
-            <div className="grid grid-cols-3 gap-2">
-              <Num etiqueta="% máximo en Bundle" valor={p.bundlePct} onChange={(v) => editar("bundlePct", Math.min(99.99, v))} ayuda="Mayor a 0% y menor a 100%. Es la parte de lo pedido que se intenta convertir en Bundles completos" />
-              <Num etiqueta="Cajas por Bundle" valor={p.bundleCantidadEstandar} onChange={(v) => editar("bundleCantidadEstandar", v)} ayuda="Cuántas cajas de este SKU entran en un Bundle completo" />
-              <Num etiqueta="Peso Bundle" tipo="peso" valor={p.bundlePeso} onChange={(v) => editar("bundlePeso", v)} ayuda="0 = se calcula como el peso de la caja × cajas por Bundle" />
-              <Num etiqueta="Largo Bundle" tipo="largo" valor={p.bundleL} onChange={(v) => editar("bundleL", v)} />
-              <Num etiqueta="Ancho Bundle" tipo="largo" valor={p.bundleW} onChange={(v) => editar("bundleW", v)} />
-              <Num etiqueta="Alto Bundle" tipo="largo" valor={p.bundleH} onChange={(v) => editar("bundleH", v)} />
-            </div>
-          )}
         </>
       )}
     </div>
