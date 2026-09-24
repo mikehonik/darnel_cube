@@ -51,7 +51,7 @@ describe("libroMaestro", () => {
 
   it("guarda en dos hojas (Datos y Parámetros) y ambas traen la fórmula de volumen o los datos correctos", () => {
     const wb = XLSX.read(libroMaestro([productoVacio({ sku: "X", L: 600, W: 400, H: 400, categoria: "Vasos" })], []), { type: "array" });
-    expect(wb.SheetNames).toEqual(["Datos", "Parámetros", "Tarimas", "Instrucciones"]);
+    expect(wb.SheetNames).toEqual(["Datos", "Parámetros", "Pallets", "Instrucciones"]);
     expect(wb.Sheets.Datos.H2).toMatchObject({ f: "ROUND(D2*E2*F2/1000000000,4)", v: 0.096 });
     expect(XLSX.utils.sheet_to_json(wb.Sheets["Parámetros"])[0]).toMatchObject({ SKU: "X", Categoría: "Vasos" });
   });

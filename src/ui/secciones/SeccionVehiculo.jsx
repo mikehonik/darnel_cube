@@ -32,7 +32,7 @@ export function SeccionVehiculo({ editarPallet, editarVeh, elegirVehiculo, modoP
           <button className="underline" onClick={onDescargarPlantillaCatalogo}>Descargar plantilla de vehículos</button>
         </div>
       )}
-      <p className="text-xs mb-2" style={{ color: T.suave }}>O diseña un pallet, usando la tarima como espacio de carga:</p>
+      <p className="text-xs mb-2" style={{ color: T.suave }}>O diseña un pallet, usando el pallet vacío como espacio de carga:</p>
       <div className="flex flex-wrap gap-2 mb-4">
         {pallets.map((p, i) => (
           <button key={i} onClick={() => elegirVehiculo(`PAL:${i}`)} className="text-sm rounded-lg px-3 py-1.5" style={{ background: T.sup, border: `1.5px solid ${vehId === `PAL:${i}` ? T.nav : T.linea}` }}>{p.nombre}</button>

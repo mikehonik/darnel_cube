@@ -1,5 +1,5 @@
 // ================= Filas =================
-// Una fila de la tabla de mercancía o del maestro, con su ficha de reglas de estiba y paletizado; y el formulario de una tarima.
+// Una fila de la tabla del pedido o del maestro, con su ficha de reglas de estiba y paletizado; y el formulario de un pallet.
 import { useState } from "react";
 import { ChevronDown, ChevronUp, Trash2 } from "lucide-react";
 import { ORIENTACIONES } from "../motor/reporte.js";
@@ -17,10 +17,10 @@ export function FormPallet({ p, editar }) {
       <Num etiqueta="Ancho" tipo="largo" valor={p.W} onChange={(v) => editar("W", v)} />
       <Num etiqueta="Espesor" tipo="largo" valor={p.esp} onChange={(v) => editar("esp", v)} />
       <Num etiqueta="Peso" tipo="peso" valor={p.peso} onChange={(v) => editar("peso", v)} />
-      <Num etiqueta="Altura máx." tipo="largo" valor={p.altMax} onChange={(v) => editar("altMax", v)} ayuda="Incluye la tarima" />
+      <Num etiqueta="Altura máx." tipo="largo" valor={p.altMax} onChange={(v) => editar("altMax", v)} ayuda="Incluye el pallet" />
       <Num etiqueta="Carga máx." tipo="peso" valor={p.maxKg} onChange={(v) => editar("maxKg", v)} ayuda="0 = sin límite" />
-      <Num etiqueta="Sobresale a lo largo" tipo="largo" valor={p.ovL ?? 0} onChange={(v) => editar("ovL", v)} ayuda="Cuánto pueden salir las cajas por cada extremo del largo de la tarima" />
-      <Num etiqueta="Sobresale a lo ancho" tipo="largo" valor={p.ovW ?? 0} onChange={(v) => editar("ovW", v)} ayuda="Cuánto pueden salir las cajas por cada costado del ancho de la tarima" />
+      <Num etiqueta="Sobresale a lo largo" tipo="largo" valor={p.ovL ?? 0} onChange={(v) => editar("ovL", v)} ayuda="Cuánto pueden salir las cajas por cada extremo del largo del pallet" />
+      <Num etiqueta="Sobresale a lo ancho" tipo="largo" valor={p.ovW ?? 0} onChange={(v) => editar("ovW", v)} ayuda="Cuánto pueden salir las cajas por cada costado del ancho del pallet" />
     </div>
   );
 }
@@ -123,7 +123,7 @@ function IconoCaja({ dims, tapa, activa }) {
   );
 }
 const PRESETS_ORI = [["Solo de pie", [true, true, false, false, false, false]], ["De pie y acostada", [true, true, true, true, false, false]], ["Todas", [true, true, true, true, true, true]]];
-function SelectorOrientacion({ it, editar }) {
+export function SelectorOrientacion({ it, editar }) {
   const d = [[it.L, it.W, it.H], [it.W, it.L, it.H], [it.L, it.H, it.W], [it.H, it.L, it.W], [it.W, it.H, it.L], [it.H, it.W, it.L]];
   const tapa = ["z", "z", "y", "x", "y", "x"];
   const sinOri = !it.oris.some(Boolean);
@@ -188,16 +188,16 @@ function ReglasSku({ it, editar, pallets, modoPallet }) {
           <Sel etiqueta="Paletizar antes de cargar" valor={m} onChange={(v) => editar("paletizar", valorPal(v))} opciones={MODOS_PAL} />
           {m !== "no" && (
             <div className="grid grid-cols-3 gap-2 mt-2">
-              <Sel etiqueta="Tarima" valor={it.palletId} onChange={(v) => editar("palletId", Number(v))} opciones={pallets.map((p, i) => [i, p.nombre])} />
+              <Sel etiqueta="Pallet" valor={it.palletId} onChange={(v) => editar("palletId", Number(v))} opciones={pallets.map((p, i) => [i, p.nombre])} />
               {m === "uno" && <Num etiqueta="Cajas por pallet" valor={it.porPallet} onChange={(v) => editar("porPallet", v)} ayuda="Total de cajas del pallet. 0 = las que quepan" />}
               {m === "uno" && <Sel etiqueta="Si sobran cajas" valor={it.resto} onChange={(v) => editar("resto", v)} opciones={RESTOS} />}
               {m === "uno" && <Num etiqueta="Cajas por nivel" valor={it.porCapa} onChange={(v) => editar("porCapa", v)} ayuda="Cuántas cajas en cada cama. 0 = la herramienta calcula el mejor acomodo" />}
-              {m === "uno" && <Num etiqueta="Niveles" valor={it.capasPallet} onChange={(v) => editar("capasPallet", v)} ayuda="Cuántas camas de alto. 0 = las que permita la altura de la tarima" />}
+              {m === "uno" && <Num etiqueta="Niveles" valor={it.capasPallet} onChange={(v) => editar("capasPallet", v)} ayuda="Cuántas camas de alto. 0 = las que permita la altura máxima del pallet" />}
               {m === "uno" && <p className="col-span-3 text-xs" style={{ color: T.suave }}>Con 0 en los tres campos el pallet se arma solo, buscando el mejor acomodo para las medidas de la caja.</p>}
-              {m === "mixto" && <p className="col-span-2 text-xs self-end pb-1" style={{ color: T.suave }}>Se arma junto con los demás SKUs marcados como mixtos que usen la misma tarima (y el mismo pedido o entrega, si esas reglas están activas).</p>}
+              {m === "mixto" && <p className="col-span-2 text-xs self-end pb-1" style={{ color: T.suave }}>Se arma junto con los demás SKUs marcados como mixtos que usen el mismo pallet (y el mismo pedido o entrega, si esas reglas están activas).</p>}
               <div className="col-span-3 grid grid-cols-2 gap-x-4">
-                <Interruptor etiqueta="Acepta cajas encima" valor={it.aceptaCajas} onChange={(v) => editar("aceptaCajas", v)} />
-                <Interruptor etiqueta="Acepta otro pallet encima" valor={it.aceptaPallet} onChange={(v) => editar("aceptaPallet", v)} />
+                <Interruptor etiqueta="Acepta cajas encima" detalle="Igual que con otro pallet: solo recibe cajas si queda plano arriba." valor={it.aceptaCajas} onChange={(v) => editar("aceptaCajas", v)} />
+                <Interruptor etiqueta="Acepta otro pallet encima" detalle="Solo se apila si el pallet queda plano arriba (el último nivel completo, por ejemplo 18 o 27 cajas cuando van 9 por nivel) y si dos pallets caben en la altura del vehículo. Si no se puede, el resultado lo explica en Avisos." valor={it.aceptaPallet} onChange={(v) => editar("aceptaPallet", v)} />
               </div>
             </div>
           )}
@@ -271,7 +271,7 @@ function BloqueBundle({ p, editar }) {
   );
 }
 
-export function FilaMaestro({ p, pallets, abierto, onToggle, editar, quitar, aCarga }) {
+export function FilaMaestro({ p, pallets, abierto, onToggle, editar, quitar }) {
   const u = useUnidades();
   const numU = (k) => (e) => { const x = Math.max(0, Number(e.target.value) || 0); editar(k, k === "peso" ? u.aKg(x) : u.aMm(x)); };
   const td = { borderBottom: `1px solid ${T.linea}` };
@@ -297,7 +297,6 @@ export function FilaMaestro({ p, pallets, abierto, onToggle, editar, quitar, aCa
         ))}
         <td className="px-1 text-xs whitespace-nowrap" style={{ ...td, color: p.paletizar ? T.aviso : T.suave }}>{p.paletizar === "mixto" ? "Mixto" : p.paletizar ? `×${p.porPallet || "máx"}` : "—"}</td>
         <td className="px-1 whitespace-nowrap" style={td}>
-          <button onClick={aCarga} className="text-xs px-1.5 py-0.5 rounded" style={{ border: `1px solid ${T.linea}` }} title="Agregar a la carga actual">+ carga</button>
           <button onClick={quitar} aria-label={`Eliminar ${p.sku} del maestro`} className="p-1 ml-0.5" style={{ color: T.suave }}><Trash2 size={14} /></button>
         </td>
       </tr>

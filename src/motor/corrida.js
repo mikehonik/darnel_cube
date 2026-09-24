@@ -34,7 +34,7 @@ export function validarCarga({ items, vehiculo, tarimas, reglas }) {
     if (!noNegativo(it.peso)) p(id, "peso", `${it.nombre}: el peso debe ser 0 o mayor.`);
     if (!positivo(it.qty) || !Number.isInteger(it.qty)) p(id, "qty", `${it.nombre}: la cantidad debe ser un entero mayor que 0.`);
     if (!Array.isArray(it.oris) || !it.oris.some(Boolean)) p(id, "oris", `${it.nombre}: debe permitir al menos una orientación.`);
-    if (it.paletizar && tarimas && !tarimas[it.palletId || 0]) p(id, "palletId", `${it.nombre}: la tarima elegida no existe.`);
+    if (it.paletizar && tarimas && !tarimas[it.palletId || 0]) p(id, "palletId", `${it.nombre}: el pallet elegido no existe.`);
   });
 
   if (!vehiculo) p(null, "vehiculo", "Falta el vehículo.");
@@ -45,8 +45,8 @@ export function validarCarga({ items, vehiculo, tarimas, reglas }) {
   }
 
   (tarimas || []).forEach((t, i) => {
-    if (!positivo(t.L) || !positivo(t.W)) p(null, `tarimas.${i}`, `Tarima ${t.nombre || i + 1}: largo y ancho deben ser mayores que 0.`);
-    if (!positivo(t.altMax) || !noNegativo(t.esp) || t.altMax <= t.esp) p(null, `tarimas.${i}`, `Tarima ${t.nombre || i + 1}: la altura máxima debe ser mayor que el espesor.`);
+    if (!positivo(t.L) || !positivo(t.W)) p(null, `tarimas.${i}`, `Pallet ${t.nombre || i + 1}: largo y ancho deben ser mayores que 0.`);
+    if (!positivo(t.altMax) || !noNegativo(t.esp) || t.altMax <= t.esp) p(null, `tarimas.${i}`, `Pallet ${t.nombre || i + 1}: la altura máxima debe ser mayor que el espesor.`);
   });
 
   if (!reglas) p(null, "reglas", "Faltan las reglas.");

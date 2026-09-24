@@ -43,11 +43,11 @@ export const ARCHIVO_RESPALDO = "maestro_productos_respaldo.xlsx";
 // Archivos viejos con una sola hoja "Productos" se siguen leyendo (ver leerMaestro).
 export const COLS_DATOS = ["SKU", "ID producto", "Descripción", "Largo (mm)", "Ancho (mm)", "Alto (mm)", "Peso (kg)", "Volumen (m³)"];
 export const COLS_PARAMETROS = ["SKU", "Categoría", "Forma", "Piezas por caja", "Orientaciones", "Volteo en piso", "Compresión bajo carga (%)", "Anidado: sube por pieza (mm)", "Máx. piezas anidadas", "Máx. cajas apiladas",
-  "Prioridad de apilamiento", "Peso máx. encima (kg)", "Posición", "Soporta carga encima", "UM de la caja", "Paletizar", "Tarima", "Cajas por pallet", "Cajas por nivel", "Niveles", "Sobrantes", "Acepta cajas encima", "Acepta pallet encima", "Color",
+  "Prioridad de apilamiento", "Peso máx. encima (kg)", "Posición", "Soporta carga encima", "UM de la caja", "Paletizar", "Pallet", "Cajas por pallet", "Cajas por nivel", "Niveles", "Sobrantes", "Acepta cajas encima", "Acepta pallet encima", "Color",
   "Bundle activo", "Manufactura propia", "% máximo Bundle", "Cantidad estándar por Bundle", "Largo Bundle (mm)", "Ancho Bundle (mm)", "Alto Bundle (mm)", "Peso Bundle (kg)"];
 // Compatibilidad: los archivos de una sola hoja (anteriores a la separación) usan este orden.
 export const COLS_MAESTRO = ["SKU", "ID producto", "Descripción", "Categoría", "Forma", "Largo (mm)", "Ancho (mm)", "Alto (mm)", "Peso (kg)", "Volumen (m³)", "Piezas por caja", "Orientaciones", "Volteo en piso", "Compresión bajo carga (%)", "Anidado: sube por pieza (mm)", "Máx. piezas anidadas", "Máx. cajas apiladas",
-  "Prioridad de apilamiento", "Peso máx. encima (kg)", "Posición", "Soporta carga encima", "UM de la caja", "Paletizar", "Tarima", "Cajas por pallet", "Cajas por nivel", "Niveles", "Sobrantes", "Acepta cajas encima", "Acepta pallet encima", "Color"];
+  "Prioridad de apilamiento", "Peso máx. encima (kg)", "Posición", "Soporta carga encima", "UM de la caja", "Paletizar", "Pallet", "Cajas por pallet", "Cajas por nivel", "Niveles", "Sobrantes", "Acepta cajas encima", "Acepta pallet encima", "Color"];
 export const COLS_TARIMAS = [["Nombre", "nombre"], ["Largo (mm)", "L"], ["Ancho (mm)", "W"], ["Espesor (mm)", "esp"], ["Peso (kg)", "peso"], ["Altura máx. (mm)", "altMax"], ["Carga máx. (kg)", "maxKg"], ["Sobresale a lo largo (mm por lado)", "ovL"], ["Sobresale a lo ancho (mm por lado)", "ovW"]];
 // Explicación de cada campo: se muestra en la sección Ayuda y en la hoja Instrucciones del maestro
 export const AYUDA = [
@@ -71,26 +71,26 @@ export const AYUDA = [
   ["Maestro de productos", "Peso máx. encima (kg)", "Resistencia de la caja: cuánto peso aguanta encima.", "60", "0 = sin límite"],
   ["Maestro de productos", "Posición", "Libre, Solo piso (siempre abajo) o Nunca piso (siempre encima de otra caja).", "Solo piso", "Libre"],
   ["Maestro de productos", "Soporta carga encima", "No = nada puede ir encima de esta caja (frágil).", "Sí", "Sí"],
-  ["Maestro de productos", "UM de la caja", "Unidad en la que el maestro guarda las medidas: la caja, bolsa o bulto que se estiba. Si el pedido llega en otra unidad (millares, tarimas, kilos), la herramienta convierte a esta usando la tabla de conversiones.", "CJ", "CJ (caja)"],
+  ["Maestro de productos", "UM de la caja", "Unidad en la que el maestro guarda las medidas: la caja, bolsa o bulto que se estiba. Si el pedido llega en otra unidad (millares, pallets, kilos), la herramienta convierte a esta usando la tabla de conversiones.", "CJ", "CJ (caja)"],
   ["Conversiones de unidad", "Para qué sirve", "Cuando el pedido llega en una unidad distinta a la caja (por ejemplo millares), la tabla dice cuántas cajas son. En Maestro puedes importar el archivo de conversiones de tu ERP (SETID, INV_ITEM_ID, UNIT_OF_MEASURE, CONVERSION_RATE); solo se guardan los SKUs que estén en tu maestro.", "5 ML → 25 CJ", "—"],
   ["Conversiones de unidad", "Factor", "Cuántas unidades base equivale 1 de esa unidad. La unidad base es la que tiene factor 1. Ejemplo: ML = 1, UN = 0.001 y CJ = 0.2 significa que 1 millar son 1,000 unidades y una caja lleva 200.", "0.2", "Sin conversión"],
   ["Pedido (plantilla de carga)", "UM (opcional)", "Unidad en la que viene la cantidad. Vacío = ya son cajas. Si pones otra (ML, PLT, KG…), se convierte a cajas y la herramienta avisa si tuvo que redondear hacia arriba.", "ML", "Cajas"],
-  ["Paletizado", "Paletizar", "No = se carga suelta. Un SKU = pallets solo de este producto. Mixto = pallets combinados con otros SKUs marcados como Mixto que usen la misma tarima. Luego los pallets se suben al vehículo junto con lo suelto.", "Un SKU", "No"],
-  ["Paletizado", "Tarima", "Nombre exacto de una tarima de la hoja Tarimas.", "Americano 1219×1016", "La primera tarima"],
-  ["Paletizado", "Cajas por pallet", "Estándar de cajas por pallet. Si no caben, la herramienta avisa y usa el máximo posible. Las cajas se giran dentro de cada capa para aprovechar la tarima.", "20", "0 = las que quepan"],
+  ["Paletizado", "Paletizar", "No = se carga suelta. Un SKU = pallets solo de este producto. Mixto = pallets combinados con otros SKUs marcados como Mixto que usen el mismo pallet. Luego los pallets se suben al vehículo junto con lo suelto.", "Un SKU", "No"],
+  ["Paletizado", "Pallet", "Nombre exacto de un pallet de la hoja Pallets.", "Americano 1219×1016", "El primer pallet"],
+  ["Paletizado", "Cajas por pallet", "Estándar de cajas por pallet. Si no caben, la herramienta avisa y usa el máximo posible. Las cajas se giran dentro de cada capa para aprovechar el pallet.", "20", "0 = las que quepan"],
   ["Paletizado", "Cajas por nivel y Niveles", "Para armar el pallet a tu manera: cuántas cajas van en cada cama y cuántas camas. Vacío o 0 = la herramienta calcula el mejor acomodo con las medidas de la caja y la altura de la tarima. Si pones solo uno de los dos, el otro lo calcula ella.", "12 · 5", "0 = automático"],
   ["Paletizado", "Sobrantes", "Qué hacer con las cajas que no completan un pallet: Pallet incompleto, Sueltas o Pallet mixto (se juntan con sobrantes de otros SKUs).", "Pallet mixto", "Pallet incompleto"],
   ["Paletizado", "Acepta cajas / pallet encima", "Si sobre este pallet pueden ir cajas sueltas u otro pallet. Solo aplica si el pallet queda con tope plano.", "Sí / No", "Cajas Sí · Pallet No"],
-  ["Tarimas", "Largo, Ancho, Espesor (mm)", "Medidas de la tarima vacía. Espesor = altura de la tarima.", "1219 · 1016 · 150", "Obligatorio"],
-  ["Tarimas", "Altura máx. (mm)", "Altura total permitida del pallet armado, incluyendo la tarima.", "1800", "1800"],
-  ["Tarimas", "Carga máx. (kg)", "Peso máximo de mercancía sobre la tarima.", "1200", "0 = sin límite"],
-  ["Tarimas", "Sobresale a lo largo / a lo ancho (mm)", "Cuánto pueden salir las cajas del borde de la tarima, por cada lado. En el visor se dibuja como línea roja punteada.", "30 · 0", "0 = sin sobresalir"],
+  ["Pallets", "Largo, Ancho, Espesor (mm)", "Medidas del pallet vacío. Espesor = altura del pallet.", "1219 · 1016 · 150", "Obligatorio"],
+  ["Pallets", "Altura máx. (mm)", "Altura total permitida del pallet armado, incluyendo la base.", "1800", "1800"],
+  ["Pallets", "Carga máx. (kg)", "Peso máximo de mercancía sobre el pallet.", "1200", "0 = sin límite"],
+  ["Pallets", "Sobresale a lo largo / a lo ancho (mm)", "Cuánto pueden salir las cajas del borde del pallet, por cada lado. En el visor se dibuja como línea roja punteada.", "30 · 0", "0 = sin sobresalir"],
   ["Pedido (plantilla de carga)", "SKU y Cantidad", "Qué se va a cargar y cuántas cajas. Las medidas y reglas salen del maestro.", "JNS-010 · 60", "Obligatorio"],
   ["Pedido (plantilla de carga)", "Entrega (parada)", "Número de parada de la ruta: la 1 se entrega primero, así que se carga al final y queda junto a las puertas. Las paradas altas van al fondo. Mismo número = se cargan juntos. Vacío = se acomoda donde convenga, al fondo.", "1", "Libre"],
   ["Pedido (plantilla de carga)", "Paletizar y Cajas por pallet (opcionales)", "Solo si en esta carga quieres algo distinto a lo que dice el maestro. Vacío = se usa el maestro.", "Mixto · 20", "Se usa el maestro"],
   ["Pedido (plantilla de carga)", "Pedido / destino", "Número de pedido, tienda o cliente. Con la regla «Mantener juntos los pedidos» los SKUs de un mismo pedido se cargan seguidos, dentro de su parada. Un pedido no queda en un solo bloque perfecto: queda agrupado dentro de su zona.", "PED-4471 Norte", "Sin pedido"],
   ["Categorías", "Qué sí hace", "La categoría solo controla apilamiento: con la regla «Solo sobre la misma categoría» activa, un producto solo recibe encima otro de su misma categoría, sin importar el SKU. Compresión, anidado y demás siguen siendo campos por SKU, no por categoría.", "Tejas sobre tejas", "—"],
-  ["Bundle (BDL)", "Qué es", "Un Bundle agrupa varias cajas del mismo SKU en un bulto más grande, con sus propias medidas y peso (por ejemplo, una tarima o caja máster de varias cajas). Al cargar un pedido, la herramienta forma la mayor cantidad de Bundles completos posible (sin pasarse del porcentaje configurado) y el resto del pedido se cubica como cajas sueltas normales: la misma línea puede terminar dividida en Bundle y Suelto.", "13 BDL + 59 sueltas", "No se forman Bundles"],
+  ["Bundle (BDL)", "Qué es", "Un Bundle agrupa varias cajas del mismo SKU en un bulto más grande, con sus propias medidas y peso (por ejemplo, un pallet o caja máster de varias cajas). Al cargar un pedido, la herramienta forma la mayor cantidad de Bundles completos posible (sin pasarse del porcentaje configurado) y el resto del pedido se cubica como cajas sueltas normales: la misma línea puede terminar dividida en Bundle y Suelto.", "13 BDL + 59 sueltas", "No se forman Bundles"],
   ["Bundle (BDL)", "Bundle activo", "Habilita la transformación a Bundle para este SKU. Sin esto, el SKU se cubica siempre como lo indican sus reglas normales, aunque tenga los demás campos de Bundle llenos.", "Sí", "No"],
   ["Bundle (BDL)", "Manufactura propia", "El Bundle solo aplica a SKUs de manufactura propia (en la práctica, los que empiezan con DU). Si no está marcado, el SKU se queda como suelto aunque tenga Bundle activo.", "Sí", "No"],
   ["Bundle (BDL)", "% máximo Bundle", "Qué parte de la cantidad pedida se intenta convertir a Bundles completos; el resto siempre se cubica suelto. Debe ser mayor a 0% y menor a 100%.", "70", "Sin Bundle (0, inválido)"],
@@ -99,11 +99,11 @@ export const AYUDA = [
   ["Bundle (BDL)", "Peso Bundle (kg)", "Peso del Bundle completo. En 0, se calcula como el peso de la caja suelta × la cantidad estándar por Bundle.", "220", "Peso de caja × cantidad estándar"],
   ["Categorías", "Qué no hace todavía", "Dos limitaciones a propósito: (1) el anidado (una pieza dentro de otra) solo funciona entre piezas del mismo SKU, no entre SKUs distintos de la misma categoría — por ejemplo, tanques de tamaños diferentes que embonan uno en otro no se resuelve en esta versión. (2) No hay una matriz de compatibilidad entre categorías distintas (tejas sobre tanques, por ejemplo); solo «misma categoría sí» o la regla general. Para bolsas (BL) con compresión, sigue usando el campo Compresión de cada SKU: no se aplica sola por venir en BL.", "—", "—"],
   ["Dónde va cada parámetro", "Maestro vs. carga", "Las características de la caja (medidas, peso, orientaciones, resistencia, paletizado estándar) van en el maestro y son el valor normal. Si en una carga necesitas algo distinto, cámbialo en Mercancía: aplica solo a esa carga y la fila se marca como «ajustado». Si quieres que quede como nuevo estándar, usa «Guardar en el maestro».", "—", "—"],
-  ["Dónde va cada parámetro", "Plantilla de CubeMaster", "En Maestro puedes importar la plantilla «Cargo Upload» de CubeMaster (cm y kg): se crean los productos, las tarimas y el pedido con sus cantidades. La columna FloorStackType no se toma, porque CubeMaster solo la usa con su regla de piso activada; si la necesitas, ajusta Posición en el SKU.", "—", "—"],
+  ["Dónde va cada parámetro", "Plantilla de CubeMaster", "En Maestro puedes importar la plantilla «Cargo Upload» de CubeMaster (cm y kg): se crean los productos, los pallets y el pedido con sus cantidades. La columna FloorStackType no se toma, porque CubeMaster solo la usa con su regla de piso activada; si la necesitas, ajusta Posición en el SKU.", "—", "—"],
   ["Reglas", "Nivel de optimización", "Cuántas combinaciones prueba. Más nivel = mejor acomodo, pero tarda más.", "2", "2"],
   ["Reglas", "Apoyo mínimo (%)", "Qué parte de la base de una caja debe estar apoyada. 75% es lo usual.", "75", "75"],
   ["Reglas", "Qué tan estricto es el orden de entrega", "Estricto: cada entrega ocupa su propia zona; la descarga sale limpia, pero a veces se necesita un vehículo más. Flexible: deja que una entrega se meta un poco en la zona anterior; se aprovecha mejor el espacio a cambio de mover algunos bultos al descargar.", "Estricto", "Estricto"],
-  ["Reglas", "Cargar en el orden de la lista", "La primera fila de Mercancía entra primero y queda al fondo del vehículo. Con esta regla activa aparecen flechas para subir o bajar cada línea, y al moverla la carga se vuelve a acomodar sola en el visor. Sirve para ajustar a mano una solución que ya calculaste.", "Activado", "Desactivado"],
+  ["Reglas", "Cargar en el orden de la lista", "La primera fila del pedido entra primero y queda al fondo del vehículo. Con esta regla activa aparecen flechas para subir o bajar cada línea, y al moverla la carga se vuelve a acomodar sola en el visor. Sirve para ajustar a mano una solución que ya calculaste.", "Activado", "Desactivado"],
   ["Resultados", "Recomendar vehículo", "El botón de arriba corre el mismo pedido contra cada vehículo de la lista y los ordena: primero el que necesita menos unidades y, a igualdad, el que va más lleno. Se calcula en nivel 1 para que sea rápido; el que elijas se recalcula con tu nivel normal.", "—", "—"],
   ["Reglas", "Un vehículo por pedido", "No mezcla pedidos distintos en el mismo vehículo. Sirve cuando cada transferencia viaja por separado; a cambio se usan más vehículos.", "Activado", "Desactivado"],
   ["Reglas", "Cajas del mismo SKU", "Mantener juntas arma bloques del mismo SKU (más fácil de descargar). Permitir separar reparte cajas en huecos.", "Mantener juntas", "Mantener juntas"],
@@ -156,7 +156,7 @@ function productoDeFilas(dOne, pOne) {
     forma: leerForma(o.forma), anidado: numero(o.anidadosubeporpieza), maxAnidado: Math.round(numero(o.maxpiezasanidadas)),
     oris: leerOris(o.orientaciones), volteoPiso: siNo(o.volteoenpiso, false), compresion: Math.min(40, numero(o.compresionbajocarga)), maxNiveles: numero(o.maxcajasapiladas ?? o.maxniveles), valorApilar: numero(o.prioridaddeapilamiento ?? o.valorapilamiento),
     pesoMaxEncima: numero(o.pesomaxencima), piso: leerPiso(o.posicion), soportaEncima: siNo(o.soportacargaencima, true), umCaja: normalizaUM(o.umdelacaja) || UM_CAJA_DEF, paletizar: leerPaletizar(o.paletizar),
-    tarima: String(o.tarima ?? "").trim(), porPallet: numero(o.cajasporpallet), porCapa: numero(o.cajaspornivel), capasPallet: numero(o.niveles), resto: leerResto(o.sobrantes), aceptaCajas: siNo(o.aceptacajasencima, true),
+    tarima: String(o.pallet ?? o.tarima ?? "").trim(), porPallet: numero(o.cajasporpallet), porCapa: numero(o.cajaspornivel), capasPallet: numero(o.niveles), resto: leerResto(o.sobrantes), aceptaCajas: siNo(o.aceptacajasencima, true),
     aceptaPallet: siNo(o.aceptapalletencima, false), color: hexColor(o.color),
     bundleActivo: siNo(o.bundleactivo, false), manufacturaPropia: siNo(o.manufacturapropia, false), bundlePct: numero(o.maximobundle),
     bundleCantidadEstandar: numero(o.cantidadestandarporbundle), bundleL: numero(o.largobundle), bundleW: numero(o.anchobundle), bundleH: numero(o.altobundle), bundlePeso: numero(o.pesobundle),
@@ -253,7 +253,7 @@ export function libroMaestro(productos, tarimas, conversiones = null, sis = SIST
   const TARIMA_PESO = ["peso", "maxKg"];
   const wt = XLSX.utils.aoa_to_sheet([COLS_TARIMAS.map((c) => encabezadoEn(c[0], sis)), ...tarimas.map((t) => COLS_TARIMAS.map(([, k]) => (k === "nombre" ? t[k] : TARIMA_PESO.includes(k) ? enP(t[k], sis) : enL(t[k], sis))))]);
   wt["!cols"] = COLS_TARIMAS.map(([h], i) => ({ wch: i === 0 ? 26 : Math.max(12, h.length + 2) }));
-  XLSX.utils.book_append_sheet(wb, wt, "Tarimas");
+  XLSX.utils.book_append_sheet(wb, wt, "Pallets");
   const fc = filasConversiones(conversiones, productos);
   if (fc.length) {
     const wc = XLSX.utils.aoa_to_sheet([["SKU", "UM", "Factor"], ...fc]);
@@ -382,7 +382,7 @@ export function leerCubeMaster(buf) {
     const sku = String(r.Name ?? "").trim(); if (!sku) return;
     let tarima = "";
     if (numero(r.Palletized) === 1 && numero(r.PalletLength) > 0) {
-      tarima = String(r.PalletName || `Tarima ${cm(r.PalletLength)}×${cm(r.PalletWidth)}`).trim();
+      tarima = String(r.PalletName || `Pallet ${cm(r.PalletLength)}×${cm(r.PalletWidth)}`).trim();
       if (!tarimas.some((t) => t.nombre === tarima)) tarimas.push({ nombre: tarima, L: cm(r.PalletLength), W: cm(r.PalletWidth), esp: cm(r.PalletThickness) || 150, peso: numero(r.PalletWeight) || 25,
         altMax: cm(r.PalletMaxHeight) || 1800, maxKg: numero(r.PalletMaxWeight), ovL: numero(r.OverhangAllowed) === 1 ? cm(r.OverhangLength) : 0, ovW: numero(r.OverhangAllowed) === 1 ? cm(r.OverhangWidth) : 0 });
     }

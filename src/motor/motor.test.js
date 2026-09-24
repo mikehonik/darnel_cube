@@ -357,3 +357,24 @@ describe("herramientas de capacidad con SKU diminutos o sin medidas (no deben co
     }
   });
 });
+
+describe("«Acepta otro pallet encima» explica cuando no se puede", () => {
+  const tarima = { nombre: "U", L: 1219, W: 1016, esp: 150, peso: 25, altMax: 1800, maxKg: 1200, ovL: 0, ovW: 0 };
+  const veh53 = { L: 16000, W: 2500, H: 2700, tara: 0, maxKg: 0, maxVolPct: 0, maxSkus: 0, maxPiezas: 0 };
+  const vaso = (d) => caja({ nombre: "Vaso", L: 400, W: 300, H: 400, peso: 8, paletizar: true, aceptaPallet: true, ...d });
+  const apilados = (r) => r.contenedores[0].cajas.filter((k) => k.pal >= 0 && k.z > 1).length;
+  it("con el último nivel incompleto no apila y dice con cuántas cajas sí", () => {
+    const r = optimizar([vaso({ qty: 75, porPallet: 25 })], veh53, reglas, () => {}, [tarima]);   // 10 por nivel: 10 + 10 + 5
+    expect(apilados(r)).toBe(0);
+    expect(r.avisos.join(" ")).toMatch(/nivel incompleto.*Con 20 o 30 cajas por pallet sí se puede apilar/);
+  });
+  it("con niveles completos sí apila, sin aviso", () => {
+    const r = optimizar([vaso({ qty: 80, porPallet: 20 })], veh53, reglas, () => {}, [tarima]);
+    expect(apilados(r)).toBeGreaterThan(0);
+    expect(r.avisos.some((a) => /otro pallet encima/.test(a))).toBe(false);
+  });
+  it("si dos pallets no caben en la altura, lo dice", () => {
+    const r = optimizar([vaso({ qty: 80, porPallet: 40 })], { ...veh53, H: 2400 }, reglas, () => {}, [tarima]);   // 4 niveles: 1,750 mm; dos no caben en 2,400
+    expect(r.avisos.join(" ")).toMatch(/altura del vehículo/);
+  });
+});

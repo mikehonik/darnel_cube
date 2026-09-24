@@ -1,28 +1,29 @@
 // ================= Herramientas de capacidad =================
-// Tres preguntas que no necesitan cargar un pedido completo: cuánto cabe SUELTO de un SKU en un
-// vehículo, cuántos PALLETS COMPLETOS de un SKU caben, y cuál es la mejor CONFIGURACIÓN de cajas por
-// pallet. Las tres reutilizan el mismo motor de cubicaje (ver motor/motor.js), solo que con un único
-// SKU y una cantidad "infinita": el motor topa por espacio, peso y las reglas propias del SKU.
+// Preguntas sobre un solo SKU que no necesitan un pedido completo. Cada herramienta es una sección plegable
+// (se abre una a la vez, para que la pantalla no se sature) y tiene dos niveles de respuesta:
+//   · un estimado inmediato, calculado aquí mismo con el motor en modo rápido;
+//   · «Calcular carga», que corre el motor completo (el nivel y las reglas activas en la pestaña Reglas,
+//     igual que una carga normal) y muestra el resultado en el visor 3D.
 import { useMemo, useState } from "react";
+import { ChevronDown, ChevronRight, Play, Loader2, Package, Layers, Boxes } from "lucide-react";
 import { claveSku, indiceSku, buscarSku } from "../../archivos/celdas.js";
-import { capacidadSuelta, configuracionPallet, capacidadPalletCompleto } from "../../motor/motor.js";
-import { prepararEntrada } from "../../motor/corrida.js";
+import { capacidadSuelta, capacidadPalletCompleto } from "../../motor/motor.js";
+import { paraMotor } from "./herramientasComun.js";
 import { T } from "../tema.js";
-import { Sel, Tarjeta, inp, estInp } from "../controles.jsx";
+import { Sel, Num, inp, estInp } from "../controles.jsx";
+import { SelectorOrientacion } from "../filas.jsx";
 import { useUnidades } from "../unidadesContexto.jsx";
+import { PalletFabricacion } from "./PalletFabricacion.jsx";
 
 const vehParaCalculo = (v) => ({ ...v, maxVolPct: v.maxVolPct || 0, maxSkus: v.maxSkus || 0, maxPiezas: v.maxPiezas || 0 });
-// El motor espera la entrada ya normalizada (soporte mínimo como fracción, compresión por omisión según
-// el empaque): se pasa por el mismo prepararEntrada que usa una corrida normal. El cálculo corre en el hilo
-// de la pantalla, así que se topa en nivel 2 (en la práctica, milisegundos para un solo SKU).
-const paraMotor = (p, reglas) => {
-  const { pid, sku, tarima, ...resto } = p;
-  const e = prepararEntrada({ items: [{ ...resto, nombre: sku, qty: 1 }], vehiculo: null, tarimas: [], reglas: { ...reglas, nivel: Math.min(2, reglas.nivel || 2) } });
-  return { it: e.items[0], reglas: e.reglas };
-};
+const n0 = (n) => (n ?? 0).toLocaleString("es-MX");
 const pct = (n) => `${(n * 100).toLocaleString("es-MX", { maximumFractionDigits: 1 })}%`;
+const TODAS = [true, true, true, true, true, true];
+// Con más piezas que esto, el cálculo completo tardaría demasiado y el 3D sería ilegible: se queda el estimado.
+const TOPE_CALCULO = 20000;
+const COLOR_HERR = "#C8102E";
 
-function Resultado({ filas, estimado }) {
+function Resultado({ filas, estimado, nota }) {
   return (
     <>
       <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm mt-2">
@@ -33,6 +34,7 @@ function Resultado({ filas, estimado }) {
         ))}
       </dl>
       {estimado && <p className="text-xs mt-2" style={{ color: T.suave }}>Aproximado: son tantas piezas que se calcula en rejilla en vez de acomodarlas una por una.</p>}
+      {nota && <p className="text-xs mt-2" style={{ color: T.suave }}>{nota}</p>}
     </>
   );
 }
@@ -40,7 +42,7 @@ function Resultado({ filas, estimado }) {
 // Con 26 mil SKU, una lista desplegable con todos tardaba en abrir y se sentía trabada. Aquí se escribe el
 // SKU (o parte de la descripción) y solo se sugieren las primeras coincidencias.
 const MAX_SUGERENCIAS = 30;
-function BuscadorSku({ productos, valor, onElegir }) {
+export function BuscadorSku({ productos, valor, onElegir, id = "herramientas-skus", etiqueta = "SKU (escribe el código o parte de la descripción)" }) {
   const [texto, setTexto] = useState(valor);
   const indice = useMemo(() => indiceSku(productos), [productos]);
   const sugerencias = useMemo(() => {
@@ -58,38 +60,56 @@ function BuscadorSku({ productos, valor, onElegir }) {
   const cambiar = (t) => { setTexto(t); const p = buscarSku(indice, t); if (p) onElegir(p.sku); };
   return (
     <label className="block text-xs" style={{ color: T.suave }}>
-      <span className="block mb-1">SKU (escribe el código o parte de la descripción)</span>
-      <input list="herramientas-skus" value={texto} onChange={(e) => cambiar(e.target.value)} className={inp} style={estInp} placeholder="Ej. 85210" autoComplete="off" />
-      <datalist id="herramientas-skus">
+      <span className="block mb-1">{etiqueta}</span>
+      <input list={id} value={texto} onChange={(e) => cambiar(e.target.value)} className={inp} style={estInp} placeholder="Ej. 85210" autoComplete="off" />
+      <datalist id={id}>
         {sugerencias.map((p) => <option key={p.pid ?? p.sku} value={p.sku}>{p.desc || ""}</option>)}
       </datalist>
     </label>
   );
 }
 
-export function SeccionHerramientas({ maestro, vehiculos, pallets, reglas }) {
+// Sección plegable: solo el título a la vista; al abrirla se ve su contenido.
+function Plegable({ id, abierta, setAbierta, icono: Icono, titulo, resumen, children }) {
+  const act = abierta === id;
+  return (
+    <div className="rounded-lg mb-2" style={{ background: T.sup, border: `1px solid ${act ? T.nav : T.linea}` }}>
+      <button onClick={() => setAbierta(act ? null : id)} aria-expanded={act} className="w-full flex items-center gap-2 px-3 py-2.5 text-left">
+        <Icono size={16} color={act ? T.nav : T.suave} />
+        <span className="flex-1">
+          <span className="block text-sm font-semibold">{titulo}</span>
+          <span className="block text-xs" style={{ color: T.suave }}>{resumen}</span>
+        </span>
+        {act ? <ChevronDown size={16} /> : <ChevronRight size={16} color={T.suave} />}
+      </button>
+      {act && <div className="px-3 pb-3 pt-1" style={{ borderTop: `1px solid ${T.linea}` }}>{children}</div>}
+    </div>
+  );
+}
+
+function BotonCalcular({ onClick, calculando, deshabilitado, texto = "Calcular carga", titulo }) {
+  return (
+    <button onClick={onClick} disabled={calculando || deshabilitado} title={titulo}
+      className="flex items-center gap-1.5 text-sm font-semibold px-3 py-1.5 rounded-md mt-3"
+      style={{ background: T.acento, color: T.nav, opacity: calculando || deshabilitado ? 0.55 : 1 }}>
+      {calculando ? <Loader2 size={15} className="animate-spin" /> : <Play size={15} />}{calculando ? "Calculando…" : texto}
+    </button>
+  );
+}
+
+export function SeccionHerramientas({ maestro, vehiculos, pallets, reglas, calcularHerramienta, verPalletHerr, calculando, vistaHerr }) {
   const u = useUnidades();
   const [skuSel, setSkuSel] = useState(maestro.productos[0]?.sku || "");
-  const [vehSel, setVehSel] = useState(vehiculos[0]?.id || "");
-  const [tarimaSel, setTarimaSel] = useState(0);
-
+  const [abierta, setAbierta] = useState(null);
   const producto = useMemo(() => maestro.productos.find((p) => claveSku(p.sku) === claveSku(skuSel)) || null, [maestro.productos, skuSel]);
-  const veh = useMemo(() => vehParaCalculo(vehiculos.find((v) => v.id === vehSel) || vehiculos[0] || {}), [vehiculos, vehSel]);
-  const pal = pallets[tarimaSel] || pallets[0];
-  // Memorizado: sin esto el objeto cambiaba en cada render y el motor se volvía a correr cada vez.
-  const m = useMemo(() => (producto ? paraMotor(producto, reglas) : null), [producto, reglas]);
-
-  const rSuelta = useMemo(() => (m && veh.L > 0 ? capacidadSuelta(m.it, veh, m.reglas) : null), [m, veh]);
-  const rConfig = useMemo(() => (m && pal ? configuracionPallet(m.it, pal, m.reglas) : null), [m, pal]);
-  const rPallets = useMemo(() => (m && pal && veh.L > 0 ? capacidadPalletCompleto(m.it, pal, veh, m.reglas) : null), [m, pal, veh]);
 
   if (!maestro.productos.length) return <p className="text-sm" style={{ color: T.suave }}>Necesitas productos en el maestro para usar estas herramientas.</p>;
 
   return (
     <>
-      <h2 className="text-lg font-semibold mb-1">Herramientas de capacidad</h2>
-      <p className="text-xs mb-3" style={{ color: T.suave }}>Preguntas rápidas sobre un solo SKU, sin necesidad de cargar un pedido completo.</p>
-      <Tarjeta titulo="SKU a evaluar">
+      <h2 className="text-lg font-semibold mb-1">Herramientas</h2>
+      <p className="text-xs mb-3" style={{ color: T.suave }}>Preguntas rápidas sobre un solo SKU, sin necesidad de cargar un pedido. Abre la herramienta que necesites.</p>
+      <div className="rounded-lg p-3 mb-3" style={{ background: T.sup, border: `1px solid ${T.linea}` }}>
         <BuscadorSku productos={maestro.productos} valor={producto ? producto.sku : ""} onElegir={setSkuSel} />
         {producto && (
           <p className="text-xs mt-2" style={{ color: T.suave }}>
@@ -101,57 +121,143 @@ export function SeccionHerramientas({ maestro, vehiculos, pallets, reglas }) {
             Medidas muy pequeñas ({u.fLLL(producto.L, producto.W, producto.H)}). Puede ser un dato de relleno en el maestro: revisa las medidas reales antes de usar estos resultados.
           </p>
         )}
-      </Tarjeta>
+      </div>
 
-      <Tarjeta titulo="Capacidad máxima suelta (sin paletizar)">
-        <p className="text-xs mb-2" style={{ color: T.suave }}>¿Cuál es la cantidad máxima de este SKU que puedo cargar suelto en este vehículo?</p>
-        <Sel etiqueta="Vehículo" valor={veh.id || vehiculos[0]?.id} onChange={setVehSel} opciones={vehiculos.map((v) => [v.id, v.nombre])} />
-        {rSuelta && (
-          rSuelta.cajas > 0 ? (
-            <Resultado estimado={rSuelta.estimado} filas={[
-              ["Cantidad máxima (unidades)", rSuelta.cajas.toLocaleString("es-MX")],
-              ["Piezas totales", rSuelta.piezas.toLocaleString("es-MX")],
-              ["Volumen ocupado", u.fV(rSuelta.vol)],
-              ["% de ocupación del vehículo", pct(rSuelta.vol / rSuelta.volV)],
-              ["Peso total", u.fP(rSuelta.peso)],
-            ]} />
-          ) : <p className="text-sm mt-2" style={{ color: T.error }}>Este SKU no cabe suelto en este vehículo (o excede el peso máximo).</p>
-        )}
-      </Tarjeta>
+      {producto && <>
+        <Plegable id="suelta" abierta={abierta} setAbierta={setAbierta} icono={Package} titulo="Capacidad máxima suelta" resumen="¿Cuántas cajas de este SKU caben sueltas en un vehículo?">
+          <CapacidadSuelta key={producto.sku} producto={producto} vehiculos={vehiculos} reglas={reglas} calcularHerramienta={calcularHerramienta} calculando={calculando} vistaHerr={vistaHerr} />
+        </Plegable>
+        <Plegable id="pallets" abierta={abierta} setAbierta={setAbierta} icono={Layers} titulo="Capacidad en pallets completos" resumen="¿Cuántos pallets completos de este SKU caben en un vehículo?">
+          <CapacidadPallets key={producto.sku} producto={producto} vehiculos={vehiculos} pallets={pallets} reglas={reglas} calcularHerramienta={calcularHerramienta} calculando={calculando} vistaHerr={vistaHerr} />
+        </Plegable>
+        <Plegable id="optimo" abierta={abierta} setAbierta={setAbierta} icono={Boxes} titulo="Pallet óptimo y paletizado para fabricación" resumen="Mejor acomodo por pallet, estabilidad, centro de gravedad y resistencia; listado de SKUs y PDF.">
+          <PalletFabricacion producto={producto} productos={maestro.productos} pallets={pallets} reglas={reglas} verPalletHerr={verPalletHerr} />
+        </Plegable>
+      </>}
+    </>
+  );
+}
 
-      <Tarjeta titulo="Configuración óptima de cajas por pallet">
-        <p className="text-xs mb-2" style={{ color: T.suave }}>¿Cuál es la configuración que maximiza la cantidad de cajas de este SKU en esta tarima?</p>
-        <Sel etiqueta="Tarima" valor={tarimaSel} onChange={(v) => setTarimaSel(Number(v))} opciones={pallets.map((p, i) => [i, p.nombre])} />
-        {rConfig ? (
-          <Resultado estimado={rConfig.estimado} filas={[
-            ["Cajas por nivel", rConfig.porCapa.toLocaleString("es-MX")],
-            ["Niveles", rConfig.capas.toLocaleString("es-MX")],
-            ["Total de cajas por pallet", rConfig.n.toLocaleString("es-MX")],
-            ["Unidades totales por pallet", rConfig.piezas.toLocaleString("es-MX")],
-            ["Altura del pallet cargado", u.fL(rConfig.alto, 1)],
-            ["Peso del pallet cargado", u.fP(rConfig.peso)],
-            ["% de utilización de la superficie", pct((rConfig.L * rConfig.W) / (pal.L * pal.W))],
+function ResultadoCompleto({ r, u, tipo, nivel }) {
+  if (!r) return null;
+  return (
+    <div className="mt-3 rounded-md p-2" style={{ background: "#EEF3F9", border: `1px solid ${T.linea}` }}>
+      <p className="text-xs font-semibold">Resultado del cálculo completo (nivel {nivel}) · se ve en el 3D</p>
+      <Resultado filas={[
+        ...(tipo === "pallets" ? [["Pallets completos", n0(r.nPallets)], ["Cajas por pallet", n0(r.cajasPorPallet)]] : []),
+        ["Cajas cargadas", n0(r.nCajas)],
+        ["Piezas", n0(r.piezas)],
+        ["Ocupación del vehículo", `${r.ocupacion.toLocaleString("es-MX", { maximumFractionDigits: 1 })}%`],
+        ["Peso", `${u.fP(r.peso)}${r.utilPeso != null ? ` (${r.utilPeso.toFixed(0)}% del máximo)` : ""}`],
+      ]} />
+    </div>
+  );
+}
+
+function CapacidadSuelta({ producto, vehiculos, reglas, calcularHerramienta, calculando, vistaHerr }) {
+  const u = useUnidades();
+  const [vehSel, setVehSel] = useState(vehiculos[0]?.id || "");
+  // Rotaciones propias de la herramienta: por omisión todas, para responder «cuánto cabe como sea»; se
+  // pueden apagar para que respete las del producto o las de la operación.
+  const [oris, setOris] = useState(TODAS);
+  const [completo, setCompleto] = useState(null);
+  const veh = useMemo(() => vehParaCalculo(vehiculos.find((v) => v.id === vehSel) || vehiculos[0] || {}), [vehiculos, vehSel]);
+  const m = useMemo(() => paraMotor(producto, reglas, { oris, volteoPiso: oris.slice(2).some(Boolean) }), [producto, reglas, oris]);
+  const r = useMemo(() => (veh.L > 0 && oris.some(Boolean) ? capacidadSuelta(m.it, veh, m.reglas) : null), [m, veh, oris]);
+  const puedeCompleto = r && r.cajas > 0 && r.cajas <= TOPE_CALCULO;
+  const calcular = async () => {
+    setCompleto(null);
+    const res = await calcularHerramienta({ tipo: "suelta", producto, oris, veh, qty: Math.ceil(r.cajas * 1.15) + 20, titulo: `${producto.sku} suelto en ${veh.nombre}`, color: COLOR_HERR });
+    if (res) setCompleto(res);
+  };
+  return (
+    <>
+      <Sel etiqueta="Vehículo" valor={veh.id || vehiculos[0]?.id} onChange={(v) => { setVehSel(v); setCompleto(null); }} opciones={vehiculos.map((v) => [v.id, v.nombre])} />
+      <div className="mt-3">
+        <SelectorOrientacion it={{ ...producto, oris }} editar={(k, v) => { if (k === "oris") { setOris(v); setCompleto(null); } }} />
+      </div>
+      {r && (r.cajas > 0 ? (
+        <>
+          <p className="text-xs font-semibold mt-1">Estimado rápido</p>
+          <Resultado estimado={r.estimado} filas={[
+            ["Cantidad máxima (cajas)", n0(r.cajas)],
+            ["Piezas totales", n0(r.piezas)],
+            ["Volumen ocupado", u.fV(r.vol)],
+            ["% de ocupación del vehículo", pct(r.vol / r.volV)],
+            ["Peso total", u.fP(r.peso)],
           ]} />
-        ) : <p className="text-sm mt-2" style={{ color: T.error }}>Este SKU no arma ni un pallet en esta tarima (revisa medidas y orientaciones).</p>}
-      </Tarjeta>
+        </>
+      ) : <p className="text-sm mt-2" style={{ color: T.error }}>Este SKU no cabe suelto en este vehículo (o excede el peso máximo).</p>)}
+      <BotonCalcular onClick={calcular} calculando={calculando} deshabilitado={!puedeCompleto}
+        titulo={r?.cajas > TOPE_CALCULO ? `Son más de ${n0(TOPE_CALCULO)} cajas: el estimado ya es la respuesta y el 3D sería ilegible` : "Corre el motor completo con las reglas activas y lo muestra en el 3D"} />
+      {r?.cajas > TOPE_CALCULO && <p className="text-xs mt-1" style={{ color: T.suave }}>Son más de {n0(TOPE_CALCULO)} cajas: el estimado ya es la respuesta y en 3D no se distinguiría nada.</p>}
+      {vistaHerr && completo && <ResultadoCompleto r={completo} u={u} tipo="suelta" nivel={reglas.nivel} />}
+    </>
+  );
+}
 
-      <Tarjeta titulo="Capacidad máxima en pallets completos">
-        <p className="text-xs mb-2" style={{ color: T.suave }}>¿Cuántos pallets completos de este SKU puedo transportar en este vehículo? (nunca pallets parciales)</p>
-        <Sel etiqueta="Vehículo" valor={veh.id || vehiculos[0]?.id} onChange={setVehSel} opciones={vehiculos.map((v) => [v.id, v.nombre])} />
-        {rPallets && (
-          rPallets.pallets > 0 ? (
-            <Resultado estimado={rPallets.def.estimado} filas={[
-              ["Pallet usado", rPallets.def.estandar ? `Estándar del SKU: ${rPallets.def.capas ? `${rPallets.def.capas} niveles × ${rPallets.def.porCapa}` : `${rPallets.cajasPorPallet} cajas`}` : "Configuración óptima (el SKU no tiene estándar)"],
-              ["Pallets completos", rPallets.pallets.toLocaleString("es-MX")],
-              ["Cajas por pallet", rPallets.cajasPorPallet.toLocaleString("es-MX")],
-              ["Total de cajas", rPallets.cajasTotales.toLocaleString("es-MX")],
-              ["Unidades totales", rPallets.piezasTotales.toLocaleString("es-MX")],
-              ["% de ocupación del vehículo", pct(rPallets.vol / rPallets.volV)],
-              ["Peso total transportado", u.fP(rPallets.peso)],
-            ]} />
-          ) : <p className="text-sm mt-2" style={{ color: T.error }}>Ni un pallet completo de este SKU cabe en este vehículo.</p>
-        )}
-      </Tarjeta>
+// Configuración del pallet para la herramienta: la estándar del SKU (si la tiene), la óptima que calcula la
+// herramienta, o una a mano.
+const CONFIGS = [["estandar", "Estándar del SKU"], ["optima", "Óptima (la calcula la herramienta)"], ["manual", "A mano"]];
+function CapacidadPallets({ producto, vehiculos, pallets, reglas, calcularHerramienta, calculando, vistaHerr }) {
+  const u = useUnidades();
+  const tieneEstandar = producto.porPallet > 0 || producto.porCapa > 0 || producto.capasPallet > 0;
+  const [vehSel, setVehSel] = useState(vehiculos[0]?.id || "");
+  const [palSel, setPalSel] = useState(() => Math.max(0, pallets.findIndex((t) => t.nombre === producto.tarima)));
+  const [modo, setModo] = useState(tieneEstandar ? "estandar" : "optima");
+  const [manual, setManual] = useState({ porPallet: producto.porPallet || 0, porCapa: producto.porCapa || 0, capasPallet: producto.capasPallet || 0 });
+  const [completo, setCompleto] = useState(null);
+  const veh = useMemo(() => vehParaCalculo(vehiculos.find((v) => v.id === vehSel) || vehiculos[0] || {}), [vehiculos, vehSel]);
+  const pal = pallets[palSel] || pallets[0];
+  const config = modo === "estandar" ? { porPallet: producto.porPallet || 0, porCapa: producto.porCapa || 0, capasPallet: producto.capasPallet || 0 }
+    : modo === "manual" ? manual : { porPallet: 0, porCapa: 0, capasPallet: 0 };
+  const m = useMemo(() => paraMotor(producto, reglas, config), [producto, reglas, config.porPallet, config.porCapa, config.capasPallet]);
+  const r = useMemo(() => (pal && veh.L > 0 ? capacidadPalletCompleto(m.it, pal, veh, m.reglas) : null), [m, pal, veh]);
+  const calcular = async () => {
+    setCompleto(null);
+    const n = r.cajasPorPallet;
+    const res = await calcularHerramienta({ tipo: "pallets", producto, veh, palletIdx: palSel, config: { ...config, porPallet: n }, qty: n * (r.pallets + 2), titulo: `${producto.sku} en pallets completos · ${veh.nombre}`, color: COLOR_HERR });
+    if (res) setCompleto(res);
+  };
+  const cambio = (f) => (v) => { f(v); setCompleto(null); };
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-2">
+        <Sel etiqueta="Vehículo" valor={veh.id || vehiculos[0]?.id} onChange={cambio(setVehSel)} opciones={vehiculos.map((v) => [v.id, v.nombre])} />
+        <Sel etiqueta="Pallet" valor={palSel} onChange={cambio((v) => setPalSel(Number(v)))} opciones={pallets.map((p, i) => [i, p.nombre])} />
+      </div>
+      <div className="mt-2">
+        <Sel etiqueta="Configuración del pallet" valor={modo} onChange={cambio(setModo)} opciones={CONFIGS.filter(([k]) => k !== "estandar" || tieneEstandar)} />
+      </div>
+      {modo === "manual" && (
+        <div className="grid grid-cols-3 gap-2 mt-2">
+          <Num etiqueta="Cajas por pallet" valor={manual.porPallet} onChange={cambio((v) => setManual((x) => ({ ...x, porPallet: v })))} ayuda="0 = las que quepan" />
+          <Num etiqueta="Cajas por nivel" valor={manual.porCapa} onChange={cambio((v) => setManual((x) => ({ ...x, porCapa: v })))} ayuda="0 = las que quepan" />
+          <Num etiqueta="Niveles" valor={manual.capasPallet} onChange={cambio((v) => setManual((x) => ({ ...x, capasPallet: v })))} ayuda="0 = los que permita la altura" />
+        </div>
+      )}
+      {modo === "estandar" && <p className="text-xs mt-1" style={{ color: T.suave }}>Del maestro: {producto.porPallet ? `${producto.porPallet} cajas por pallet` : "cajas por pallet libre"}{producto.porCapa ? ` · ${producto.porCapa} por nivel` : ""}{producto.capasPallet ? ` · ${producto.capasPallet} niveles` : ""}.</p>}
+      {r && (r.pallets > 0 ? (
+        <>
+          <p className="text-xs font-semibold mt-3">Estimado rápido</p>
+          <Resultado estimado={r.def.estimado} filas={[
+            ["Armado del pallet", r.def.capas ? `${r.def.capas} niveles × ${r.def.porCapa} por nivel` : `${r.cajasPorPallet} cajas`],
+            ["Pallets completos", n0(r.pallets)],
+            ["Cajas por pallet", n0(r.cajasPorPallet)],
+            ["Total de cajas", n0(r.cajasTotales)],
+            ["Unidades totales", n0(r.piezasTotales)],
+            ["% de ocupación del vehículo", pct(r.vol / r.volV)],
+            ["Peso total transportado", u.fP(r.peso)],
+            ["Alto del pallet", u.fL(r.def.alto, 0)],
+          ]} nota={[
+            config.porPallet > r.cajasPorPallet ? `Pediste ${config.porPallet} cajas por pallet, pero en este pallet solo caben ${r.cajasPorPallet} (altura máxima ${u.fL(pal.altMax, 0)}, carga máxima ${pal.maxKg ? u.fP(pal.maxKg) : "libre"}).` : null,
+            r.def.techoPlano ? null : "El pallet no queda plano arriba (último nivel incompleto), así que no se le apila otro encima.",
+          ].filter(Boolean).join(" ") || null} />
+        </>
+      ) : <p className="text-sm mt-2" style={{ color: T.error }}>Ni un pallet completo de este SKU cabe en este vehículo con esta configuración.</p>)}
+      {!r && <p className="text-sm mt-2" style={{ color: T.error }}>Este SKU no arma ni un pallet en este pallet (revisa medidas y orientaciones).</p>}
+      <BotonCalcular onClick={calcular} calculando={calculando} deshabilitado={!r || !r.pallets || r.cajasTotales > TOPE_CALCULO * 5} titulo="Corre el motor completo con las reglas activas y lo muestra en el 3D" />
+      {vistaHerr && completo && <ResultadoCompleto r={completo} u={u} tipo="pallets" nivel={reglas.nivel} />}
     </>
   );
 }

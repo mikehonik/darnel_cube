@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { Package, Truck, Layers, SlidersHorizontal, HelpCircle, Play, FilePlus, ClipboardPaste, AlertTriangle, Loader2, Plus, Trash2, X, ChevronDown, Database, FolderOpen, Save, Upload, FileSpreadsheet, Search, RefreshCw, CheckCircle2, Repeat, Calculator, PackagePlus, MoreHorizontal, LogOut, BookOpen } from "lucide-react";
+import { Package, Truck, Layers, SlidersHorizontal, HelpCircle, Play, FilePlus, ClipboardPaste, AlertTriangle, Loader2, Plus, Trash2, X, ChevronDown, ChevronLeft, ChevronRight, Database, FolderOpen, Save, Upload, FileSpreadsheet, Search, RefreshCw, CheckCircle2, Repeat, Calculator, PackagePlus, MoreHorizontal, LogOut, BookOpen, Hand } from "lucide-react";
 import { correr, ejecutorWorker, ErrorCorrida } from "./motor/corrida.js";
 import MotorWorker from "./motor/motor.worker.js?worker&inline";
 import { armarReporte } from "./motor/reporte.js";
+import { rotar, mover, pegar as pegarBulto, quitar, colocar, validar, recalcularContenedor } from "./motor/edicion.js";
 import { clave, claveSku, indiceSku, buscarSku, conversionDe, numero } from "./archivos/celdas.js";
 import { ARCHIVO_MAESTRO, ARCHIVO_RESPALDO, productoVacio, leerMaestro, libroMaestro, leerCubeMaster, plantillaDimensiones, actualizarDimensiones, leerBundleMaestro } from "./archivos/maestro.js";
 import { transformarPedidoBundle } from "./archivos/bundle.js";
@@ -29,11 +30,14 @@ import { SeccionAyuda } from "./ui/secciones/SeccionAyuda.jsx";
 import { SeccionReglas } from "./ui/secciones/SeccionReglas.jsx";
 import { SeccionHerramientas } from "./ui/secciones/SeccionHerramientas.jsx";
 import { PanelResultados } from "./ui/secciones/PanelResultados.jsx";
+import { PanelEdicion } from "./ui/secciones/PanelEdicion.jsx";
 import { FilaItem, FilaMaestro } from "./ui/filas.jsx";
 
 // Un vehículo que termina usándose por debajo de este % es la señal de "casi no hacía falta":
 // ahí vale la pena ofrecer intentar consolidar todo en un vehículo menos.
 const UMBRAL_CONSOLIDAR = 0.05;
+// Hasta cuántos vehículos se muestran como botones sobre el visor; con más, se cambia a un selector con flechas.
+const MAX_BOTONES_VEH = 3;
 
 // ================= Motor (Web Worker) =================
 // Cada corrida crea un Worker nuevo. El worker va incrustado (?worker&inline) para que el build de un solo archivo HTML funcione sin servidor.
@@ -130,6 +134,11 @@ export default function Estiba3D({ usuario }) {
   const inputMaestro = useRef(null);
   const inputPedido = useRef(null);
   const [menuColor, setMenuColor] = useState(false);
+  // Vista de una herramienta en el visor 3D (capacidad suelta, pallets completos, pallet óptimo). Mientras
+  // exista, el visor muestra eso en vez de la carga del pedido; «Volver a mi carga» la quita sin perder nada.
+  const [vistaHerr, setVistaHerr] = useState(null);
+  // Edición a mano del vehículo que se está viendo: bulto elegido, lo que se quitó y el historial para deshacer.
+  const [edicion, setEdicion] = useState(null);
 
   const modoPallet = vehId.startsWith("PAL:");
   const palIdx = modoPallet ? Number(vehId.slice(4)) : -1;
@@ -154,6 +163,7 @@ export default function Estiba3D({ usuario }) {
   // y si alguna todavía está calculando, su resultado se descarta al llegar (ver intentoRef).
   const intentoRef = useRef(0);
   const invalidar = () => {
+    setEdicion(null);
     setRecomendacion(null); setRes(null); setCorrida(null); setResaltado(null); setVista(null);
     setEspacios(null); setConsolidar(null); setCalculandoEspacios(false); intentoRef.current++; };
   // La carga tal como la recibe el motor en una corrida normal. Con «orden de la lista», la posición de la
@@ -251,6 +261,18 @@ export default function Estiba3D({ usuario }) {
     if (vehId === id) elegirVehiculo(vehiculos.find((v) => v.id !== id)?.id || VEHICULOS[0].id);
   };
   const editarPallet = (i, k, v) => { setPallets((a) => a.map((p, j) => (j === i ? { ...p, [k]: v } : p))); invalidar(); };
+  // Las líneas del pedido guardan el pallet por su posición en el catálogo: al quitar uno, las que lo usaban
+  // pasan al primero y las de después se recorren un lugar, para que cada una siga apuntando al mismo pallet.
+  const quitarPallet = (i) => {
+    if (pallets.length < 2) return;
+    const nombre = pallets[i].nombre, afectadas = items.filter((it) => (it.palletId || 0) === i && it.paletizar).length;
+    setPallets((a) => a.filter((_, j) => j !== i));
+    setItems((a) => a.map((it) => { const p = it.palletId || 0; return p === i ? { ...it, palletId: 0 } : p > i ? { ...it, palletId: p - 1 } : it; }));
+    if (modoPallet && palIdx === i) setVehId("53CS");
+    else if (modoPallet && palIdx > i) setVehId(`PAL:${palIdx - 1}`);
+    invalidar();
+    setAviso(`Se quitó el pallet «${nombre}».${afectadas ? ` ${afectadas} ${afectadas === 1 ? "línea que lo usaba pasó" : "líneas que lo usaban pasaron"} a «${pallets[i === 0 ? 1 : 0].nombre}».` : ""}`);
+  };
   const editarRegla = (k, v) => { setReglas((p) => ({ ...p, [k]: v })); invalidar(); };
   // Mover una línea en la lista: con la regla "Cargar en el orden de la lista" cambia el acomodo
   const moverItem = (id, paso) => {
@@ -311,7 +333,7 @@ export default function Estiba3D({ usuario }) {
     setMaestro((m) => ({ productos, origen, sucio: false, guardado: null, errores, conversiones: conversiones || m.conversiones }));
     if (tarimas && tarimas.length) setPallets(tarimas);
     const nConv = conversiones ? Object.keys(conversiones).length : 0;
-    setAviso(`Maestro cargado: ${productos.length} productos${tarimas?.length ? `, ${tarimas.length} tarimas` : ""}${nConv ? ` y conversiones de ${nConv} SKUs` : ""}.${conUnidades(unidades)}`);
+    setAviso(`Maestro cargado: ${productos.length} productos${tarimas?.length ? `, ${tarimas.length} pallets` : ""}${nConv ? ` y conversiones de ${nConv} SKUs` : ""}.${conUnidades(unidades)}`);
   };
   const cargarDeCarpeta = async (dir) => {
     try {
@@ -402,7 +424,6 @@ export default function Estiba3D({ usuario }) {
     const { pid, sku, desc, tarima, ...reglasP } = p;
     return nuevoItem({ ...reglasP, nombre: sku, desc, palletId: pi < 0 ? 0 : pi, ...extra });
   };
-  const agregarACarga = (p) => { setItems((a) => [...a, itemDeProducto(p, { qty: 1 })]); invalidar(); setAviso(`${p.sku} agregado a la carga con 1 caja. Ajusta la cantidad en Mercancía.`); };
   const agregarSkuDelMaestro = () => {
     const p = buscarSku(mapaMaestro, skuNuevo);
     if (!p) { setError(`${skuNuevo} no está en el maestro.`); return; }
@@ -430,7 +451,7 @@ export default function Estiba3D({ usuario }) {
       const nuevos = lineas.map((l) => itemDeProducto(buscarSku(indice, l.sku), { qty: l.qty, orden: l.orden, grupo: l.grupo, destino: l.destino }, nuevasT));
       setItems(nuevos); setProyecto(nombre.replace(/\.[^.]+$/, "")); invalidar();
     }
-    setAviso(`Plantilla de CubeMaster importada: ${productos.length} productos al maestro${tarimas.length ? `, ${tarimas.length} tarimas` : ""}${lineas.length ? ` y un pedido de ${lineas.reduce((a, l) => a + l.qty, 0).toLocaleString("es-MX")} cajas` : ""}. Presiona Guardar en Maestro para conservar los productos.`);
+    setAviso(`Plantilla de CubeMaster importada: ${productos.length} productos al maestro${tarimas.length ? `, ${tarimas.length} pallets` : ""}${lineas.length ? ` y un pedido de ${lineas.reduce((a, l) => a + l.qty, 0).toLocaleString("es-MX")} cajas` : ""}. Presiona Guardar en Maestro para conservar los productos.`);
     if (lineas.length) setVerMedidas(false);
     setSeccion(lineas.length ? "mercancia" : "maestro");
   };
@@ -625,7 +646,7 @@ export default function Estiba3D({ usuario }) {
   };
 
   const calcular = async () => {
-    setError(""); setProgreso({ i: 0, n: 1 }); setResaltado(null); setVista(null); setConsolidar(null); setEspacios(null); setCalculandoEspacios(false); intentoRef.current++;
+    setVistaHerr(null); setEdicion(null); setError(""); setProgreso({ i: 0, n: 1 }); setResaltado(null); setVista(null); setConsolidar(null); setEspacios(null); setCalculandoEspacios(false); intentoRef.current++;
     const ctrl = new AbortController(); corridaRef.current = ctrl;
     try {
       const c = await correr(cargaPara(items, reglas), { ejecutor, signal: ctrl.signal, onProgreso: (i, n) => setProgreso({ i, n }) });
@@ -640,6 +661,45 @@ export default function Estiba3D({ usuario }) {
   };
   calcularRef.current = calcular;
   const cancelarCorrida = () => corridaRef.current?.abort();
+
+  // ---------- Herramientas con cálculo completo ----------
+  // Corre el motor de verdad (mismo nivel, reglas y «simular la carga real» que una carga normal) con un solo
+  // SKU y un solo vehículo: lo que no cabe se queda fuera, así que lo cargado es la capacidad máxima. Devuelve
+  // el resultado y deja la vista en el 3D.
+  const calcularHerramienta = async ({ tipo, producto, oris, veh: vHerr, palletIdx = 0, config = {}, qty, titulo, color }) => {
+    setError(""); setProgreso({ i: 0, n: 1 });
+    const ctrl = new AbortController(); corridaRef.current = ctrl;
+    const extra = tipo === "pallets"
+      ? { qty, paletizar: true, palletId: palletIdx, porPallet: config.porPallet || 0, porCapa: config.porCapa || 0, capasPallet: config.capasPallet || 0, resto: "sueltas" }
+      : { qty, paletizar: false, ...(oris ? { oris } : {}) };
+    const it = { ...itemDeProducto(producto, extra), id: 0, color: null };
+    const vehiculo = { ...vHerr, maxVolPct: vHerr.maxVolPct || 0, maxSkus: vHerr.maxSkus || 0, maxPiezas: vHerr.maxPiezas || 0 };
+    try {
+      const c = await correr({ items: [it], vehiculo, tarimas: pallets, reglas: { ...reglas, usarLista: false, _maxContenedores: 1 } },
+        { ejecutor, signal: ctrl.signal, onProgreso: (i, n) => setProgreso({ i, n }) });
+      const r = c.resultado, k = r.contenedores[0] || { cajas: [], peso: 0, vol: 0 };
+      const nPallets = k.cajas.filter((x) => x.pal >= 0).length;
+      const nCajas = k.cajas.reduce((a, x) => a + (x.pal >= 0 ? r.pallets[x.pal]?.n || 0 : 1), 0);
+      const volV = vehiculo.L * vehiculo.W * vehiculo.H, cargaMax = vehiculo.maxKg > 0 ? vehiculo.maxKg - (vehiculo.tara || 0) : 0;
+      const resumen = { nCajas, nPallets, piezas: nCajas * (it.piezas || 1), peso: k.peso, vol: k.vol, ocupacion: volV ? (k.vol / volV) * 100 : 0, utilPeso: cargaMax ? (k.peso / cargaMax) * 100 : null,
+        cajasPorPallet: nPallets ? r.pallets[k.cajas.find((x) => x.pal >= 0).pal]?.n || 0 : 0, estrategia: r.estrategia };
+      setVistaHerr({ titulo, veh: vehiculo, base: null, cajas: k.cajas, pallets: r.pallets, colores: [color || colores[0] || "#C8102E"], formas: [it.forma || "caja"], resumen });
+      setPaso(k.cajas.length); setResaltado(null); setVista(null);
+      return resumen;
+    } catch (e) {
+      if (!(e instanceof ErrorCorrida && e.tipo === "cancelada")) setError("El cálculo de la herramienta falló: " + (e.detalle?.original || e.message));
+      return null;
+    } finally { corridaRef.current = null; setProgreso(null); }
+  };
+  // Muestra en el 3D un pallet ya armado (pallet óptimo, patrones de fabricación): la base es el pallet vacío.
+  const verPalletHerr = ({ def, titulo, color, forma }) => {
+    setVistaHerr({ titulo, veh: { L: def.palL + 2 * def.ovL, W: def.palW + 2 * def.ovW, H: def.alto - def.esp + 50 },
+      base: { esp: def.esp, x: def.ovL, y: def.ovW, l: def.palL, w: def.palW },
+      // Capas en dos tonos alternados: así se ve a simple vista si el patrón va en columnas o entrelazado
+      cajas: def.cajas.map((k) => ({ ...k, x: k.x + def.ovL - def.baseX, y: k.y + def.ovW - def.baseY, idx: (k.capa ?? 0) % 2, pal: -1 })), pallets: [],
+      colores: [color || "#C8102E", "#E9A3AE"], formas: [forma || "caja", forma || "caja"], esPallet: true });
+    setPaso(def.cajas.length); setResaltado(null); setVista(null);
+  };
   useEffect(() => () => corridaRef.current?.abort(), []);
 
   // Completar espacios vacíos: sobre la carga ya calculada, prueba meter más unidades de los SKUs
@@ -836,7 +896,7 @@ export default function Estiba3D({ usuario }) {
 
   const descargarInstructivo = async () => {
     if (!cont || !apiVisor.current) return;
-    setGenerando(true); setVista(null);
+    setGenerando(true); setVista(null); setVistaHerr(null);
     await new Promise((r) => setTimeout(r, 60));
     const etapas = etapasDe(stats.pasos, stats.nBultos);
     const imagenes = apiVisor.current.capturar(etapas.map((e) => e[e.length - 1].fin));
@@ -850,7 +910,7 @@ export default function Estiba3D({ usuario }) {
   // cada uno con su propia numeración de pasos e imágenes del visor.
   const descargarInstructivoCompleto = async () => {
     if (!res || !apiVisor.current || !reporte) return;
-    setGenerando(true); setVista(null);
+    setGenerando(true); setVista(null); setVistaHerr(null);
     const selOriginal = sel;
     try {
       const secciones = [];
@@ -872,24 +932,87 @@ export default function Estiba3D({ usuario }) {
     }
   };
 
-  const verPallet = (i) => { setVista(i); setPaso(res.pallets[i].cajas.length); setResaltado(null); };
-  const verVehiculo = (i) => { setVista(null); setSel(i); setPaso(res.contenedores[i].cajas.length); };
+  const verPallet = (i) => { setEdicion(null); setVista(i); setPaso(res.pallets[i].cajas.length); setResaltado(null); };
+  const verVehiculo = (i) => { if (edicion && i !== sel) setEdicion((e) => ({ ...e, elegida: null })); setVista(null); setSel(i); setPaso(res.contenedores[i].cajas.length); };
+
+  // ---------- Edición a mano ----------
+  // Cada cambio arma una corrida nueva (la anterior queda en el historial para deshacer): así el reporte, el
+  // Excel y el instructivo salen de lo editado sin ningún paso extra.
+  const cargaMaxVeh = vehCalc.maxKg > 0 && reglas.limitarPeso ? vehCalc.maxKg - (vehCalc.tara || 0) : 0;
+  const ctxEdicion = useMemo(() => (corrida ? { items: corrida.carga.items, pallets: res?.pallets || [], reglas: { soporteMin: reglas.soporteMin / 100 }, cargaMax: cargaMaxVeh } : null), [corrida, res, reglas.soporteMin, cargaMaxVeh]);
+  const validacion = useMemo(() => (edicion && cont && ctxEdicion ? validar(cont.cajas, vehCalc, ctxEdicion) : null), [edicion, cont, ctxEdicion, vehCalc]);
+  const problemasSet = useMemo(() => (validacion ? new Set(validacion.porCaja.map((p, i) => (p.length ? i : -1)).filter((i) => i >= 0)) : null), [validacion]);
+  const iniciarEdicion = () => { if (!res || !cont) return; setVistaHerr(null); setVista(null); setResaltado(null); setEdicion({ elegida: null, historial: [], fuera: [], paso: 100 }); setPaso(cont.cajas.length); };
+  const aplicarEdicion = (nuevas, editada, fuera) => {
+    const c = recalcularContenedor(cont, nuevas, corrida.carga.items);
+    const previo = res.editadoManual || { vehiculos: [], quitados: 0 };
+    const vehiculos = [...new Set([...previo.vehiculos, sel + 1])].sort((a, b) => a - b);
+    const nuevaFuera = fuera ?? edicion.fuera;
+    const quitados = previo.quitados + (nuevaFuera.length - edicion.fuera.length);
+    const resultado = { ...res, contenedores: res.contenedores.map((k, i) => (i === sel ? c : k)), editadoManual: { vehiculos, quitados } };
+    setEdicion((e) => ({ ...e, mensaje: null, historial: [...e.historial, { corrida, fuera: e.fuera }].slice(-60), fuera: nuevaFuera, elegida: editada ? c.cajas.indexOf(editada) : null }));
+    setCorrida({ ...corrida, resultado }); setRes(resultado); setPaso(c.cajas.length);
+  };
+  const editar = (op) => {
+    if (!edicion || edicion.elegida == null || !cont) return;
+    const i = edicion.elegida, v = vehCalc;
+    let nuevas = null;
+    if (op.tipo === "rotar") nuevas = rotar(cont.cajas, i, v);
+    else if (op.tipo === "mover") nuevas = mover(cont.cajas, i, op.dx, op.dy, v);
+    else if (op.tipo === "pegar") nuevas = pegarBulto(cont.cajas, i, op.dir, v);
+    else if (op.tipo === "quitar") { const r = quitar(cont.cajas, i); aplicarEdicion(r.cajas, null, [...edicion.fuera, r.quitada]); return; }
+    if (!nuevas) { setEdicion((e) => ({ ...e, mensaje: op.tipo === "rotar" ? "Girada ya no cabe en ese lugar: hazle espacio o muévela primero." : "No hay espacio para moverla ahí." })); return; }
+    aplicarEdicion(nuevas, nuevas[i]);
+  };
+  const colocarFuera = (j) => {
+    const caja = edicion.fuera[j];
+    const nuevas = colocar(cont.cajas, caja, vehCalc, ctxEdicion);
+    if (!nuevas) { setEdicion((e) => ({ ...e, mensaje: "No hay un lugar válido para ese bulto en este vehículo. Haz espacio o pruébalo en otro vehículo." })); return; }
+    aplicarEdicion(nuevas, nuevas[nuevas.length - 1], edicion.fuera.filter((_, k) => k !== j));
+  };
+  const deshacerEdicion = () => {
+    const h = edicion?.historial; if (!h?.length) return;
+    const ultimo = h[h.length - 1];
+    setCorrida(ultimo.corrida); setRes(ultimo.corrida.resultado); setPaso(ultimo.corrida.resultado.contenedores[sel]?.cajas.length || 0);
+    setEdicion((e) => ({ ...e, historial: h.slice(0, -1), fuera: ultimo.fuera, elegida: null }));
+  };
+  // Atajos de teclado mientras se edita: flechas mueven, R gira, Supr quita, Ctrl+Z deshace
+  const editarRef = useRef(null);
+  editarRef.current = { editar, deshacerEdicion, edicion };
+  useEffect(() => {
+    if (!edicion) return;
+    const tecla = (e) => {
+      if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+      const { editar: ed, deshacerEdicion: des, edicion: est } = editarRef.current, p = est?.paso || 100;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); des(); return; }
+      if (est?.elegida == null) return;
+      const m = { ArrowUp: [p, 0], ArrowDown: [-p, 0], ArrowLeft: [0, p], ArrowRight: [0, -p] }[e.key];
+      if (m) { e.preventDefault(); ed({ tipo: "mover", dx: m[0], dy: m[1] }); }
+      else if (e.key === "r" || e.key === "R") ed({ tipo: "rotar" });
+      else if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); ed({ tipo: "quitar" }); }
+      else if (e.key === "Escape") setEdicion((x) => ({ ...x, elegida: null }));
+    };
+    window.addEventListener("keydown", tecla);
+    return () => window.removeEventListener("keydown", tecla);
+  }, [!!edicion]);
   const palVista = vista !== null && res ? res.pallets[vista] : null;
-  const visor = palVista
+  const visor = vistaHerr
+    ? { veh: vistaHerr.veh, base: vistaHerr.base, cajas: vistaHerr.cajas, total: vistaHerr.cajas.length }
+    : palVista
     ? { veh: { L: palVista.palL + 2 * palVista.ovL, W: palVista.palW + 2 * palVista.ovW, H: palVista.alto - palVista.esp + 50 },
         base: { esp: palVista.esp, x: palVista.ovL, y: palVista.ovW, l: palVista.palL, w: palVista.palW },
         cajas: palVista.cajas.map((k) => ({ ...k, x: k.x + palVista.ovL - palVista.baseX, y: k.y + palVista.ovW - palVista.baseY, pal: -1 })), total: palVista.cajas.length }
     : { veh: vehCalc, base: palSel ? { esp: palSel.esp, x: palSel.ovL, y: palSel.ovW, l: palSel.L, w: palSel.W } : null, cajas: cont?.cajas || [], total: cont?.cajas.length || 0 };
 
+  const etiquetaVeh = (i) => `${modoPallet ? "Pallet" : "Vehículo"} ${i + 1} · ${reporte.contenedores[i].ocupacion.toFixed(0)}% vol${reporte.contenedores[i].utilPeso != null ? ` · ${reporte.contenedores[i].utilPeso.toFixed(0)}% peso` : ""}`;
   const calculando = progreso !== null;
-  const nPalletizados = items.filter((i) => i.paletizar).length;
   const reglasActivas = [reglas.usarOrden && items.some((i) => i.orden > 0), reglas.agrupar, reglas.juntos, reglas.apilamiento !== "ninguna"].filter(Boolean).length;
 
   const NAV = [
     { id: "maestro", icono: Database, t: "Maestro", d: maestro.productos.length ? `${maestro.productos.length} productos${maestro.sucio ? " · sin guardar" : ""}` : "Vacío" },
-    { id: "mercancia", icono: Package, t: "Mercancía", d: `${items.length} SKUs` },
+    { id: "mercancia", icono: Package, t: "Pedido", d: `${items.length} SKUs` },
     { id: "vehiculo", icono: Truck, t: modoPallet ? "Pallet" : "Vehículo", d: nombreVeh },
-    { id: "pallets", icono: Layers, t: "Paletizado", d: nPalletizados ? `${nPalletizados} SKUs paletizados` : "Catálogo de tarimas" },
+    { id: "pallets", icono: Layers, t: "Paletizado", d: `${pallets.length} ${pallets.length === 1 ? "pallet" : "pallets"} en el catálogo` },
     { id: "reglas", icono: SlidersHorizontal, t: "Reglas", d: `Nivel ${reglas.nivel}${reglasActivas ? ` · ${reglasActivas} activas` : ""}` },
     { id: "herramientas", icono: Calculator, t: "Herramientas", d: "Capacidad de un SKU" },
     { id: "ayuda", icono: HelpCircle, t: "Ayuda", d: "Qué significa cada campo" },
@@ -1056,7 +1179,7 @@ export default function Estiba3D({ usuario }) {
                     <tbody>
                       {productosFiltrados.slice(0, 300).map((p) => (
                         <FilaMaestro key={p.pid} p={p} pallets={pallets} abierto={abiertoP === p.pid} onToggle={() => setAbiertoP(abiertoP === p.pid ? null : p.pid)}
-                          editar={(k, v) => editarProducto(p.pid, k, v)} quitar={() => quitarProducto(p.pid)} aCarga={() => agregarACarga(p)} />
+                          editar={(k, v) => editarProducto(p.pid, k, v)} quitar={() => quitarProducto(p.pid)} />
                       ))}
                     </tbody>
                   </table>
@@ -1070,7 +1193,7 @@ export default function Estiba3D({ usuario }) {
                   <span className="block" style={{ color: T.tinta }}>
                     {leyendo ? leyendo : maestro.conversiones
                       ? `Conversiones de unidad: ${Object.keys(maestro.conversiones).length.toLocaleString("es-MX")} SKUs. Un pedido en otra unidad (ML, PLT, KG…) se convierte a cajas.`
-                      : "Sin conversiones de unidad. Impórtalas si algún pedido llega en millares, tarimas o kilos."}
+                      : "Sin conversiones de unidad. Impórtalas si algún pedido llega en millares, pallets o kilos."}
                   </span>
                   <button className="underline" style={{ color: T.suave }} onClick={() => inputConv.current?.click()}>Importar archivo de conversiones</button>
                   {maestro.conversiones && <button className="underline ml-3" style={{ color: T.suave }} onClick={() => { setMaestro((m) => ({ ...m, conversiones: null, sucio: true })); setAviso("Conversiones borradas. Falta presionar Guardar."); }}>Borrar</button>}
@@ -1099,7 +1222,7 @@ export default function Estiba3D({ usuario }) {
             <>
               <div className="flex items-center justify-between mb-3">
                 <div>
-                  <h2 className="text-lg font-semibold leading-tight">Mercancía</h2>
+                  <h2 className="text-lg font-semibold leading-tight">Pedido</h2>
                   <p className="text-xs" style={{ color: T.suave }}>{items.length} SKUs · {totales.cajas.toLocaleString("es-MX")} cajas · <b style={{ color: T.tinta }}>{u.fV3(totales.m3, 1)}</b> · {u.fP(totales.kg)}</p>
                   {!modoPallet && vehCalc.L > 0 && <p className="text-xs" style={{ color: T.suave }}>Equivale a {(totales.m3 / (vehCalc.L * vehCalc.W * vehCalc.H / 1e9)).toLocaleString("es-MX", { maximumFractionDigits: 2 })} {nombreVeh} llenos al 100%</p>}
                 </div>
@@ -1251,9 +1374,9 @@ export default function Estiba3D({ usuario }) {
             </Tarjeta>
           )}
 
-          {seccion === "pallets" && <SeccionPaletizado colores={colores} editarItem={editarItem} editarPallet={editarPallet} items={items} nPalletizados={nPalletizados} pallets={pallets} setPallets={setPallets} />}
+          {seccion === "pallets" && <SeccionPaletizado editarPallet={editarPallet} pallets={pallets} setPallets={setPallets} quitarPallet={quitarPallet} usos={pallets.map((_, i) => items.filter((it) => it.paletizar && (it.palletId || 0) === i).length)} />}
 
-          {seccion === "herramientas" && <SeccionHerramientas maestro={maestro} vehiculos={vehiculos} pallets={pallets} reglas={reglas} />}
+          {seccion === "herramientas" && <SeccionHerramientas maestro={maestro} vehiculos={vehiculos} pallets={pallets} reglas={reglas} calcularHerramienta={calcularHerramienta} verPalletHerr={verPalletHerr} calculando={calculando} vistaHerr={vistaHerr} />}
 
           {seccion === "ayuda" && <SeccionAyuda />}
 
@@ -1273,15 +1396,31 @@ export default function Estiba3D({ usuario }) {
         {/* ============ Área de trabajo: visor + resultados ============ */}
         <main className="flex-1 flex flex-col min-w-0 min-h-0">
           <div className="relative flex-1" style={{ minHeight: 360, background: T.visor }}>
-            <Visor veh={visor.veh} base={visor.base} cajas={visor.cajas} pallets={res?.pallets || []} paso={res ? paso : 0} colores={colores} formas={formas} resaltado={resaltado} camara={camara} api={apiVisor} />
+            <Visor veh={visor.veh} base={visor.base} cajas={visor.cajas} pallets={vistaHerr ? vistaHerr.pallets : res?.pallets || []} paso={vistaHerr || res ? paso : 0} colores={vistaHerr ? vistaHerr.colores : colores} formas={vistaHerr ? vistaHerr.formas : formas} resaltado={vistaHerr ? null : resaltado} camara={camara} api={apiVisor}
+              seleccion={edicion ? edicion.elegida : null} problemas={edicion ? problemasSet : null} onElegir={edicion ? (i) => setEdicion((e) => ({ ...e, elegida: i, mensaje: null })) : null} />
             <div className="absolute top-3 left-3 right-3 flex flex-wrap items-center gap-2 pointer-events-none">
-              {res && !palVista && res.contenedores.map((c, i) => (
+              {vistaHerr && <>
+                <button onClick={() => { setVistaHerr(null); setPaso(res ? (palVista ? palVista.cajas.length : cont?.cajas.length || 0) : 0); }} className="pointer-events-auto text-xs px-2.5 py-1 rounded-full font-medium shadow-sm" style={{ background: T.nav, color: "#fff" }}>← Volver a mi carga</button>
+                <span className="text-xs px-2.5 py-1 rounded-full shadow-sm" style={{ background: "rgba(255,255,255,.95)" }}>Herramienta: <b>{vistaHerr.titulo}</b></span>
+              </>}
+              {!vistaHerr && res && !palVista && res.contenedores.length <= MAX_BOTONES_VEH && res.contenedores.map((c, i) => (
                 <button key={i} onClick={() => verVehiculo(i)} className="pointer-events-auto text-xs px-2.5 py-1 rounded-full font-medium shadow-sm"
                   style={{ background: i === sel ? T.nav : "rgba(255,255,255,.92)", color: i === sel ? "#fff" : T.tinta }}>
-                  {modoPallet ? "Pallet" : "Vehículo"} {i + 1} · {reporte.contenedores[i].ocupacion.toFixed(0)}% vol{reporte.contenedores[i].utilPeso != null ? ` · ${reporte.contenedores[i].utilPeso.toFixed(0)}% peso` : ""}
+                  {etiquetaVeh(i)}
                 </button>
               ))}
-              {palVista && <>
+              {/* Con muchos vehículos los botones se amontonaban en varias filas: se cambia a un selector con flechas */}
+              {!vistaHerr && res && !palVista && res.contenedores.length > MAX_BOTONES_VEH && (
+                <div className="pointer-events-auto flex items-center rounded-full shadow-sm overflow-hidden" style={{ background: "rgba(255,255,255,.95)" }} role="group" aria-label="Elegir vehículo">
+                  <button onClick={() => verVehiculo(Math.max(0, sel - 1))} disabled={sel === 0} className="px-2 py-1" style={{ opacity: sel === 0 ? 0.35 : 1 }} aria-label="Vehículo anterior"><ChevronLeft size={16} /></button>
+                  <select value={sel} onChange={(e) => verVehiculo(Number(e.target.value))} className="text-xs font-medium bg-transparent outline-none py-1 max-w-[260px]" aria-label="Vehículo">
+                    {res.contenedores.map((_, i) => <option key={i} value={i}>{etiquetaVeh(i)}</option>)}
+                  </select>
+                  <span className="text-xs px-1.5" style={{ color: T.suave }}>de {res.contenedores.length}</span>
+                  <button onClick={() => verVehiculo(Math.min(res.contenedores.length - 1, sel + 1))} disabled={sel === res.contenedores.length - 1} className="px-2 py-1" style={{ opacity: sel === res.contenedores.length - 1 ? 0.35 : 1 }} aria-label="Vehículo siguiente"><ChevronRight size={16} /></button>
+                </div>
+              )}
+              {!vistaHerr && palVista && <>
                 <button onClick={() => verVehiculo(sel)} className="pointer-events-auto text-xs px-2.5 py-1 rounded-full font-medium" style={{ background: T.nav, color: "#fff" }}>← Vehículo {sel + 1}</button>
                 <span className="text-xs px-2.5 py-1 rounded-full" style={{ background: "rgba(255,255,255,.92)" }}>Armado de: {palVista.nombre}</span>
               </>}
@@ -1304,7 +1443,7 @@ export default function Estiba3D({ usuario }) {
                       );
                     })}
                     <div className="flex items-center gap-2 px-2 pt-2 mt-1 text-xs" style={{ borderTop: `1px solid ${T.linea}`, color: T.suave }}>
-                      <span style={{ width: 14, height: 10, background: "#8B5A2B", borderRadius: 2 }} />Las tarimas siempre son café
+                      <span style={{ width: 14, height: 10, background: "#8B5A2B", borderRadius: 2 }} />Los pallets vacíos siempre son café
                     </div>
                     {hayPersonalizados && (
                       <button onClick={() => { setItems((a) => a.map((it) => ({ ...it, color: null }))); setMenuColor(false); }} className="w-full text-left text-xs px-2 py-1.5 mt-1 underline" style={{ color: T.suave }}>
@@ -1314,20 +1453,30 @@ export default function Estiba3D({ usuario }) {
                   </div>
                 )}
               </div>
+              {res && !vistaHerr && !palVista && !modoPallet && cont && (
+                <button onClick={edicion ? () => setEdicion(null) : iniciarEdicion} aria-pressed={!!edicion} className="pointer-events-auto flex items-center gap-1 text-xs px-2.5 py-1 rounded-full shadow-sm font-medium"
+                  style={{ background: edicion ? T.acento : "rgba(255,255,255,.92)", color: T.nav }} title="Elegir cajas en el 3D para girarlas, moverlas, quitarlas o volverlas a colocar">
+                  <Hand size={13} />{edicion ? "Terminar edición" : "Editar a mano"}
+                </button>
+              )}
               <div className="pointer-events-auto flex rounded-full overflow-hidden shadow-sm" style={{ background: "rgba(255,255,255,.92)" }}>
                 {[["iso", "3D"], ["frente", "Puerta"], ["lado", "Lado"], ["arriba", "Planta"]].map(([k, t]) => (
                   <button key={k} onClick={() => setCamara({ tipo: k, n: Date.now() })} className="text-xs px-2.5 py-1">{t}</button>
                 ))}
               </div>
             </div>
-            {!res && !calculando && (
+            {!res && !vistaHerr && !calculando && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <p className="text-sm px-4 py-2 rounded-lg" style={{ background: "rgba(255,255,255,.9)", color: T.suave }}>Configura la carga y presiona {modoPallet ? "Armar pallet" : "Calcular carga"}</p>
               </div>
             )}
-            {res && visor.total > 0 && (
+            {edicion && cont && validacion && (
+              <PanelEdicion edicion={edicion} setEdicion={setEdicion} cont={cont} validacion={validacion} items={corrida.carga.items} pallets={res.pallets} vehNum={sel + 1}
+                editar={editar} deshacer={deshacerEdicion} colocarFuera={colocarFuera} terminar={() => setEdicion(null)} />
+            )}
+            {(res || vistaHerr) && visor.total > 0 && !edicion && (
               <div className="absolute bottom-3 left-3 right-3 flex items-center gap-3 px-3 py-2 rounded-lg" style={{ background: "rgba(255,255,255,.92)" }}>
-                <span className="text-xs whitespace-nowrap" style={{ color: T.suave }}>{palVista ? "Armado" : "Carga"} {paso}/{visor.total}</span>
+                <span className="text-xs whitespace-nowrap" style={{ color: T.suave }}>{palVista || vistaHerr?.esPallet ? "Armado" : "Carga"} {paso}/{visor.total}</span>
                 <input type="range" min={0} max={visor.total} value={paso} onChange={(e) => setPaso(Number(e.target.value))} className="flex-1" aria-label="Secuencia" style={{ accentColor: T.nav }} />
               </div>
             )}

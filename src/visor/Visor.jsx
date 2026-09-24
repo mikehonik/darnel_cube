@@ -12,9 +12,13 @@ const MADERA = new THREE.MeshLambertMaterial({ color: 0x8b5a2b });
 const MADERA_BORDE = new THREE.LineBasicMaterial({ color: 0x4e3016 });
 const VISTAS = { iso: [-0.85, 1.05], frente: [0, 1.5], lado: [Math.PI / 2, 1.5], arriba: [Math.PI / 2, 0.08] };
 
-export function Visor({ veh, base, cajas, pallets, paso, colores, formas, resaltado, camara, api }) {
+// Edición a mano: con `onElegir`, un clic (sin arrastrar) sobre un bulto avisa su índice; `seleccion` lo
+// marca en ámbar y `problemas` (índices) en rojo. Las marcas no salen en las imágenes del instructivo.
+export function Visor({ veh, base, cajas, pallets, paso, colores, formas, resaltado, camara, api, seleccion = null, problemas = null, onElegir = null }) {
   const montaje = useRef(null);
   const ref3 = useRef({});
+  const elegirRef = useRef(onElegir);
+  elegirRef.current = onElegir;
   useEffect(() => {
     const el = montaje.current;
     const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
@@ -37,7 +41,20 @@ export function Visor({ veh, base, cajas, pallets, paso, colores, formas, resalt
     let arrastre = null;
     const cv = renderer.domElement;
     cv.style.touchAction = "none";
-    cv.addEventListener("pointerdown", (e) => { arrastre = { x: e.clientX, y: e.clientY }; cv.setPointerCapture(e.pointerId); });
+    let inicio = null;
+    cv.addEventListener("pointerdown", (e) => { arrastre = { x: e.clientX, y: e.clientY }; inicio = { x: e.clientX, y: e.clientY }; cv.setPointerCapture(e.pointerId); });
+    // Clic sin arrastrar: qué bulto quedó bajo el puntero (para la edición a mano)
+    const rayo = new THREE.Raycaster(), punto = new THREE.Vector2();
+    cv.addEventListener("pointerup", (e) => {
+      if (!inicio || !elegirRef.current) return;
+      const mov = Math.abs(e.clientX - inicio.x) + Math.abs(e.clientY - inicio.y); inicio = null;
+      if (mov > 5) return;
+      const r = cv.getBoundingClientRect();
+      punto.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+      rayo.setFromCamera(punto, cam);
+      const hit = rayo.intersectObjects(grupo.children, false).find((h) => h.object.isMesh && h.object.userData.i != null);
+      elegirRef.current(hit ? hit.object.userData.i : null);
+    });
     cv.addEventListener("pointermove", (e) => {
       if (!arrastre) return;
       orb.theta += (e.clientX - arrastre.x) * 0.008;
@@ -97,10 +114,12 @@ export function Visor({ veh, base, cajas, pallets, paso, colores, formas, resalt
     const mats = {};
     const borde = new THREE.LineBasicMaterial({ color: 0x16202c, transparent: true, opacity: 0.32 });
     const tenue = new THREE.MeshLambertMaterial({ color: 0x9aa7b2, transparent: true, opacity: 0.12, depthWrite: false });
+    let bultoActual = null;   // índice del bulto que se está dibujando (para elegirlo con clic)
     const bloque = (x, y, z, l, w, h, mat, lineas) => {
       const m = new THREE.Mesh(GEO, mat);
       m.scale.set(s(l) * 0.995, s(h) * 0.995, s(w) * 0.995);
       m.position.set(s(x + l / 2), s(z + h / 2), s(y + w / 2));
+      if (bultoActual != null) m.userData.i = bultoActual;
       grupo.add(m);
       if (lineas) { const e = new THREE.LineSegments(EDG, lineas); e.scale.copy(m.scale); e.position.copy(m.position); grupo.add(e); }
     };
@@ -118,6 +137,7 @@ export function Visor({ veh, base, cajas, pallets, paso, colores, formas, resalt
       m.scale.set(s(d) * 0.99, s(alto) * 0.99, s(d) * 0.99);
       m.position.set(s(x + l / 2), s(z + h / 2), s(y + w / 2));
       if (acostado) m.rotation.z = Math.PI / 2;
+      if (bultoActual != null) m.userData.i = bultoActual;
       grupo.add(m);
       if (lineas) { const e = new THREE.LineSegments(CIL_EDG, lineas); e.scale.copy(m.scale); e.position.copy(m.position); e.rotation.copy(m.rotation); grupo.add(e); }
     };
@@ -147,7 +167,16 @@ export function Visor({ veh, base, cajas, pallets, paso, colores, formas, resalt
       piso.position.set(s(veh.L) / 2, -0.01, s(veh.W) / 2);
       grupo.add(piso);
     }
+    // Marco alrededor de un bulto: ámbar si está elegido, rojo si tiene problemas
+    const marcoBulto = (c, color, grueso) => {
+      const g = 12 + grueso;
+      const e = new THREE.LineSegments(EDG, new THREE.LineBasicMaterial({ color, depthTest: false, transparent: true, opacity: 0.95 }));
+      e.scale.set(s(c.l + g), s(c.h + g), s(c.w + g)); e.position.set(s(c.x + c.l / 2), s(c.z + c.h / 2), s(c.y + c.w / 2)); e.renderOrder = 10; grupo.add(e);
+      const velo = new THREE.Mesh(GEO, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.18, depthWrite: false }));
+      velo.scale.copy(e.scale); velo.position.copy(e.position); grupo.add(velo);
+    };
     cajas.slice(0, pasoN).forEach((c, i) => {
+      bultoActual = onElegir ? i : null;
       const ultima = !limpio && i === pasoN - 1 && pasoN < cajas.length;
       if (c.pal >= 0 && pallets[c.pal]) {
         const d = pallets[c.pal];
@@ -160,10 +189,13 @@ export function Visor({ veh, base, cajas, pallets, paso, colores, formas, resalt
         });
       } else caja(c.x, c.y, c.z, c.l, c.w, c.h, c.idx, ultima);
     });
+    bultoActual = null;
+    if (!limpio && problemas) cajas.slice(0, pasoN).forEach((c, i) => { if (problemas.has(i) && i !== seleccion) marcoBulto(c, 0xd11f1f, 0); });
+    if (!limpio && seleccion != null && cajas[seleccion]) marcoBulto(cajas[seleccion], problemas?.has(seleccion) ? 0xd11f1f : 0xf2b705, 8);
     };
     ref3.current.dibujar = dibujar; ref3.current.pasoActual = paso;
     dibujar(paso, false);
-  }, [veh, base, cajas, pallets, paso, colores, formas, resaltado]);
+  }, [veh, base, cajas, pallets, paso, colores, formas, resaltado, seleccion, problemas, !!onElegir]);
 
-  return <div ref={montaje} className="absolute inset-0" style={{ cursor: "grab" }} />;
+  return <div ref={montaje} className="absolute inset-0" style={{ cursor: onElegir ? "pointer" : "grab" }} />;
 }

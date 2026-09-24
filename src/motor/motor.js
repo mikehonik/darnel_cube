@@ -740,7 +740,25 @@ function optimizar(items, veh, reglas, alProgreso, pallets) {
       valorApilar: def.valor, pesoMaxEncima: 0, piso: "libre", soportaEncima: true, esPallet: true, aceptaCajas: info.aceptaCajas && def.techoPlano,
       aceptaPallet: info.aceptaPallet && def.techoPlano, grupo: it.grupo, orden: it.orden, piezas: def.piezas };
     if (!cabeEn(pit, veh) || (reglas.limitarPeso && pit.peso > cargaMax)) { avisos.push("El pallet de " + def.nombre + " no cabe en el vehículo."); noCaben.push(def.nombre); return; }
+    if (info.aceptaPallet) avisoApilarPallet(def, it);
     tipos.push({ k: "p" + d, idx: idx, it: pit, oris: orientacionesDe(pit), fase: faseDe(pit), g: grupoDe(it.grupo), rem: n, pal: d });
+  };
+  // «Acepta otro pallet encima» solo se cumple si el pallet queda plano arriba y cabe otro encima. Antes, si no
+  // se podía, el motor lo ignoraba en silencio y parecía que la opción no servía; ahora se explica por qué.
+  var avisadosApilar = {};
+  var avisoApilarPallet = function (def, it) {
+    var nombre = it.nombre, motivo = null;
+    if (!def.techoPlano) {
+      if (def.mixto) motivo = "los pallets mixtos no quedan planos arriba, así que no pueden recibir otro pallet";
+      else if (def.porCapa > 0 && def.n % def.porCapa !== 0) {
+        var m1 = Math.floor(def.n / def.porCapa) * def.porCapa, m2 = m1 + def.porCapa;
+        motivo = "su pallet de " + def.n + " cajas (" + def.porCapa + " por nivel) termina con un nivel incompleto y no queda plano arriba. Con " +
+          (m1 > 0 ? m1 + " o " + m2 : String(m2)) + " cajas por pallet sí se puede apilar";
+      } else motivo = "su pallet no queda plano arriba (las cajas no cubren el pallet), así que no puede recibir otro pallet";
+    } else if (def.alto * 2 > veh.H) motivo = "no cabe un segundo pallet igual encima por la altura del vehículo";
+    if (!motivo || avisadosApilar[nombre + "|" + motivo]) return;
+    avisadosApilar[nombre + "|" + motivo] = 1;
+    avisos.push(def.nombre + ": marcaste que acepta otro pallet encima, pero " + motivo + ".");
   };
   var poolMixto = {};
   var alPool = function (it, idx, pal, n, info) {
@@ -810,3 +828,5 @@ function optimizar(items, veh, reglas, alProgreso, pallets) {
 }
 
 export { optimizar, marcarEntregas, capacidadSuelta, configuracionPallet, capacidadPalletCompleto };
+// Piezas internas que usa el paletizado para fabricación (motor/fabricacion.js).
+export { patronCapa, orientacionesDe, definirPallet, alturasPila, cabenEnAlto, tope as topeAnidado };

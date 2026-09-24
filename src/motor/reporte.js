@@ -58,7 +58,7 @@ function pasosDe(cont, resultado, items, u) {
     const it = items[p.idx] || {}, d = p.pal >= 0 ? resultado.pallets[p.pal] : null;
     const nx = Math.round((p.x1 - p.x0) / p.l), ny = Math.round((p.y1 - p.y0) / p.w), nz = Math.round((p.z1 - p.z0) / p.h);
     const bloque = nx * ny * nz === p.n ? ` en bloque de ${nx} a lo largo × ${ny} a lo ancho × ${nz} de alto` : "";
-    const que = d ? `${p.n} ${p.n === 1 ? "pallet" : "pallets"} «${d.nombre}» (${d.n} cajas c/u, tarima ${d.tipoPallet})` : `${p.n} ${p.n === 1 ? "caja" : "cajas"} de ${it.nombre}${it.desc ? ` (${it.desc})` : ""}, ${(ORIENTACIONES[(p.ori || 1) - 1] || "").toLowerCase()}`;
+    const que = d ? `${p.n} ${p.n === 1 ? "pallet" : "pallets"} «${d.nombre}» (${d.n} cajas c/u, en ${d.tipoPallet})` : `${p.n} ${p.n === 1 ? "caja" : "cajas"} de ${it.nombre}${it.desc ? ` (${it.desc})` : ""}, ${(ORIENTACIONES[(p.ori || 1) - 1] || "").toLowerCase()}`;
     const donde = `a ${mts(p.x0)}–${mts(p.x1)} ${ud} del fondo, ${mts(p.y0)}–${mts(p.y1)} ${ud} del lado derecho (visto desde las puertas), ${p.z0 < 1 ? "sobre el piso" : `a ${mts(p.z0)} ${ud} de altura`}`;
     return { num: k + 1, texto: `Coloca ${que}${bloque}, ${donde}.`, sku: d ? d.nombre : it.nombre, n: p.n, ini: p.ini, fin: p.fin, forma: d ? "Pallet" : ORIENTACIONES[(p.ori || 1) - 1], x0: p.x0, y0: p.y0, z0: p.z0 };
   });
@@ -85,6 +85,11 @@ export function armarReporte({ resultado, carga }, u = unidadesDe("metrico")) {
   if (resultado.sinCargar > 0) avisos.push({ tipo: "sinCargar", n: resultado.sinCargar, texto: `${resultado.sinCargar} bultos no se pudieron acomodar con las reglas actuales.` });
   if (resultado.noCaben.length) avisos.push({ tipo: "noCaben", nombres: resultado.noCaben, texto: `No caben por medidas, peso u orientación: ${resultado.noCaben.join(", ")}.` });
   resultado.avisos.forEach((a) => avisos.push({ tipo: "motor", texto: a }));
+  // Edición a mano: se deja constancia en el reporte, el Excel y el instructivo
+  if (resultado.editadoManual) {
+    const { vehiculos, quitados } = resultado.editadoManual;
+    avisos.push({ tipo: "manual", texto: `Se editó a mano ${vehiculos.length === 1 ? `el vehículo ${vehiculos[0]}` : `los vehículos ${vehiculos.join(", ")}`} después del cálculo.${quitados ? ` ${quitados} ${quitados === 1 ? "bulto se quitó" : "bultos se quitaron"} y no van en la carga.` : ""}` });
+  }
 
   return { vehiculo: veh, estrategiasProbadas: resultado.estrategiasProbadas, conEntregas: items.some((it) => it.orden > 0), contenedores, totales, pallets, avisos };
 }

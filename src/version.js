@@ -16,6 +16,26 @@ export const VERSION_COMPLETA = `v${VERSION}${BUILD ? ` · ${BUILD}` : ""}${FECH
 // escrito para quien usa la herramienta (no para programadores).
 export const NOVEDADES = [
   {
+    version: "1.4.0", fecha: "23/09/2026",
+    cambios: [
+      "«Mercancía» ahora se llama «Pedido», y en toda la herramienta se dice «pallet» en lugar de «tarima». Los maestros viejos (con la columna «Tarima») se siguen leyendo.",
+      "Paletizado queda solo como catálogo de pallets: se crean, duplican y quitan ahí, y se eligen en cada línea del pedido. El Maestro ya no tiene el botón «+ carga»: al pedido se agrega desde Pedido.",
+      "Con más de 3 vehículos, arriba del 3D aparece un selector con flechas para pasar de uno en uno, en vez de muchos botones amontonados.",
+      "Herramientas por secciones plegables. En capacidad suelta y en pallets completos, «Calcular carga» corre el cálculo completo (con el nivel y las reglas activas) y lo muestra en el 3D; «Volver a mi carga» regresa al pedido. En suelta se eligen las rotaciones (todas por omisión); en pallets completos, el pallet y la configuración (estándar del SKU, óptima o a mano).",
+      "Nueva herramienta «Pallet óptimo y paletizado para fabricación»: para una altura objetivo compara entrelazado, columnas e híbrido, con semáforo de estabilidad, centro de gravedad y compresión (con el BCT de la caja, la humedad y el tiempo en almacén, o con el peso máximo encima). Si ninguno aguanta, sugiere cuántos niveles sí. Cada patrón se ve en el 3D con las capas en dos tonos.",
+      "Listado de SKUs en Excel (con BCT opcional por SKU) para calcular el paletizado de todos, verlos uno por uno en el 3D, bajar el resultado en Excel y generar un PDF con una hoja por SKU, al estilo del reporte de CubeMaster.",
+      "Edición a mano en el 3D: «Editar a mano» permite elegir una caja o pallet con clic y girarla, moverla (cae sola hasta donde tenga apoyo), recorrerla hasta topar, quitarla y volverla a colocar, con deshacer. Cada cambio se valida en vivo: se marca en rojo lo que quede flotando, encimado, fuera del vehículo, en una orientación no permitida, sobre algo que no aguanta o arriba del peso máximo. Lo editado sale en el Excel y el instructivo.",
+    ],
+  },
+  {
+    version: "1.3.0", fecha: "23/09/2026",
+    cambios: [
+      "Acciones sugeridas arriba de los resultados, en cuanto termina el cálculo: en rojo lo que no se cargó, en verde si sobra espacio (con un botón «¿Qué más cabe?» que busca con qué completar el vehículo usando SKUs del mismo pedido) y en amarillo los avisos del armado. Antes estaba escondido en las últimas pestañas.",
+      "«Acepta otro pallet encima» ahora explica cuando no se puede: por ejemplo, si el pallet termina con un nivel incompleto (20 cajas con 9 por nivel) no queda plano arriba, y te dice con cuántas cajas sí se apila (18 o 27). También avisa si dos pallets no caben en la altura del vehículo.",
+      "La pestaña «Completar espacios» ahora se llama «¿Qué más cabe?».",
+    ],
+  },
+  {
     version: "1.2.5", fecha: "23/09/2026",
     cambios: [
       "Herramientas ya no se traba. Con SKU muy chicos (por ejemplo los que traen 10 × 10 × 10 mm de relleno) la página intentaba acomodar cientos de miles de piezas una por una y dejaba de responder. Ahora responde al instante y, en esos casos, da un aproximado en rejilla.",

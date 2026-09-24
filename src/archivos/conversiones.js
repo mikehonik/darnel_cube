@@ -1,7 +1,7 @@
 // ================= Conversiones de unidad de medida =================
 // Tabla por SKU y unidad: cuántas unidades base equivale 1 de esa unidad (el formato de PeopleSoft:
 // SETID, INV_ITEM_ID, UNIT_OF_MEASURE, CONVERSION_RATE). La unidad base es la que tiene factor 1.
-// Sirve para que un pedido capturado en otra unidad (millares, tarimas, kilos) se convierta a cajas:
+// Sirve para que un pedido capturado en otra unidad (millares, pallets, kilos) se convierta a cajas:
 //   cajas = cantidad × factor(unidad del pedido) ÷ factor(unidad de la caja)
 import * as XLSX from "xlsx";
 import { clave, claveSku, numero, buscarHoja } from "./celdas.js";
@@ -9,7 +9,7 @@ import { clave, claveSku, numero, buscarHoja } from "./celdas.js";
 export const UM_CAJA_DEF = "CJ";
 export const HOJA_CONVERSIONES = "Conversiones";
 // Unidades frecuentes, para las listas desplegables y la ayuda
-export const UM_COMUNES = [["CJ", "Caja"], ["BL", "Bolsa"], ["UN", "Unidad o pieza"], ["ML", "Millar (1,000 unidades)"], ["PQ", "Paquete"], ["RL", "Rollo"], ["PL", "Pliego"], ["PLT", "Tarima"], ["KG", "Kilogramo"], ["TM", "Tonelada"], ["MT", "Metro"], ["LT", "Litro"]];
+export const UM_COMUNES = [["CJ", "Caja"], ["BL", "Bolsa"], ["UN", "Unidad o pieza"], ["ML", "Millar (1,000 unidades)"], ["PQ", "Paquete"], ["RL", "Rollo"], ["PL", "Pliego"], ["PLT", "Pallet"], ["KG", "Kilogramo"], ["TM", "Tonelada"], ["MT", "Metro"], ["LT", "Litro"]];
 export const nombreUM = (um) => (UM_COMUNES.find(([u]) => u === normalizaUM(um))?.[1] ?? "");
 export const normalizaUM = (um) => String(um ?? "").trim().toUpperCase();
 

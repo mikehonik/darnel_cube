@@ -38,13 +38,13 @@ export function libroResultados({ reporte: R, proyecto, nombreVeh, nivel, fecha 
   R.contenedores.forEach((t) => r1.push([t.num, t.nBultos, t.nCajas, t.nPallets, c.kg(t.peso), c.kg(t.pesoBruto), t.utilPeso == null ? "" : +t.utilPeso.toFixed(1), c.m3(t.m3), c.m3(t.m3Cap), +t.ocupacion.toFixed(1), +t.cgLargo.toFixed(0)]));
   const tot = R.totales;
   r1.push(["Total", "", tot.cajas, "", c.kg(tot.kg), "", "", c.m3(tot.m3), c.m3(tot.m3Cap), +((tot.m3 / tot.m3Cap) * 100).toFixed(1), ""]);
-  R.avisos.forEach((a) => { if (a.tipo === "sinCargar") r1.push([], ["Bultos sin cargar", a.n]); if (a.tipo === "noCaben") r1.push(["No caben", a.nombres.join(", ")]); });
+  R.avisos.forEach((a) => { if (a.tipo === "sinCargar") r1.push([], ["Bultos sin cargar", a.n]); if (a.tipo === "noCaben") r1.push(["No caben", a.nombres.join(", ")]); if (a.tipo === "manual") r1.push(["Edición a mano", a.texto]); });
   hoja(wb, "Resumen", r1, [22, 10, 10, 10, 16, 16, 22, 20, 16, 24, 28]);
   const r2 = [H(["Vehículo", "Entrega", "SKU", "Descripción", "Cajas sueltas", "Cajas en pallet", "Total cajas", "Piezas", "Peso (kg)", "Volumen (m³)"])];
   R.contenedores.forEach((t) => t.lista.forEach((f) => r2.push([t.num, f.ordenTxt, f.nombre, f.desc, f.sueltas, f.enPallet, f.total, f.piezas, c.kg(f.peso, 1), c.m3(f.m3, 3)])));
   hoja(wb, "Lista de carga", r2, [9, 7, 16, 34, 12, 14, 11, 9, 10, 12]);
   if (R.pallets.length) {
-    const r3 = [H(["Pallet", "Tipo", "Tarima", "Cajas", "Capas × cajas por capa", "Alto total (mm)", "Peso total (kg)", "Huella (mm)", "Sobresale largo / ancho (mm)", "Utilización del pallet (%)", "Cantidad"])];
+    const r3 = [H(["Pallet", "Tipo", "Tipo de pallet", "Cajas", "Capas × cajas por capa", "Alto total (mm)", "Peso total (kg)", "Huella (mm)", "Sobresale largo / ancho (mm)", "Utilización del pallet (%)", "Cantidad"])];
     R.pallets.forEach((d) => r3.push([d.nombre, d.mixto ? "Mixto" : "Un SKU", d.tipoPallet, d.n, d.capas ? `${d.capas} × ${d.porCapa}` : "Por bloques", c.l(d.alto), c.kg(d.peso), `${c.l(d.L)} × ${c.l(d.W)}`, `${c.l(d.sobraL)} / ${c.l(d.sobraW)}`, +(d.utilVol * 100).toFixed(1), d.usos]));
     hoja(wb, "Pallets", r3, [24, 8, 22, 7, 20, 14, 14, 14, 24, 22, 9]);
   }
@@ -79,9 +79,10 @@ function seccionInstructivo({ reporte, sel, modoPallet, proyecto, nombreVeh, fec
 <div class="dato">Peso de la carga<b>${u.fP(t.peso)}${t.utilPeso != null ? ` (${t.utilPeso.toFixed(0)}%)` : ""}</b></div><div class="dato">Bultos<b>${t.nBultos}${t.nPallets ? ` (${t.nPallets} pallets)` : ""}</b></div>
 <div class="dato">Cajas<b>${t.nCajas.toLocaleString("es-MX")}</b></div><div class="dato">Centro de gravedad<b>${t.cgLargo.toFixed(0)}% del fondo</b></div></div>
 <p class="nota">Referencias: el fondo es el extremo de la cabina (se carga primero); «lado derecho» es visto desde las puertas; alturas desde el piso del vehículo.</p>
+${reporte.avisos.filter((a) => a.tipo === "manual").map((a) => `<p class="nota"><b>${esc(a.texto)}</b></p>`).join("")}
 ${t.entregas.length ? `<h2>Orden de descarga</h2><p class="nota">Se descarga de las puertas hacia el fondo, empezando por la entrega 1.</p><table><tr><th>Entrega</th><th>Pedidos</th><th>Bultos</th><th>Volumen</th><th>Zona desde las puertas</th><th>Bultos que estorban</th></tr>${t.entregas.map((e) => `<tr><td><b>${e.orden}</b></td><td>${esc(e.pedidos.join(", ") || "—")}</td><td>${e.n}</td><td>${u.fV(e.vol, 1)}</td><td>${u.fD(e.desdePuertas, 1).replace(` ${u.d}`, "")} – ${u.fD(e.hastaPuertas, 1)}</td><td>${e.estorban || "ninguno"}</td></tr>`).join("")}</table>` : ""}
 <h2>Qué se carga</h2><table><tr><th>Entrega</th><th>SKU</th><th>Sueltas</th><th>En pallet</th><th>Total cajas</th><th>Peso</th></tr>${filasLista}</table>
-${palsAqui.length ? `<h2>Armado de pallets (antes de cargar)</h2><table><tr><th>Pallet</th><th>Tarima</th><th>Cómo se arma</th><th>Alto</th><th>Peso</th></tr>${palsAqui.map((d) => `<tr><td><b>${esc(d.nombre)}</b></td><td>${esc(d.tipoPallet)}</td><td>${d.capas ? `${d.capas} capas de ${d.porCapa} cajas${d.alternado ? "; alterna cada capa en espejo para amarrar" : ""}` : `${d.n} cajas de ${d.nSkus} SKUs, lo más pesado abajo`}${d.sobraL || d.sobraW ? `; sobresale hasta ${u.fL(d.sobraL, 1)} a lo largo y ${u.fL(d.sobraW, 1)} a lo ancho` : ""}</td><td>${u.fL(d.alto, 1)}</td><td>${u.fP(d.peso)}</td></tr>`).join("")}</table>` : ""}
+${palsAqui.length ? `<h2>Armado de pallets (antes de cargar)</h2><table><tr><th>Pallet</th><th>Tipo de pallet</th><th>Cómo se arma</th><th>Alto</th><th>Peso</th></tr>${palsAqui.map((d) => `<tr><td><b>${esc(d.nombre)}</b></td><td>${esc(d.tipoPallet)}</td><td>${d.capas ? `${d.capas} capas de ${d.porCapa} cajas${d.alternado ? "; alterna cada capa en espejo para amarrar" : ""}` : `${d.n} cajas de ${d.nSkus} SKUs, lo más pesado abajo`}${d.sobraL || d.sobraW ? `; sobresale hasta ${u.fL(d.sobraL, 1)} a lo largo y ${u.fL(d.sobraW, 1)} a lo ancho` : ""}</td><td>${u.fL(d.alto, 1)}</td><td>${u.fP(d.peso)}</td></tr>`).join("")}</table>` : ""}
 <h2>Pasos de carga</h2>
 ${etapas.map((e, i) => `<div class="etapa"><img src="${imagenes[i]}" alt="Etapa ${i + 1}"><div><b>Etapa ${i + 1} de ${etapas.length}</b> · bultos ${e[0].ini + 1} a ${e[e.length - 1].fin}<ol start="${e[0].num}">${e.map((p) => `<li>${esc(p.texto)}</li>`).join("")}</ol></div></div>`).join("")}
 </section>`;

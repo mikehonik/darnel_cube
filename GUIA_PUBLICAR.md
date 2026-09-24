@@ -136,6 +136,6 @@ de cada columna, por ejemplo «Largo (in)» o «Peso (lb)».
 ## Para programadores
 
 - `npm run dev` abre la app local; `npm test` corre las pruebas (Vitest); `npm run build` compila a `dist/`.
-- `npm run html` genera `dist/DarnelCube3D.html`, un solo archivo que se abre sin servidor.
+- `npm run html` genera `dist/DarnelCube3D.html`, un solo archivo que se abre sin servidor. El PDF de paletizado carga jsPDF bajo demanda, así que solo funciona en la versión web (la publicada en Cloudflare).
 - La versión la inyecta `vite.config.js` al compilar (`__VERSION__` de `package.json` y
   `__BUILD__` de `CF_PAGES_COMMIT_SHA` o de git). Se lee en `src/version.js`.
