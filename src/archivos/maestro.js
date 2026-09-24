@@ -152,8 +152,8 @@ export const productoVacio = (d = {}) => ({
 function productoDeFilas(dOne, pOne, bOne) {
   const o = pOne || {};
   const viejo = siNo(o.bundleactivo, false);   // maestros anteriores: columnas de Bundle en Parámetros
-  const b = bOne ? { c: numero(bOne.cajasporbundle ?? bOne.cantidadestandarporbundle ?? bOne.csbdl), L: numero(bOne.largobundle ?? bOne.largo), W: numero(bOne.anchobundle ?? bOne.ancho), H: numero(bOne.altobundle ?? bOne.alto), p: numero(bOne.pesobundle ?? bOne.peso) }
-    : viejo ? { c: numero(o.cantidadestandarporbundle), L: numero(o.largobundle), W: numero(o.anchobundle), H: numero(o.altobundle), p: numero(o.pesobundle) } : { c: 0, L: 0, W: 0, H: 0, p: 0 };
+  const b = bOne ? { c: Math.round(numero(bOne.cajasporbundle ?? bOne.cantidadestandarporbundle ?? bOne.csbdl)), L: numero(bOne.largobundle ?? bOne.largo), W: numero(bOne.anchobundle ?? bOne.ancho), H: numero(bOne.altobundle ?? bOne.alto), p: numero(bOne.pesobundle ?? bOne.peso) }
+    : viejo ? { c: Math.round(numero(o.cantidadestandarporbundle)), L: numero(o.largobundle), W: numero(o.anchobundle), H: numero(o.altobundle), p: numero(o.pesobundle) } : { c: 0, L: 0, W: 0, H: 0, p: 0 };
   return productoVacio({
     sku: dOne.sku, idProducto: dOne.idProducto, desc: dOne.desc, L: dOne.L, W: dOne.W, H: dOne.H, peso: dOne.peso,
     categoria: String(o.categoria ?? "").trim(), piezas: numero(o.piezasporcaja, 1) || 1,
@@ -393,8 +393,8 @@ export function leerBundleMaestro(productosActuales, buf, unidades = "auto") {
     if (!sku) continue;
     const existente = buscarSku(indice, sku);
     if (!existente) { noEncontrados.push(sku); continue; }
-    const cantidadEstandar = iCsBdl >= 0 && numero(f[iCsBdl]) > 0 ? numero(f[iCsBdl])
-      : (iRel >= 0 && iFactor >= 0 && numero(f[iFactor]) > 0 ? numero(f[iRel]) / numero(f[iFactor]) : 0);
+    const cantidadEstandar = Math.round(iCsBdl >= 0 && numero(f[iCsBdl]) > 0 ? numero(f[iCsBdl])
+      : (iRel >= 0 && iFactor >= 0 && numero(f[iFactor]) > 0 ? numero(f[iRel]) / numero(f[iFactor]) : 0));
     const bundleL = numero(f[iLargo]) * fL, bundleW = numero(f[iAncho]) * fW, bundleH = numero(f[iAlto]) * fH;
     if (!(cantidadEstandar > 0) || !(bundleL > 0 && bundleW > 0 && bundleH > 0)) { errores.push(`${sku}: fila incompleta (cantidad estándar o dimensiones); no se importó.`); continue; }
     // Copia nueva del producto (nunca mutar el que ya está en el estado de React)

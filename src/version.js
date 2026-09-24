@@ -16,6 +16,12 @@ export const VERSION_COMPLETA = `v${VERSION}${BUILD ? ` · ${BUILD}` : ""}${FECH
 // escrito para quien usa la herramienta (no para programadores).
 export const NOVEDADES = [
   {
+    version: "1.5.2", fecha: "24/09/2026",
+    cambios: [
+      "Corrección: con el archivo CS-BDL, las cajas por Bundle salían con decimales (4.8 ÷ 0.2 = 23.999…) y el cálculo rechazaba la línea con «la cantidad debe ser un entero». Ahora siempre se redondean a entero.",
+    ],
+  },
+  {
     version: "1.5.1", fecha: "24/09/2026",
     cambios: [
       "Con el pedido listo, en lugar del cuadro «Para calcular la carga» encima del 3D aparece un botón chico abajo, para no tapar la imagen mientras se ajusta.",

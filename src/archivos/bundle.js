@@ -16,12 +16,15 @@
 // La opción Bundle solo existe para los SKUs que están en la hoja Bundles.
 
 // ¿El SKU (producto del maestro o línea del pedido) tiene su Bundle configurado?
-export const tieneBundle = (p) => !!p && p.bundleCantidadEstandar > 0 && p.bundleL > 0 && p.bundleW > 0 && p.bundleH > 0;
+export const tieneBundle = (p) => !!p && cajasPorBundle(p) > 0 && p.bundleL > 0 && p.bundleW > 0 && p.bundleH > 0;
+// Cajas por Bundle siempre entera: del CS-BDL sale como Rel ÷ Factor (4.8 ÷ 0.2 = 23.999999…) y con eso las cajas
+// sueltas quedaban en 0.0000001 y el cálculo rechazaba la línea («la cantidad debe ser un entero»).
+export const cajasPorBundle = (p) => Math.round(Number(p?.bundleCantidadEstandar) || 0);
 
 // Líneas del pedido que se cargan en Bundle y cuántos Bundles completos forman
 export const lineasBundle = (items) => items
-  .filter((it) => it.enBundle && tieneBundle(it) && it.qty >= it.bundleCantidadEstandar)
-  .map((it) => ({ id: it.id, nombre: it.nombre, bundles: Math.floor(it.qty / it.bundleCantidadEstandar), cajasPorBundle: it.bundleCantidadEstandar }));
+  .filter((it) => it.enBundle && tieneBundle(it) && it.qty >= cajasPorBundle(it))
+  .map((it) => ({ id: it.id, nombre: it.nombre, bundles: Math.floor(it.qty / cajasPorBundle(it)), cajasPorBundle: cajasPorBundle(it) }));
 
 // Reparte k Bundles abiertos entre las líneas, en proporción a cuántos Bundles tiene cada una (restos mayores).
 export function repartirAbiertos(lineas, k) {
@@ -42,7 +45,7 @@ export function expandirBundles(items, abiertos = {}) {
   const salida = [];
   items.forEach((it) => {
     if (!(it.enBundle && tieneBundle(it))) { salida.push(it.enBundle ? { ...it, enBundle: false } : it); return; }
-    const c = it.bundleCantidadEstandar, completos = Math.floor(it.qty / c);
+    const c = cajasPorBundle(it), completos = Math.floor(it.qty / c);
     const nAbiertos = Math.min(abiertos[it.id] || 0, completos), nBundles = completos - nAbiertos, sueltas = it.qty - nBundles * c;
     if (nBundles > 0) salida.push({
       ...it, L: it.bundleL, W: it.bundleW, H: it.bundleH,

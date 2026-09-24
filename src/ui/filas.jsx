@@ -7,7 +7,7 @@ import { clave } from "../archivos/celdas.js";
 import { T } from "./tema.js";
 import { UM_COMUNES } from "../archivos/conversiones.js";
 import { RESTOS } from "./referencia.js";
-import { tieneBundle } from "../archivos/bundle.js";
+import { tieneBundle, cajasPorBundle } from "../archivos/bundle.js";
 import { Num, Sel, Interruptor } from "./controles.jsx";
 import { useUnidades } from "./unidadesContexto.jsx";
 
@@ -59,7 +59,7 @@ export function FilaItem({ it, color, abierto, pallets, modoPallet, verMedidas =
             </label>
             <input value={it.nombre} onChange={(e) => editar("nombre", e.target.value)} className={celda} style={{ minWidth: 76, textOverflow: "ellipsis" }} title={it.nombre} />
             {it.paletizar && !modoPallet && <span className="flex-none text-xs px-1.5 rounded" style={{ background: "#FFF4CC", color: T.aviso }} title={it.paletizar === "mixto" ? "Pallet mixto" : "Pallet de un SKU"}>{it.paletizar === "mixto" ? "PM" : `P${it.porPallet || ""}`}</span>}
-            {(it.esBundle || (it.enBundle && tieneBundle(it))) && !modoPallet && <span className="flex-none text-xs px-1.5 rounded" style={{ background: "#E6D9F7", color: "#5B3A9E" }} title={it.esBundle ? `Bundle: ${it.qty} × ${it.cantidadPorBundle} cajas` : `Se carga en Bundles de ${it.bundleCantidadEstandar} cajas`}>BDL</span>}
+            {(it.esBundle || (it.enBundle && tieneBundle(it))) && !modoPallet && <span className="flex-none text-xs px-1.5 rounded" style={{ background: "#E6D9F7", color: "#5B3A9E" }} title={it.esBundle ? `Bundle: ${it.qty} × ${it.cantidadPorBundle} cajas` : `Se carga en Bundles de ${cajasPorBundle(it)} cajas`}>BDL</span>}
             {difiere && <span className="flex-none text-xs px-1.5 rounded" style={{ background: "#E8EEF8", color: T.nav }} title="Tiene ajustes solo para esta carga">ajustado</span>}
           </div>
         </td>
@@ -197,7 +197,7 @@ function ReglasSku({ it, editar, pallets, modoPallet }) {
           <Sel etiqueta="Cómo se carga" valor={m} onChange={elegirModo} opciones={conBundle ? [...MODOS_PAL, MODO_BUNDLE] : MODOS_PAL} />
           {m === "bundle" && (
             <p className="text-xs mt-1.5" style={{ color: T.suave }}>
-              Bundles de {it.bundleCantidadEstandar} cajas ({Math.floor(it.qty / it.bundleCantidadEstandar)} completos con esta cantidad{it.qty % it.bundleCantidadEstandar ? `; ${it.qty % it.bundleCantidadEstandar} cajas van sueltas` : ""}). Se cargan primero los Bundles; solo si así se ocupa un vehículo más, se abren los menos posibles para llenar los huecos con cajas sueltas.
+              Bundles de {cajasPorBundle(it)} cajas ({Math.floor(it.qty / cajasPorBundle(it))} completos con esta cantidad{it.qty % cajasPorBundle(it) ? `; ${it.qty % cajasPorBundle(it)} cajas van sueltas` : ""}). Se cargan primero los Bundles; solo si así se ocupa un vehículo más, se abren los menos posibles para llenar los huecos con cajas sueltas.
             </p>
           )}
           {(m === "uno" || m === "mixto") && (
@@ -268,7 +268,7 @@ function BloqueBundle({ p, editar }) {
         <>
           <p className="text-xs mb-2" style={{ color: T.suave }}>Con cajas por Bundle y sus medidas, este SKU se puede cargar en Bundle desde el pedido. Déjalo en 0 si no se maneja en Bundle.</p>
           <div className="grid grid-cols-3 gap-2">
-            <Num etiqueta="Cajas por Bundle" valor={p.bundleCantidadEstandar} onChange={(v) => editar("bundleCantidadEstandar", v)} ayuda="Cuántas cajas de este SKU forman un Bundle completo" />
+            <Num etiqueta="Cajas por Bundle" valor={p.bundleCantidadEstandar} onChange={(v) => editar("bundleCantidadEstandar", Math.round(v))} ayuda="Cuántas cajas de este SKU forman un Bundle completo" />
             <Num etiqueta="Peso Bundle" tipo="peso" valor={p.bundlePeso} onChange={(v) => editar("bundlePeso", v)} ayuda="0 = se calcula como el peso de la caja × cajas por Bundle" />
             <span />
             <Num etiqueta="Largo Bundle" tipo="largo" valor={p.bundleL} onChange={(v) => editar("bundleL", v)} />

@@ -58,3 +58,11 @@ describe("repartirAbiertos", () => {
     expect(lineasBundle([linea(), linea({ id: 2, qty: 5 }), linea({ id: 3, enBundle: false })])).toEqual([{ id: 1, nombre: "DU2014501", bundles: 18, cajasPorBundle: 10 }]);
   });
 });
+
+describe("cajas por Bundle con decimales del CS-BDL", () => {
+  it("23.999999… se toma como 24: 24 cajas son 1 Bundle y ninguna suelta", () => {
+    const r = expandirBundles([linea({ qty: 24, bundleCantidadEstandar: 23.999999999999996 })]);
+    expect(r).toHaveLength(1);
+    expect(r[0]).toMatchObject({ esBundle: true, qty: 1, cantidadPorBundle: 24 });
+  });
+});
