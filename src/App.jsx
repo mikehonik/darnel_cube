@@ -8,6 +8,7 @@ import { rotar, mover, pegar as pegarBulto, quitar, colocar, validar, recalcular
 import { clave, claveSku, indiceSku, buscarSku, conversionDe, numero } from "./archivos/celdas.js";
 import { ARCHIVO_MAESTRO, ARCHIVO_RESPALDO, productoVacio, leerMaestro, libroMaestro, leerCubeMaster, plantillaDimensiones, plantillaBundles, actualizarDimensiones, leerBundleMaestro } from "./archivos/maestro.js";
 import { tieneBundle } from "./archivos/bundle.js";
+import { esDeManufactura } from "./motor/herramientas.js";
 import { leerVehiculos, libroVehiculos, plantillaVehiculos, vehiculoVacio } from "./archivos/vehiculos.js";
 import { leerPedido, libroPlantilla } from "./archivos/pedido.js";
 import { leerConversiones, aCajas, UM_CAJA_DEF, normalizaUM, nombreUM } from "./archivos/conversiones.js";
@@ -76,7 +77,7 @@ export default function Estiba3D({ usuario }) {
   const [vehId, setVehId] = useState("53CS");
   const [veh, setVeh] = useState({ ...VEHICULOS[3], maxVolPct: 0, maxSkus: 0, maxPiezas: 0 });
   const [pallets, setPallets] = useState(PALLETS_INICIALES);
-  const [reglas, setReglas] = useState({ nivel: 4, limitarPeso: true, soporteMin: 75, usarOrden: true, agrupar: false, juntos: true, rigor: "estricto", separarGrupos: false, usarLista: false, compresionAuto: true, apilamiento: "ninguna" });
+  const [reglas, setReglas] = useState({ nivel: 4, limitarPeso: true, soporteMin: 75, usarOrden: true, agrupar: false, juntos: true, rigor: "estricto", separarGrupos: false, usarLista: false, compresionAuto: true, apilamiento: "ninguna", abrirBundles: "llenar", redondeo: "arriba" });
   const [items, setItems] = useState(EJEMPLOS.pallets.items);
   const [abierto, setAbierto] = useState(null);
   const [pegar, setPegar] = useState(false);
@@ -321,7 +322,7 @@ export default function Estiba3D({ usuario }) {
       }
       return { ...it, [k]: v };
     }));
-    if (k !== "color") invalidar();
+    if (k !== "color" && k !== "fijo") invalidar();   // el candado y el color no cambian el acomodo
   };
 
   const cargarEjemplo = (k) => {
@@ -561,9 +562,11 @@ export default function Estiba3D({ usuario }) {
         const p = buscarSku(porSku, l.sku), extra = { qty: l.qty, orden: l.orden, grupo: l.grupo, destino: l.destino };
         const umCaja = p?.umCaja || UM_CAJA_DEF;
         const fila = { sku: l.sku, desc: p?.desc || "", capturado: l.qty, um: l.um || "", umCaja, cajas: l.qty, estado: "ok", detalle: "" };
-        const c = aCajas(l.qty, l.um, umCaja, conversionDe(maestro.conversiones, p?.sku ?? l.sku), p?.piezas);
+        const c = aCajas(l.qty, l.um, umCaja, conversionDe(maestro.conversiones, p?.sku ?? l.sku), p?.piezas, reglas.redondeo);
         extra.qty = fila.cajas = c.cajas;
-        if (l.um && normalizaUM(l.um) !== normalizaUM(umCaja)) { extra.qtyPedido = l.qty; extra.umPedido = l.um; }
+        // La cantidad original se guarda siempre (aunque venga en la misma unidad): con decimales o
+        // con Bundles, lo pedido y lo cubicado no son el mismo número y los dos tienen que estar a la vista.
+        if ((l.um && normalizaUM(l.um) !== normalizaUM(umCaja)) || !c.exacto) { extra.qtyPedido = l.qty; extra.umPedido = l.um || umCaja; }
         if (c.motivo) { fila.estado = "sin conversión"; fila.detalle = c.motivo + "; se tomó la cantidad tal cual"; }
         else if (c.cambioDeUM) { fila.estado = "otra unidad"; fila.umCaja = c.destino; fila.detalle = `el maestro dice ${umCaja}, pero este SKU solo tiene ${c.destino}`; }
         if (!c.exacto && !c.motivo) {
@@ -582,6 +585,8 @@ export default function Estiba3D({ usuario }) {
       if (!nuevos.length) { setError(`Ningún SKU del pedido está en el maestro${maestro.productos.length ? "" : " (conecta o abre el maestro primero)"}.`); setRevision({ filas, archivo: f.name }); return; }
       // Las líneas de SKUs con Bundle quedan en Bundle; cuántos se abren lo decide el cálculo (ver archivos/bundle.js)
       const bundlesFormados = nuevos.filter((it) => it.enBundle).length;
+      // Un SKU de manufactura propia (DU) que no tiene Bundle capturado se cargaría suelto sin que nadie lo note
+      const duSinBundle = nuevos.filter((it) => esDeManufactura(it.nombre) && !tieneBundle(it)).map((it) => it.nombre);
       setItems(nuevos);
       setProyecto(datos.nombre || f.name.replace(/\.[^.]+$/, ""));
       const v = datos.vehiculo && vehiculos.find((x) => clave(x.nombre) === clave(datos.vehiculo) || clave(x.id) === clave(datos.vehiculo));
@@ -591,6 +596,9 @@ export default function Estiba3D({ usuario }) {
       setError("");
       setAviso(`Pedido cargado: ${nuevos.length} de ${filas.length} líneas, ${nuevos.reduce((a, x) => a + x.qty, 0).toLocaleString("es-MX")} cajas${v ? `, vehículo ${v.nombre}` : ""}.`
         + (bundlesFormados ? ` ${bundlesFormados} ${bundlesFormados === 1 ? "línea va" : "líneas van"} en Bundle.` : "")
+        + (duSinBundle.length ? " " + (duSinBundle.length === 1
+          ? tr("Ojo: el SKU {0} empieza con DU y no tiene Bundle en el maestro, así que se carga suelto.", { 0: duSinBundle[0] })
+          : tr("Ojo: {0} SKUs empiezan con DU y no tienen Bundle en el maestro, así que se cargan sueltos: {1}.", { 0: duSinBundle.length, 1: duSinBundle.slice(0, 6).join(", ") + (duSinBundle.length > 6 ? "…" : "") })) : "")
         + (revisar ? ` ${revisar} ${revisar === 1 ? "línea necesita" : "líneas necesitan"} revisión: abajo está el detalle.` : " Todas las cantidades cuadraron exactas."));
       setVerMedidas(false); setSeccion("mercancia");
     } catch (err) { setError("No se pudo leer el pedido: " + err.message); }
@@ -711,8 +719,10 @@ export default function Estiba3D({ usuario }) {
       const nPallets = k.cajas.filter((x) => x.pal >= 0).length;
       const nCajas = k.cajas.reduce((a, x) => a + (x.pal >= 0 ? r.pallets[x.pal]?.n || 0 : 1), 0);
       const volV = vehiculo.L * vehiculo.W * vehiculo.H, cargaMax = vehiculo.maxKg > 0 ? vehiculo.maxKg - (vehiculo.tara || 0) : 0;
+      // Los avisos de esta corrida son los de la herramienta, no los del pedido: se muestran junto a su resultado
       const resumen = { nCajas, nPallets, piezas: nCajas * (it.piezas || 1), peso: k.peso, vol: k.vol, ocupacion: volV ? (k.vol / volV) * 100 : 0, utilPeso: cargaMax ? (k.peso / cargaMax) * 100 : null,
-        cajasPorPallet: nPallets ? r.pallets[k.cajas.find((x) => x.pal >= 0).pal]?.n || 0 : 0, estrategia: r.estrategia };
+        cajasPorPallet: nPallets ? r.pallets[k.cajas.find((x) => x.pal >= 0).pal]?.n || 0 : 0, estrategia: r.estrategia,
+        avisos: (r.avisos || []).slice(0, 6), sinCargar: r.sinCargar || 0, noCaben: (r.noCaben || []).length };
       const iPal = k.cajas.find((x) => x.pal >= 0)?.pal;
       setVistaHerr({ titulo, veh: vehiculo, base: null, cajas: k.cajas, pallets: r.pallets, colores: [color || colores[0] || "#C8102E"], formas: [it.forma || "caja"], resumen, palDef: iPal != null ? r.pallets[iPal] : null, verPallet: false });
       setPaso(k.cajas.length); setResaltado(null); setVista(null);
@@ -737,21 +747,24 @@ export default function Estiba3D({ usuario }) {
   // Ambas corren en nivel 4 y se comprueban antes de proponerse (ver motor/optimizarPedido.js). La vista
   // previa muestra qué cambia; «Aplicar» deja puesto el resultado ya calculado y «Deshacer» regresa al anterior.
   const NIVEL_OPTIMIZAR = 4;
-  const optimizarPedido = async (tipo, fijas = new Set()) => {
+  const optimizarPedido = async (tipo, fijas = new Set(items.filter((it) => it.fijo).map((it) => it.id))) => {
     if (!res || !corrida) return;
     const token = ++intentoRef.current;
     const ctrl = new AbortController(); corridaRef.current = ctrl;
-    const reglas4 = { ...reglas, nivel: NIVEL_OPTIMIZAR };
+    // Durante la búsqueda no se rehace la apertura de Bundles (cada corrida cuesta segundos y se hacen decenas);
+    // la corrida que se muestra al final sí usa la política configurada.
+    const reglas4 = { ...reglas, nivel: NIVEL_OPTIMIZAR, abrirBundles: "nunca" };
     const op = { ejecutor, signal: ctrl.signal, onProgreso: (i, n) => setProgreso((x) => ({ ...x, i, n })) };
     const correrPedido = (lista) => correrConBundles(cargaPara(lista, reglas4), op);
     const correrCarga = (lista) => correr({ ...corrida.carga, items: lista, reglas: { ...corrida.carga.reglas, nivel: NIVEL_OPTIMIZAR } }, op);
-    const correrRapido = (lista) => correrConBundles(cargaPara(lista, { ...reglas, nivel: 1 }), op);   // solo para buscar la proporción
+    const correrRapido = (lista) => correrConBundles(cargaPara(lista, { ...reglas, nivel: 1, abrirBundles: "nunca" }), op);   // solo para buscar la proporción
+    const correrFinal = (lista) => correrConBundles(cargaPara(lista, { ...reglas, nivel: NIVEL_OPTIMIZAR }), op);
     const onFase = (fase) => setProgreso((x) => ({ ...(x || { i: 0, n: 1 }), fase }));
     setError(""); setOptim({ tipo, calculando: true, fijas }); setProgreso({ i: 0, n: 1 });
     try {
       const r = tipo === "llenar"
-        ? await sugerirLlenado({ items, correrPedido, correrCarga, correrRapido, fijas, onFase })
-        : await sugerirDisminucion({ items, nActual: res.contenedores.length, correrPedido, fijas, onFase });
+        ? await sugerirLlenado({ items, correrPedido, correrCarga, correrRapido, correrFinal, fijas, onFase })
+        : await sugerirDisminucion({ items, nActual: res.contenedores.length, correrPedido, correrFinal, fijas, onFase });
       if (token !== intentoRef.current) return;
       setOptim({ tipo, propuesta: r, fijas });
     } catch (e) {
@@ -1207,8 +1220,8 @@ export default function Estiba3D({ usuario }) {
                   <table className="w-full text-sm" style={{ minWidth: (verMedidas ? 420 : 180) + (verRuta ? 220 : 0) + (reglas.usarLista ? 60 : 0), borderCollapse: "separate", borderSpacing: 0 }}>
                     <thead className="sticky top-0 z-10" style={{ background: "#F3F5F8" }}>
                       <tr className="text-left text-xs" style={{ color: T.suave }}>
-                        {["SKU", ...(verMedidas ? [`Largo ${u.l}`, `Ancho ${u.l}`, `Alto ${u.l}`, u.p] : []), "Cajas", u.v, ...(verRuta ? ["Entrega", "Pedido", "Destino"] : []), ...(reglas.usarLista ? ["Orden"] : []), ""].map((h, i) => (
-                          <th key={h || "x"} className="font-medium px-2 py-2 whitespace-nowrap" style={{ borderBottom: `1px solid ${T.linea}`, textAlign: h === u.v ? "center" : "left", position: "relative", ...(i === 0 ? { position: "sticky", left: 0, background: "#F3F5F8", zIndex: 2, width: anchoSku, minWidth: anchoSku } : {}) }}>
+                        {["SKU", ...(verMedidas ? [`Largo ${u.l}`, `Ancho ${u.l}`, `Alto ${u.l}`, u.p] : []), "Cajas", u.v, ...(verRuta ? ["Entrega", "Pedido", "Destino"] : []), ...(reglas.usarLista ? ["Orden"] : []), "", ""].map((h, i) => (
+                          <th key={(h || "x") + i} className="font-medium px-2 py-2 whitespace-nowrap" style={{ borderBottom: `1px solid ${T.linea}`, textAlign: h === u.v ? "center" : "left", position: "relative", ...(i === 0 ? { position: "sticky", left: 0, background: "#F3F5F8", zIndex: 2, width: anchoSku, minWidth: anchoSku } : {}) }}>
                             {h}
                             {i === 0 && (
                               <span onMouseDown={(e) => {
@@ -1453,7 +1466,8 @@ export default function Estiba3D({ usuario }) {
             )}
             {res && reporte && !vistaHerr && !palVista && !modoPallet && !edicion && (optim?.calculando || !calculando) && (
               <OptimizarPedido reporte={reporte} items={items} optim={optim} progreso={progreso} onCalcular={optimizarPedido} onAplicar={aplicarOptimizacion}
-                onDeshacer={deshacerOptimizacion} onCerrar={() => setOptim(null)} onCancelar={() => { cancelarCorrida(); setOptim(null); }} />
+                onDeshacer={deshacerOptimizacion} onCerrar={() => setOptim(null)} onCancelar={() => { cancelarCorrida(); setOptim(null); }}
+                onFijarLinea={(id) => editarItem(id, "fijo", !items.find((x) => x.id === id)?.fijo)} />
             )}
             {edicion && cont && validacion && (
               <PanelEdicion edicion={edicion} setEdicion={setEdicion} cont={cont} validacion={validacion} items={corrida.carga.items} pallets={res.pallets} vehNum={sel + 1}
@@ -1467,7 +1481,7 @@ export default function Estiba3D({ usuario }) {
             )}
           </div>
 
-          <PanelResultados mixBundle={mixBundle} modoPalletRes={modoPallet} oculto={panelOculto} setOculto={setPanelOculto} editarOris={editarOrisDeLinea} colores={coloresCarga} descargarInstructivo={descargarInstructivo} descargarInstructivoCompleto={descargarInstructivoCompleto} descargarResultados={descargarResultados} generando={generando} modoPallet={modoPallet} palVista={palVista} pestana={pestana} reporte={reporte} res={res} resaltado={resaltado} sel={sel} setPestana={setPestana} setResaltado={setResaltado} stats={stats} verPallet={verPallet} vista={vista}
+          <PanelResultados enHerramienta={!!vistaHerr} mixBundle={mixBundle} modoPalletRes={modoPallet} oculto={panelOculto} setOculto={setPanelOculto} editarOris={editarOrisDeLinea} colores={coloresCarga} descargarInstructivo={descargarInstructivo} descargarInstructivoCompleto={descargarInstructivoCompleto} descargarResultados={descargarResultados} generando={generando} modoPallet={modoPallet} palVista={palVista} pestana={pestana} reporte={reporte} res={res} resaltado={resaltado} sel={sel} setPestana={setPestana} setResaltado={setResaltado} stats={stats} verPallet={verPallet} vista={vista}
             />
         </main>
       </div>

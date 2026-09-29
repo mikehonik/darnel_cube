@@ -206,3 +206,23 @@ describe("plantilla de Bundles", () => {
     expect(XLSX.utils.sheet_to_json(wb.Sheets.Bundles, { header: 1 })).toHaveLength(3);
   });
 });
+
+describe("SKU con sufijo de variante (-R####)", () => {
+  it("la hoja Bundles del maestro aplica al SKU base cuando la variante no tiene fila propia", () => {
+    const buf = libro({ Datos: [["SKU", "Largo (mm)", "Ancho (mm)", "Alto (mm)", "Peso (kg)"], ["DU4051199V", 300, 300, 250, 5], ["DU4051199V-R006940", 300, 300, 250, 5], ["DU9-R001", 300, 300, 250, 5]],
+      Bundles: [["SKU", "Cajas por Bundle", "Largo Bundle (mm)", "Ancho Bundle (mm)", "Alto Bundle (mm)"], ["DU4051199V", 24, 900, 600, 1000], ["DU9-R001", 12, 500, 500, 800]] });
+    const r = leerMaestro(buf);
+    const por = (sku) => r.productos.find((p) => p.sku === sku);
+    expect(por("DU4051199V-R006940")).toMatchObject({ bundleCantidadEstandar: 24, bundleL: 900 });
+    expect(por("DU9-R001")).toMatchObject({ bundleCantidadEstandar: 12 });   // su propia fila manda
+  });
+  it("al importar el CS-BDL, la variante toma el Bundle del SKU base y se reporta", () => {
+    const actuales = [productoVacio({ sku: "DU4051199V" }), productoVacio({ sku: "DU4051199V-R006940" }), productoVacio({ sku: "OTRO" })];
+    const buf = libro({ "CS-BDL": [["ID Artículo", "CS / BDL", "Alto (mm)", "Largo (mm)", "Ancho (mm)"], ["DU4051199V", 24, 2609.85, 990.6, 869.7]] });
+    const r = leerBundleMaestro(actuales, buf);
+    expect(r.actualizados).toBe(2);
+    expect(r.productos.find((p) => p.sku === "DU4051199V-R006940")).toMatchObject({ bundleCantidadEstandar: 24 });
+    expect(r.productos.find((p) => p.sku === "OTRO")).toMatchObject({ bundleCantidadEstandar: 0 });
+    expect(r.errores.join(" ")).toMatch(/sufijo de variante/);
+  });
+});

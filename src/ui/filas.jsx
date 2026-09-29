@@ -1,7 +1,7 @@
 // ================= Filas =================
 // Una fila de la tabla del pedido o del maestro, con su ficha de reglas de estiba y paletizado; y el formulario de un pallet.
 import { useState } from "react";
-import { ChevronDown, ChevronUp, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Trash2, Lock, Unlock } from "lucide-react";
 import { ORIENTACIONES } from "../motor/reporte.js";
 import { clave } from "../archivos/celdas.js";
 import { T } from "./tema.js";
@@ -49,19 +49,29 @@ export function FilaItem({ it, color, abierto, pallets, modoPallet, verMedidas =
   return (
     <>
       <tr className="fila">
-        <td className="px-1 py-1" style={{ ...td, position: "sticky", left: 0, background: T.sup, zIndex: 1, width: anchoSku, minWidth: anchoSku, maxWidth: anchoSku }}>
-          <div className="flex items-center gap-1.5">
+        <td className="px-1 py-1" style={{ ...td, position: "sticky", left: 0, background: T.sup, zIndex: 1, width: anchoSku, minWidth: anchoSku, maxWidth: anchoSku, overflow: "hidden" }}>
+          <div className="flex items-center gap-1.5 min-w-0">
             <button onClick={onToggle} aria-expanded={abierto} aria-label={`Reglas de ${it.nombre}`} className="flex-none flex items-center justify-center rounded" style={{ width: 18, height: 18 }}>
               <ChevronDown size={14} style={{ transform: abierto ? "none" : "rotate(-90deg)", transition: "transform .15s", color: sinOri ? T.error : T.suave }} />
             </button>
             <label className="flex-none relative rounded cursor-pointer" title="Cambiar color" style={{ width: 14, height: 14, background: color, boxShadow: it.color ? `0 0 0 2px #fff, 0 0 0 3px ${T.nav}` : "inset 0 0 0 1px rgba(0,0,0,.15)" }}>
               <input type="color" value={color} onChange={(e) => editar("color", e.target.value.toUpperCase())} aria-label={`Color de ${it.nombre}`} className="absolute inset-0 opacity-0 cursor-pointer" style={{ width: "100%", height: "100%" }} />
             </label>
-            <input value={it.nombre} onChange={(e) => editar("nombre", e.target.value)} className={celda} style={{ minWidth: 76, textOverflow: "ellipsis" }} title={it.nombre} />
+            <input value={it.nombre} onChange={(e) => editar("nombre", e.target.value)} className={celda + " min-w-0"} style={{ minWidth: 60, textOverflow: "ellipsis" }} title={it.nombre} />
             {it.paletizar && !modoPallet && <span className="flex-none text-xs px-1.5 rounded" style={{ background: "#FFF4CC", color: T.aviso }} title={it.paletizar === "mixto" ? "Pallet mixto" : "Pallet de un SKU"}>{it.paletizar === "mixto" ? "PM" : `P${it.porPallet || ""}`}</span>}
             {(it.esBundle || (it.enBundle && tieneBundle(it))) && !modoPallet && <span className="flex-none text-xs px-1.5 rounded" style={{ background: "#E6D9F7", color: "#5B3A9E" }} title={it.esBundle ? `Bundle: ${it.qty} × ${it.cantidadPorBundle} cajas` : `Se carga en Bundles de ${cajasPorBundle(it)} cajas`}>BDL</span>}
             {difiere && <span className="flex-none text-xs px-1.5 rounded" style={{ background: "#E8EEF8", color: T.nav }} title="Tiene ajustes solo para esta carga">ajustado</span>}
           </div>
+          {/* Lo pedido y su equivalencia logística, debajo del nombre: convertir a pallets o Bundles no debe
+              esconder cuántas unidades pidió el cliente ni cuántas cajas se van a cubicar. */}
+          {(it.qtyPedido > 0 || equivalencia(it)) && (
+            <p className="truncate" style={{ fontSize: 10, color: T.suave, paddingLeft: 36 }}
+              title={`Pedido: ${(it.qtyPedido || it.qty).toLocaleString("es-MX")} ${it.umPedido || "cajas"}${equivalencia(it) ? ` · Equivale a: ${equivalencia(it)}` : ""} · Se cubican ${it.qty.toLocaleString("es-MX")} cajas`}>
+              {it.qtyPedido > 0 && it.qtyPedido !== it.qty ? `Pedido ${it.qtyPedido.toLocaleString("es-MX")} ${it.umPedido || ""} → ${it.qty.toLocaleString("es-MX")} cajas` : ""}
+              {it.qtyPedido > 0 && it.qtyPedido !== it.qty && equivalencia(it) ? " · " : ""}
+              {equivalencia(it)}
+            </p>
+          )}
         </td>
         {[...(verMedidas ? ["L", "W", "H", "peso"] : []), "qty"].map((k) => (
           <td key={k} className="px-0.5" style={{ ...td, width: 56, minWidth: 56 }}><input type="number" value={vista(k, it[k])} onChange={numU(k)} className={celda} aria-label={{ L: "Largo", W: "Ancho", H: "Alto", peso: "Peso", qty: "Cantidad" }[k]} /></td>
@@ -84,11 +94,19 @@ export function FilaItem({ it, color, abierto, pallets, modoPallet, verMedidas =
             <button onClick={() => mover(1)} disabled={ultima} aria-label="Bajar esta línea" title="Bajar: se carga después, más cerca de las puertas" style={{ color: ultima ? T.linea : T.suave }}><ChevronDown size={14} /></button>
           </td>
         )}
+        {/* Candado: esta línea no la mueven las sugerencias de llenar o disminuir el pedido */}
+        <td className="px-0.5" style={{ ...td, width: 30, minWidth: 30 }}>
+          <button onClick={() => editar("fijo", !it.fijo)} aria-pressed={!!it.fijo} className="p-1 rounded" style={{ color: it.fijo ? T.nav : T.linea }}
+            aria-label={it.fijo ? `Soltar ${it.nombre}` : `Fijar ${it.nombre}`}
+            title={it.fijo ? "Cantidad fija: las sugerencias no la cambian. Clic para soltarla" : "Fijar la cantidad: las sugerencias de llenar o disminuir no tocarán esta línea"}>
+            {it.fijo ? <Lock size={13} /> : <Unlock size={13} />}
+          </button>
+        </td>
         <td className="px-1" style={td}><button onClick={quitar} aria-label={`Quitar ${it.nombre}`} className="p-1 rounded" style={{ color: T.suave }}><Trash2 size={14} /></button></td>
       </tr>
       {abierto && (
         <tr>
-          <td colSpan={(verMedidas ? 11 : 7) - (verRuta ? 0 : 3) + (mover ? 1 : 0)} className="p-0" style={{ background: "#F7F9FB", borderBottom: `1px solid ${T.linea}` }}>
+          <td colSpan={(verMedidas ? 12 : 8) - (verRuta ? 0 : 3) + (mover ? 1 : 0)} className="p-0" style={{ background: "#F7F9FB", borderBottom: `1px solid ${T.linea}` }}>
             <div className="p-3" style={{ position: "sticky", left: 0, width: "var(--anchoPanel, 100%)", boxSizing: "border-box" }}>
             {enMaestro && (
               <div className="flex flex-wrap items-center gap-2 mb-3 text-xs rounded-md px-2 py-1.5" style={{ background: difiere ? "#E8EEF8" : "#F1F3F6", color: T.suave }}>
@@ -175,6 +193,19 @@ function aplicarDiametro(it, d, editar) {
   if (it.forma === "barril") { editar("L", d); editar("W", d); }
   else if (it.forma === "tubo") { editar("W", d); editar("H", d); }
 }
+// «2 PLT + 250 cajas» o «4 BDL + 9 cajas»: cómo se va a mover de verdad lo que pidieron
+function equivalencia(it) {
+  if (it.enBundle && tieneBundle(it)) {
+    const c = cajasPorBundle(it), n = Math.floor(it.qty / c), r = it.qty - n * c;
+    if (n > 0) return `${n} BDL${r ? ` + ${r.toLocaleString("es-MX")} cajas` : ""}`;
+  }
+  if (it.paletizar === "uno" || it.paletizar === true) {
+    const porPal = it.porPallet > 0 ? it.porPallet : 0;
+    if (porPal > 0) { const n = Math.floor(it.qty / porPal), r = it.qty - n * porPal; if (n > 0) return `${n} PLT${r ? ` + ${r.toLocaleString("es-MX")} cajas` : ""}`; }
+  }
+  return "";
+}
+
 const MODOS_PAL = [["no", "Suelta"], ["uno", "Pallet de un solo SKU"], ["mixto", "Pallet mixto (con otros SKUs)"]];
 const MODO_BUNDLE = ["bundle", "Bundle"];
 export const modoPal = (v) => (v === "mixto" ? "mixto" : v ? "uno" : "no");
@@ -207,6 +238,12 @@ function ReglasSku({ it, editar, pallets, modoPallet }) {
               {m === "uno" && <Sel etiqueta="Si sobran cajas" valor={it.resto} onChange={(v) => editar("resto", v)} opciones={RESTOS} />}
               {m === "uno" && <Num etiqueta="Cajas por nivel" valor={it.porCapa} onChange={(v) => editar("porCapa", v)} ayuda="Cuántas cajas en cada cama. 0 = la herramienta calcula el mejor acomodo" />}
               {m === "uno" && <Num etiqueta="Niveles" valor={it.capasPallet} onChange={(v) => editar("capasPallet", v)} ayuda="Cuántas camas de alto. 0 = las que permita la altura máxima del pallet" />}
+              <div className="col-span-3">
+                <Interruptor etiqueta="Sin límite de altura (hasta el techo del vehículo)"
+                  detalle="En lugar de la altura máxima del catálogo de pallets, se apila hasta donde llega el techo del vehículo. El peso máximo del pallet y la resistencia de la caja de abajo («Peso máx. encima») siguen aplicando, así que conviene tenerlos capturados. Un pallet así no recibe otro encima, y hay que confirmar que el montacargas y la puerta del andén lo puedan mover."
+                  valor={!!it.altLibre} onChange={(v) => editar("altLibre", v)} />
+                {it.altLibre && !(it.pesoMaxEncima > 0) && <p className="text-xs" style={{ color: T.aviso }}>Este SKU no tiene «Peso máx. encima» capturado, así que la torre no se está validando por resistencia.</p>}
+              </div>
               {m === "uno" && <p className="col-span-3 text-xs" style={{ color: T.suave }}>Con 0 en los tres campos el pallet se arma solo, buscando el mejor acomodo para las medidas de la caja.</p>}
               {m === "mixto" && <p className="col-span-2 text-xs self-end pb-1" style={{ color: T.suave }}>Se arma junto con los demás SKUs marcados como mixtos que usen el mismo pallet (y el mismo pedido o entrega, si esas reglas están activas).</p>}
               <div className="col-span-3 grid grid-cols-2 gap-x-4">

@@ -167,7 +167,7 @@ function llenarContenedor(tipos, veh, reglas, op) {
   var ordenEsp = op.ordenEsp;
   for (var fi = 0; fi < fases.length; fi++) {
     var fase = fases[fi];
-    if (usaFrontera && fi > 0) {
+    if (usaFrontera && fi > 0 && Math.floor(fase / 4) !== Math.floor(fases[fi - 1] / 4)) {
       var maxX = 0;
       for (var cf = 0; cf < cajas.length; cf++) if (cajas[cf].x > maxX) maxX = cajas[cf].x;
       // Flexible: deja que la siguiente entrega se meta un poco en la zona anterior para no desperdiciar el escalón
@@ -485,16 +485,28 @@ function armarPalletUniforme(it, pal, objetivo, reglas) {
         return dx > 0 && dy > 0 && dx * dy / (p.l * p.w) >= Math.max(reglas.soporteMin, 0.5) - 1e-9;
       });
     };
+    // Cajas por nivel pedidas por el usuario: lo que arma el andén es un bloque rectangular completo
+    // (4 × 5 para 20), no las 20 posiciones más centradas de una rejilla de 30, que salía escalonado.
+    if (it.porCapa > 0) {
+      [[a, b], [b, a]].forEach(function (d, gi) {
+        if (gi && a === b) return;
+        for (var nx = 1; nx <= it.porCapa; nx++) {
+          if (it.porCapa % nx) continue;
+          var ny = it.porCapa / nx;
+          if (nx * d[0] > CX + 1e-6 || ny * d[1] > CY + 1e-6) continue;
+          var r = [];
+          for (var i = 0; i < nx; i++) for (var j = 0; j < ny; j++) r.push({ x: i * d[0], y: j * d[1], l: d[0], w: d[1], o: gi });
+          pats.push(r);
+        }
+      });
+    }
     pats.forEach(function (pos0) {
       if (!pos0.length || !apoyaEnTarima(pos0)) return;
-      // Cajas por nivel pedidas por el usuario: se recorta el patrón a esa cantidad, desde el centro hacia afuera
+      // Si el patrón trae más cajas de las pedidas por nivel, se recorta llenando filas completas
+      // (una fila incompleta al final es lo que se arma de verdad; recortar desde el centro salía en cruz).
       var pos = pos0;
       if (it.porCapa > 0 && it.porCapa < pos0.length) {
-        var bx0 = 0, by0 = 0;
-        pos0.forEach(function (q) { bx0 = Math.max(bx0, q.x + q.l); by0 = Math.max(by0, q.y + q.w); });
-        pos = pos0.slice().sort(function (u, v) {
-          return (Math.abs(u.x + u.l / 2 - bx0 / 2) + Math.abs(u.y + u.w / 2 - by0 / 2)) - (Math.abs(v.x + v.l / 2 - bx0 / 2) + Math.abs(v.y + v.w / 2 - by0 / 2));
-        }).slice(0, it.porCapa);
+        pos = pos0.slice().sort(function (u, v) { return u.y - v.y || u.x - v.x; }).slice(0, it.porCapa);
       }
       var maxN = Math.min(pos.length * capas, capKg), n = Math.min(objetivo, maxN), nCapas = Math.ceil(n / pos.length);
       // menos cajas no; luego menor altura; luego tope plano (capas completas); luego más cajas por capa
@@ -721,6 +733,11 @@ function optimizar(items, veh, reglas, alProgreso, pallets) {
   var cargaMax = veh.maxKg > 0 ? veh.maxKg - (veh.tara || 0) : Infinity;
   var grupoDe = function (g) { g = g || ""; if (gruposOrden[g] === undefined) gruposOrden[g] = ng++; return gruposOrden[g]; };
   var MAXP = 99999999;
+  // Con Bundles en la carga, el andén pide un orden fijo dentro de cada entrega: primero los pallets, luego
+  // los Bundles completos y al final lo suelto (que así rellena los huecos que dejaron los dos anteriores).
+  // Es una subfase de la zona, no una zona nueva: el suelto puede meterse entre los pallets, no detrás de ellos.
+  var hayBundle = items.some(function (x) { return x.esBundle && x.qty > 0; });
+  var subDe = function (it) { if (!hayBundle || reglas.ordenCargue === false) return 0; return it.esPallet ? 0 : it.esBundle ? 1 : 2; };
   var faseDe = function (it) {
     // Relleno opcional (completar espacios vacíos, ver archivos/relleno más abajo): siempre va al
     // final, después de toda la demanda real, sin importar entrega ni pedido. Así nunca le quita
@@ -730,7 +747,7 @@ function optimizar(items, veh, reglas, alProgreso, pallets) {
     // Se carga de atrás (fondo) hacia las puertas: primero las entregas altas, al final la parada 1.
     if (reglas.usarOrden) f += (it.orden > 0 ? MAXP - Math.min(it.orden, MAXP) : 0) * 100000;
     if (reglas.agrupar) f += grupoDe(it.grupo);
-    return f;
+    return f * 4 + subDe(it);
   };
   var cabeEn = function (it, v) { return orientacionesDe(it).some(function (o) { return o.d[0] <= v.L && o.d[1] <= v.W && o.d[2] <= v.H; }); };
   var sueltas = function (it, idx, n) { if (n > 0) tipos.push({ k: "s" + idx, idx: idx, it: it, oris: orientacionesDe(it), fase: faseDe(it), g: grupoDe(it.grupo), rem: n, pal: -1 }); };
@@ -762,10 +779,10 @@ function optimizar(items, veh, reglas, alProgreso, pallets) {
   };
   var poolMixto = {};
   var alPool = function (it, idx, pal, n, info) {
-    var key = (it.palletId || 0) + "|" + (reglas.agrupar ? it.grupo || "" : "") + "|" + (reglas.usarOrden ? it.orden : "");
+    var key = (it.palletId || 0) + "|" + (it.altLibre ? "libre" : "") + "|" + (reglas.agrupar ? it.grupo || "" : "") + "|" + (reglas.usarOrden ? it.orden : "");
     if (!poolMixto[key]) poolMixto[key] = { pal: pal, it: it, idx: idx, tipos: [], aceptaCajas: true, aceptaPallet: true };
     var pm = poolMixto[key];
-    pm.tipos.push({ k: "s" + idx, idx: idx, it: it, oris: orientacionesDe(it), fase: 0, rem: n, pal: -1 });
+    pm.tipos.push({ k: "s" + idx, idx: idx, it: it, oris: orientacionesDe(it), fase: 0, rem: n, pal: -1 });   // dentro del pallet mixto no hay subfases
     pm.aceptaCajas = pm.aceptaCajas && info.aceptaCajas; pm.aceptaPallet = pm.aceptaPallet && info.aceptaPallet;
   };
   items.forEach(function (it0, idx) {
@@ -777,7 +794,11 @@ function optimizar(items, veh, reglas, alProgreso, pallets) {
       if ((!reglas.limitarPeso || it.peso <= cargaMax) && cabeEn(it, veh)) sueltas(it, idx, it.qty);
       return;
     }
+    // «Sin límite de altura»: el pallet se arma contra la altura interior del vehículo, no contra la del
+    // catálogo. Con producto liviano el techo es el límite real; el peso máximo del pallet y la resistencia
+    // de la caja de abajo siguen aplicando igual.
     var pal = it.paletizar && !veh.esPallet ? pallets[it.palletId || 0] : null;
+    if (pal && it.altLibre && veh.H > pal.altMax) pal = Object.assign({}, pal, { altMax: veh.H, _altLibre: true });
     if (!pal) {
       if (!((!reglas.limitarPeso || it.peso <= cargaMax) && cabeEn(it, veh))) { noCaben.push(it.nombre); return; }
       sueltas(it, idx, it.qty); return;

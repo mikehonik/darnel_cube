@@ -60,3 +60,12 @@ describe("vehiculosNecesarios", () => {
     expect(r.cap).toBe(r.detalle.pallets * r.detalle.porPallet);
   });
 });
+
+describe("SKUs de manufactura sin Bundle", () => {
+  it("marca los DU sin Bundle y no toca los que sí lo tienen ni los demás SKUs", () => {
+    const p = (sku, d = {}) => ({ sku, L: 300, W: 300, H: 250, peso: 5, oris: [true], bundleCantidadEstandar: 0, bundleL: 0, bundleW: 0, bundleH: 0, ...d });
+    const r = auditarMaestro([p("DU40B101V"), p("DU-OK", { bundleCantidadEstandar: 24, bundleL: 900, bundleW: 600, bundleH: 1000 }), p("PLY-001")], [], []);
+    const regla = r.reglas.find((x) => x.id === "duSinBundle");
+    expect(regla.skus.map((x) => x.sku)).toEqual(["DU40B101V"]);
+  });
+});

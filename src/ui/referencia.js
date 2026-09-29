@@ -16,10 +16,12 @@ export const VEHICULOS = [
   { id: "53DV", nombre: "53FT-DryVan", L: 16154, W: 2489, H: 2794, tara: 6800, maxKg: 27200, ejeDelantero: 0, ejeTrasero: 0, xEjeDelantero: 0, xEjeTrasero: 0, taraDelantera: 0, taraTrasera: 0, placa: "", transportadora: "" },
   { id: "48DV", nombre: "48FT-DryVan", L: 14478, W: 2489, H: 2794, tara: 6400, maxKg: 26800, ejeDelantero: 0, ejeTrasero: 0, xEjeDelantero: 0, xEjeTrasero: 0, taraDelantera: 0, taraTrasera: 0, placa: "", transportadora: "" },
 ];
+// Carga máxima de 1,500 kg en los tres: con 1,200 kg el peso recortaba pallets que en planta sí se arman
+// completos (un SKU de 22 kg se quedaba en 54 cajas en lugar de 60). Cada quien la ajusta en Paletizado.
 export const PALLETS_INICIALES = [
-  { nombre: "Americano 1219×1016", L: 1219, W: 1016, esp: 150, peso: 25, altMax: 1800, maxKg: 1200, ovL: 0, ovW: 0 },
-  { nombre: "Universal 1200×1000", L: 1200, W: 1000, esp: 150, peso: 25, altMax: 1800, maxKg: 1200, ovL: 0, ovW: 0 },
-  { nombre: "Europeo 1200×800", L: 1200, W: 800, esp: 144, peso: 25, altMax: 1800, maxKg: 1000, ovL: 0, ovW: 0 },
+  { nombre: "Americano 1219×1016", L: 1219, W: 1016, esp: 150, peso: 25, altMax: 1800, maxKg: 1500, ovL: 0, ovW: 0 },
+  { nombre: "Universal 1200×1000", L: 1200, W: 1000, esp: 150, peso: 25, altMax: 1800, maxKg: 1500, ovL: 0, ovW: 0 },
+  { nombre: "Europeo 1200×800", L: 1200, W: 800, esp: 144, peso: 25, altMax: 1800, maxKg: 1500, ovL: 0, ovW: 0 },
 ];
 export const REGLAS_APILAR = [
   ["ninguna", "Sin regla adicional"], ["valorMayorAbajo", "Prioridad mayor va abajo"], ["mismoValor", "Solo sobre la misma prioridad"],
@@ -27,6 +29,12 @@ export const REGLAS_APILAR = [
   ["mismaCategoria", "Solo sobre la misma categoría"],
 ];
 export const NIVELES = [[1, "1 · Rápido (≈2 s)"], [2, "2 · Balanceado (≈5 s)"], [3, "3 · Profundo (≈12 s)"], [4, "4 · Máximo (≈25 s)"]];
+// Qué tanto se pueden abrir los Bundles al cubicar (ver motor/corrida.js)
+export const ABRIR_BUNDLES = [
+  ["llenar", "Para ahorrar vehículo y para llenar"],
+  ["ahorrar", "Solo si ahorra un vehículo completo"],
+  ["nunca", "Nunca: los Bundles viajan enteros"],
+];
 export const RESTOS = [["parcial", "Pallet incompleto"], ["sueltas", "Cargar sueltas"], ["mixto", "Pallet mixto con otros sobrantes"]];
 
 

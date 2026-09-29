@@ -39,6 +39,11 @@ export function indiceSku(productos) {
   return m;
 }
 export const buscarSku = (indice, texto) => indice.get(claveSku(texto)) ?? indice.get(clave(texto)) ?? null;
+// SKU base: el mismo producto con un sufijo de lote o promoción al final ("-R006940"). Darnel los maneja como
+// SKUs distintos en el maestro, pero comparten el Bundle del producto base; sin esto, un "…V-R006940" se
+// cargaba suelto porque su código exacto no está en la hoja Bundles.
+export const SUFIJO_VARIANTE = /-r\d+$/i;
+export const skuBase = (texto) => { const s = String(texto ?? "").trim(); return SUFIJO_VARIANTE.test(s) ? s.replace(SUFIJO_VARIANTE, "") : ""; };
 // Tabla de conversiones de un SKU. Las guardadas antes de claveSku quedaron con la llave sin guion.
 export const conversionDe = (conversiones, sku) => conversiones?.[claveSku(sku)] ?? conversiones?.[clave(sku)];
 

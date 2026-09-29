@@ -16,6 +16,24 @@ export const VERSION_COMPLETA = `v${VERSION}${BUILD ? ` · ${BUILD}` : ""}${FECH
 // escrito para quien usa la herramienta (no para programadores).
 export const NOVEDADES = [
   {
+    version: "1.6.0", fecha: "29/09/2026",
+    cambios: [
+      "El catálogo de pallets nuevo viene con carga máxima de 1,500 kg (antes 1,200 y 1,000): con el tope viejo, un SKU de 22 kg por caja se quedaba en 54 cajas por pallet en lugar de 60. Los pallets que ya tengas guardados no cambian; se ajustan en Paletizado.",
+      "Cuando el maestro pide un número de cajas por nivel menor al que cabe (20 de 30, por ejemplo), el pallet se arma como un bloque rectangular completo y centrado (4 × 5), no con las cajas más centradas de la rejilla, que salía escalonado.",
+      "En Herramientas, «Calcular carga» muestra los avisos de ese cálculo junto a su resultado, y el panel de abajo aclara que lo que se ve ahí sigue siendo tu carga.",
+      "«Llenar con pedido sugerido» ya no tiene tope: se ofrece siempre que quepa algo más, aunque el vehículo vaya al 91%. También puede aumentar las líneas que van en Bundle (de Bundle en Bundle).",
+      "Candado por línea en el pedido: las líneas fijas no las cambia ninguna sugerencia (ni llenar ni disminuir). Se puede fijar desde la tabla o desde la vista previa.",
+      "Los Bundles ahora también se abren para llenar: si no se ahorra un vehículo, se abren los menos posibles para dejar el último lo más vacío posible y que los demás vayan llenos. En Reglas se elige la política (para ahorrar y llenar, solo para ahorrar, o nunca).",
+      "Con Bundles en la carga, el orden de cargue queda fijo dentro de cada entrega: primero los pallets, luego los Bundles completos y al final lo suelto, que rellena los huecos que dejaron los dos anteriores.",
+      "Un SKU con sufijo de variante («DU4051199V-R006940») toma el Bundle de su SKU base cuando no tiene fila propia, tanto al leer el maestro como al importar el CS-BDL.",
+      "Aviso cuando un SKU empieza con DU y no tiene Bundle capturado: sale al cargar el pedido y como regla nueva en Calidad del maestro.",
+      "Regla explícita para las cantidades con decimales (hacia arriba, hacia abajo o al más cercano). La cantidad original siempre queda a la vista junto a la cubicada.",
+      "Debajo de cada SKU del pedido se ve lo pedido y su equivalencia logística («7 PLT + 20 cajas», «153 BDL»), y las etiquetas PM, BDL y ajustado ya no tapan la cantidad.",
+      "Nuevo interruptor por línea «Sin límite de altura»: el pallet se apila hasta el techo del vehículo en lugar de la altura del catálogo, avisando si al SKU le falta el peso máximo encima para validar la torre.",
+      "En Herramientas, cuando no caben las cajas por pallet que pediste, ahora se dice cuál límite manda y con qué número (por ejemplo, «60 cajas pesarían 1,329 kg y el pallet aguanta 1,200 kg»), y el armado muestra los niveles reales cuando el último va incompleto.",
+    ],
+  },
+  {
     version: "1.5.2", fecha: "24/09/2026",
     cambios: [
       "Corrección: con el archivo CS-BDL, las cajas por Bundle salían con decimales (4.8 ÷ 0.2 = 23.999…) y el cálculo rechazaba la línea con «la cantidad debe ser un entero». Ahora siempre se redondean a entero.",

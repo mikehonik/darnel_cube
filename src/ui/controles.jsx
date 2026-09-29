@@ -23,13 +23,22 @@ export function Num({ etiqueta, valor, onChange, ayuda, tipo }) {
     </label>
   );
 }
-export function Sel({ etiqueta, valor, onChange, opciones }) {
+export function Sel({ etiqueta, detalle, valor, onChange, opciones }) {
+  const [verDetalle, setVerDetalle] = useState(false);
   return (
     <label className="block text-xs" style={{ color: T.suave }}>
-      <span className="block mb-1">{etiqueta}</span>
+      <span className="flex items-center gap-1.5 mb-1">
+        {etiqueta}
+        {detalle && (
+          <button type="button" onClick={(e) => { e.preventDefault(); setVerDetalle(!verDetalle); }} aria-label={`Qué hace: ${etiqueta}`} aria-expanded={verDetalle}
+            className="flex-none rounded-full flex items-center justify-center"
+            style={{ width: 15, height: 15, border: `1px solid ${verDetalle ? T.nav : T.linea}`, color: verDetalle ? T.nav : T.suave, fontSize: 10, lineHeight: 1 }}>?</button>
+        )}
+      </span>
       <select value={valor} onChange={(e) => onChange(e.target.value)} className={inp} style={estInp}>
         {opciones.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
       </select>
+      {detalle && verDetalle && <span className="block mt-1" style={{ fontSize: 11 }}>{detalle}</span>}
     </label>
   );
 }

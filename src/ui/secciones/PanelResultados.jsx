@@ -44,7 +44,7 @@ function AccionesSugeridas({ reporte, setPestana, palVista }) {
   );
 }
 
-export function PanelResultados({ mixBundle, modoPalletRes, colores, descargarInstructivo, descargarInstructivoCompleto, descargarResultados, generando, modoPallet, palVista, pestana, reporte, res, resaltado, sel, setPestana, setResaltado, stats, verPallet, vista, editarOris, oculto, setOculto }) {
+export function PanelResultados({ enHerramienta, mixBundle, modoPalletRes, colores, descargarInstructivo, descargarInstructivoCompleto, descargarResultados, generando, modoPallet, palVista, pestana, reporte, res, resaltado, sel, setPestana, setResaltado, stats, verPallet, vista, editarOris, oculto, setOculto }) {
   const u = useUnidades();
   // Altura del panel: se arrastra desde el borde superior y crece sola cuando la pestaña activa es una tabla
   const [alto, setAlto] = useState(250);
@@ -109,6 +109,12 @@ export function PanelResultados({ mixBundle, modoPalletRes, colores, descargarIn
           </div>
         )}
       </div>
+      {/* En vista de herramienta, lo de abajo sigue siendo el pedido: sus avisos no son los de la herramienta */}
+      {enHerramienta && (
+        <div className="flex-none flex items-center gap-2 px-3 py-1.5 text-xs" style={{ background: "#EEF3F9", borderBottom: `1px solid ${T.linea}`, color: T.suave }}>
+          <span>Esto es el resultado de tu carga. Lo que calculó la herramienta sale en su tarjeta, en el panel de la izquierda.</span>
+        </div>
+      )}
       <AccionesSugeridas modoPallet={modoPalletRes} reporte={reporte} setPestana={setPestana} palVista={palVista} />
       <div className="flex-1 overflow-auto p-3">
         {!res ? <p className="text-sm" style={{ color: T.suave }}>Los resultados aparecerán aquí.</p> : (

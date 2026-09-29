@@ -6,7 +6,6 @@ import { useEffect, useState } from "react";
 import { PackagePlus, PackageMinus, Loader2, X, Lock, Unlock, Undo2, CheckCircle2, Info } from "lucide-react";
 import { T } from "../tema.js";
 
-const UMBRAL_LLENAR = 90;   // % de ocupación del último vehículo abajo del cual se ofrece llenarlo
 const nVeh = (n) => `${n} ${n === 1 ? "vehículo" : "vehículos"}`;
 const pcts = (lista) => lista.map((p) => `${p.toFixed(0)}%`).join(" + ");
 
@@ -15,11 +14,11 @@ const Boton = ({ onClick, children, primario, titulo }) => (
     style={primario ? { background: T.nav, color: "#fff" } : { border: `1px solid ${T.linea}`, background: T.sup, color: T.tinta }}>{children}</button>
 );
 
-export function OptimizarPedido({ reporte, items, optim, progreso, onCalcular, onAplicar, onDeshacer, onCerrar, onCancelar }) {
+export function OptimizarPedido({ reporte, items, optim, progreso, onCalcular, onAplicar, onDeshacer, onCerrar, onCancelar, onFijarLinea }) {
   const [oculto, setOculto] = useState(false);
-  const [fijas, setFijas] = useState(new Set());
   useEffect(() => { setOculto(false); }, [reporte]);
-  useEffect(() => { setFijas(new Set(optim?.fijas || [])); }, [optim?.propuesta]);
+  // El candado es el mismo de la tabla del pedido (it.fijo): lo que se fija aquí queda fijo allá.
+  const fijas = new Set(items.filter((it) => it.fijo).map((it) => it.id));
   if (!reporte) return null;
   const caja = (contenido) => (
     <div className="absolute left-3 z-10 rounded-lg shadow-lg text-sm pointer-events-auto" style={{ bottom: 64, width: 340, maxWidth: "calc(100% - 24px)", maxHeight: "calc(100% - 110px)", overflowY: "auto", background: "rgba(255,255,255,.97)", border: `1px solid ${T.linea}` }}>{contenido}</div>
@@ -46,11 +45,13 @@ export function OptimizarPedido({ reporte, items, optim, progreso, onCalcular, o
   const pr = optim?.propuesta;
   if (pr) {
     const cambiaron = [...fijas].sort().join() !== [...(optim.fijas || [])].sort().join();
-    const alternarFija = (id) => setFijas((f) => { const g = new Set(f); if (g.has(id)) g.delete(id); else g.add(id); return g; });
+    const alternarFija = (id) => onFijarLinea?.(id);
     const sinCambio = !pr.cambios.length && pr.tipo !== "reacomodo";
     const mensaje = pr.tipo === "reacomodo" ? `Sin cambiar cantidades, reacomodando la carga cabe en ${nVeh(pr.despues.n)} (${pcts(pr.despues.ocupaciones)}).`
       : sinCambio ? (pr.tipo === "llenar"
-        ? (pr.motivo === "sinCandidatos" ? "No hay líneas que se puedan aumentar (las fijas y las que van en Bundle no se tocan)." : "No cabe ni una caja más de los SKUs del pedido sin sumar un vehículo.")
+        ? (pr.motivo === "sinCandidatos" ? "No hay líneas que se puedan aumentar: todas están fijas con el candado."
+          : pr.motivo === "noSeComprobo" ? "Se encontró espacio, pero al recalcular el pedido completo la carga ya no cupo igual. Prueba soltando algún candado o agregando tú la cantidad."
+          : "No cabe ni una caja más de los SKUs del pedido sin sumar un vehículo.")
         : "No se encontró una disminución que quite un vehículo sin tocar las líneas fijas.")
       : pr.tipo === "llenar" ? `Con esto ${pr.despues.n === 1 ? "queda" : "quedan"} ${nVeh(pr.despues.n)} al ${pcts(pr.despues.ocupaciones)} (antes ${pcts(pr.antes.ocupaciones)}).`
       : `Con esto la carga queda en ${nVeh(pr.despues.n)} al ${pcts(pr.despues.ocupaciones)} (antes ${nVeh(pr.antes.n)}).`;
@@ -97,8 +98,10 @@ export function OptimizarPedido({ reporte, items, optim, progreso, onCalcular, o
   if (oculto) return null;
   const n = reporte.contenedores.length, ult = reporte.contenedores[n - 1];
   const sinCargar = reporte.avisos.some((a) => a.tipo === "sinCargar" || a.tipo === "noCaben");
-  const hayQueAumentar = items.some((it) => it.qty > 0 && !it.enBundle);
-  const llenar = ult && !sinCargar && hayQueAumentar && ult.ocupacion < UMBRAL_LLENAR && (ult.utilPeso == null || ult.utilPeso < 95);
+  // Siempre se ofrece llenar mientras quede algo de espacio: si al final no cabe ni una caja más, la
+  // sugerencia lo dice en una línea. Un tope de ocupación dejaba fuera cargas al 91% donde sí cabía más.
+  const hayQueAumentar = items.some((it) => it.qty > 0 && !it.fijo);
+  const llenar = ult && !sinCargar && hayQueAumentar && ult.ocupacion < 99.5 && (ult.utilPeso == null || ult.utilPeso < 98);
   const reducir = n >= 2;
   if (!llenar && !reducir) return null;
   return caja(
@@ -111,8 +114,8 @@ export function OptimizarPedido({ reporte, items, optim, progreso, onCalcular, o
         <button onClick={() => setOculto(true)} aria-label="Ocultar sugerencias"><X size={14} color={T.suave} /></button>
       </div>
       <div className="flex flex-wrap gap-1.5 mt-2">
-        {reducir && <Boton primario onClick={() => onCalcular("reducir", new Set())} titulo="Primero prueba reacomodar sin cambiar cantidades; si no alcanza, sugiere qué bajar. Calcula en nivel 4."><PackageMinus size={13} />Sugerir disminución del pedido</Boton>}
-        {llenar && <Boton primario={!reducir} onClick={() => onCalcular("llenar", new Set())} titulo="Sugiere más cajas de los SKUs de este pedido sin sumar vehículos. Calcula en nivel 4."><PackagePlus size={13} />{n === 1 ? "Llenar con pedido sugerido" : `Llenar el vehículo ${n}`}</Boton>}
+        {reducir && <Boton primario onClick={() => onCalcular("reducir", fijas)} titulo="Primero prueba reacomodar sin cambiar cantidades; si no alcanza, sugiere qué bajar. Calcula en nivel 4."><PackageMinus size={13} />Sugerir disminución del pedido</Boton>}
+        {llenar && <Boton primario={!reducir} onClick={() => onCalcular("llenar", fijas)} titulo="Sugiere más cajas de los SKUs de este pedido sin sumar vehículos. Calcula en nivel 4."><PackagePlus size={13} />{n === 1 ? "Llenar con pedido sugerido" : `Llenar el vehículo ${n}`}</Boton>}
       </div>
     </div>
   );

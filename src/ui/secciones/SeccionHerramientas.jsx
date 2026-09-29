@@ -22,6 +22,18 @@ const pct = (n) => `${(n * 100).toLocaleString("es-MX", { maximumFractionDigits:
 const TODAS = [true, true, true, true, true, true];
 // Con más piezas que esto, el cálculo completo tardaría demasiado y el 3D sería ilegible: se queda el estimado.
 const TOPE_CALCULO = 20000;
+
+// Por qué no caben las cajas que pidió el usuario: casi siempre es el peso máximo del pallet, no la altura,
+// y decirlo con el número evita la pregunta «¿por qué 54 y no 60?».
+function limita(pedidas, r, pal, producto, u) {
+  const razones = [];
+  if (pal.maxKg > 0 && producto.peso > 0 && pedidas * producto.peso > pal.maxKg)
+    razones.push(`${pedidas} cajas pesarían ${u.fP(pedidas * producto.peso)} y el pallet aguanta ${u.fP(pal.maxKg)}`);
+  if (r.def.capas && producto.H > 0 && pal.esp + (Math.ceil(pedidas / r.def.porCapa)) * producto.H > pal.altMax)
+    razones.push(`no caben más niveles en la altura máxima de ${u.fL(pal.altMax, 0)}`);
+  if (!razones.length) razones.push(`no caben más cajas en la huella de ${u.fLL(pal.L, pal.W)}`);
+  return razones.join("; ");
+}
 const COLOR_HERR = "#C8102E";
 
 function Resultado({ filas, estimado, nota }) {
@@ -161,6 +173,13 @@ function ResultadoCompleto({ r, u, tipo, nivel }) {
         ["Ocupación del vehículo", `${r.ocupacion.toLocaleString("es-MX", { maximumFractionDigits: 1 })}%`],
         ["Peso", `${u.fP(r.peso)}${r.utilPeso != null ? ` (${r.utilPeso.toFixed(0)}% del máximo)` : ""}`],
       ]} />
+      {/* Avisos de ESTA corrida. Los de la pestaña Avisos de abajo son los del pedido, que no cambian aquí. */}
+      {(r.avisos?.length > 0 || r.sinCargar > 0) && (
+        <ul className="text-xs mt-2 flex flex-col gap-1" style={{ color: T.aviso }}>
+          {r.sinCargar > 0 && <li>No cupieron {n0(r.sinCargar)} bultos de este SKU en un solo vehículo.</li>}
+          {(r.avisos || []).map((a) => <li key={a}>{a}</li>)}
+        </ul>
+      )}
     </div>
   );
 }
@@ -247,12 +266,17 @@ function CapacidadPallets({ producto, vehiculos, pallets, reglas, calcularHerram
           <Num etiqueta="Niveles" valor={manual.capasPallet} onChange={cambio((v) => setManual((x) => ({ ...x, capasPallet: v })))} ayuda="0 = los que permita la altura" />
         </div>
       )}
+      {/* Cuál de los dos topes del pallet es el que manda, con el número que lo explica */}
       {modo === "estandar" && <p className="text-xs mt-1" style={{ color: T.suave }}>Del maestro: {producto.porPallet ? `${producto.porPallet} cajas por pallet` : "cajas por pallet libre"}{producto.porCapa ? ` · ${producto.porCapa} por nivel` : ""}{producto.capasPallet ? ` · ${producto.capasPallet} niveles` : ""}.</p>}
       {r && (r.pallets > 0 ? (
         <>
           <p className="text-xs font-semibold mt-3">Estimado rápido</p>
           <Resultado estimado={r.def.estimado} filas={[
-            ["Armado del pallet", r.def.capas ? `${r.def.capas} niveles × ${r.def.porCapa} por nivel` : `${r.cajasPorPallet} cajas`],
+            ["Armado del pallet", r.def.capas
+              ? (r.def.capas * r.def.porCapa === r.cajasPorPallet
+                ? `${r.def.capas} niveles × ${r.def.porCapa} por nivel`
+                : `${Math.floor(r.cajasPorPallet / r.def.porCapa)} niveles de ${r.def.porCapa} + 1 de ${r.cajasPorPallet % r.def.porCapa}`)
+              : `${r.cajasPorPallet} cajas`],
             ["Pallets completos", n0(r.pallets)],
             ["Cajas por pallet", n0(r.cajasPorPallet)],
             ["Total de cajas", n0(r.cajasTotales)],
@@ -261,7 +285,7 @@ function CapacidadPallets({ producto, vehiculos, pallets, reglas, calcularHerram
             ["Peso total transportado", u.fP(r.peso)],
             ["Alto del pallet", u.fL(r.def.alto, 0)],
           ]} nota={[
-            config.porPallet > r.cajasPorPallet ? `Pediste ${config.porPallet} cajas por pallet, pero en este pallet solo caben ${r.cajasPorPallet} (altura máxima ${u.fL(pal.altMax, 0)}, carga máxima ${pal.maxKg ? u.fP(pal.maxKg) : "libre"}).` : null,
+            config.porPallet > r.cajasPorPallet ? `Pediste ${config.porPallet} cajas por pallet y solo caben ${r.cajasPorPallet}: ${limita(config.porPallet, r, pal, producto, u)}.` : null,
             r.def.techoPlano ? null : "El pallet no queda plano arriba (último nivel incompleto), así que no se le apila otro encima.",
           ].filter(Boolean).join(" ") || null} />
         </>

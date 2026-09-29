@@ -4,7 +4,7 @@
 // y la importación de la plantilla "Cargo Upload" de CubeMaster. No toca el DOM ni React.
 import * as XLSX from "xlsx";
 import { escribirXlsx } from "./escribir.js";
-import { clave, claveSku, indiceSku, buscarSku, siNo, numero, hojaAObjetos, buscarHoja } from "./celdas.js";
+import { clave, claveSku, skuBase, indiceSku, buscarSku, siNo, numero, hojaAObjetos, buscarHoja } from "./celdas.js";
 import { HOJA_CONVERSIONES, UM_CAJA_DEF, normalizaUM, filasConversiones, conversionesDeHoja } from "./conversiones.js";
 import { factorColumna, describirUnidades, encabezadoEn, SISTEMAS } from "../unidades.js";
 
@@ -188,6 +188,8 @@ export function leerMaestro(buf, unidades = "auto") {
   const hpar = buscarHoja(wb, ["parametros", "parámetros", "reglas"]);
   const hb = buscarHoja(wb, ["bundles", "bundle"]), fb = factoresDeHoja(hb, unidades), porSkuBundle = new Map();
   if (hb) hojaAObjetos(hb).map((o) => aMetrico(o, fb.factores)).forEach((o) => { const sku = String(o.sku ?? o.idarticulo ?? "").trim(); if (sku && !porSkuBundle.has(claveSku(sku))) porSkuBundle.set(claveSku(sku), o); });
+  // Un SKU con sufijo de variante ("…-R006940") toma el Bundle de su SKU base si él no tiene fila propia
+  const bundleDe = (sku) => porSkuBundle.get(claveSku(sku)) ?? (skuBase(sku) ? porSkuBundle.get(claveSku(skuBase(sku))) : undefined);
   const productos = [], errores = [], vistos = new Set();
 
   if (hd) {
@@ -201,7 +203,7 @@ export function leerMaestro(buf, unidades = "auto") {
       if (vistos.has(claveSku(sku))) { errores.push(`${sku} está repetido; se usa la primera fila.`); return; }
       vistos.add(claveSku(sku));
       const dOne = { sku, idProducto: String(o.idproducto ?? o.id ?? o.idarticulo ?? o.codigodearticulo ?? "").trim(), desc: String(o.descripcion ?? ""), L: numero(o.largo), W: numero(o.ancho), H: numero(o.alto), peso: numero(o.peso) };
-      const p = productoDeFilas(dOne, porSku.get(claveSku(sku)), porSkuBundle.get(claveSku(sku)));
+      const p = productoDeFilas(dOne, porSku.get(claveSku(sku)), bundleDe(sku));
       if (!(p.L > 0 && p.W > 0 && p.H > 0)) errores.push(`${sku}: faltan medidas (largo, ancho o alto).`);
       productos.push(p);
     });
@@ -217,7 +219,7 @@ export function leerMaestro(buf, unidades = "auto") {
     if (vistos.has(claveSku(sku))) { errores.push(`${sku} está repetido; se usa la primera fila.`); return; }
     vistos.add(claveSku(sku));
     const dOne = { sku, idProducto: String(o.idproducto ?? o.id ?? o.idarticulo ?? o.codigodearticulo ?? "").trim(), desc: String(o.descripcion ?? ""), L: numero(o.largo), W: numero(o.ancho), H: numero(o.alto), peso: numero(o.peso) };
-    const p = productoDeFilas(dOne, o, porSkuBundle.get(claveSku(sku)));
+    const p = productoDeFilas(dOne, o, bundleDe(sku));
     if (!(p.L > 0 && p.W > 0 && p.H > 0)) errores.push(`${sku}: faltan medidas (largo, ancho o alto).`);
     productos.push(p);
   });
@@ -387,21 +389,30 @@ export function leerBundleMaestro(productosActuales, buf, unidades = "auto") {
 
   const indice = indiceSku(productosActuales);
   const productos = [...productosActuales], errores = [], noEncontrados = [];
-  let actualizados = 0;
+  // Primero se lee el archivo completo, porque una fila puede aplicar además a las variantes del SKU
+  // ("DU4051199V-R006940" toma el Bundle de "DU4051199V" si el archivo no trae su código exacto).
+  const delArchivo = new Map();
   for (let i = hi + 1; i < filas.length; i++) {
     const f = filas[i], sku = String(f[iSku] ?? "").trim();
     if (!sku) continue;
-    const existente = buscarSku(indice, sku);
-    if (!existente) { noEncontrados.push(sku); continue; }
     const cantidadEstandar = Math.round(iCsBdl >= 0 && numero(f[iCsBdl]) > 0 ? numero(f[iCsBdl])
       : (iRel >= 0 && iFactor >= 0 && numero(f[iFactor]) > 0 ? numero(f[iRel]) / numero(f[iFactor]) : 0));
     const bundleL = numero(f[iLargo]) * fL, bundleW = numero(f[iAncho]) * fW, bundleH = numero(f[iAlto]) * fH;
     if (!(cantidadEstandar > 0) || !(bundleL > 0 && bundleW > 0 && bundleH > 0)) { errores.push(`${sku}: fila incompleta (cantidad estándar o dimensiones); no se importó.`); continue; }
-    // Copia nueva del producto (nunca mutar el que ya está en el estado de React)
-    const pos = productos.findIndex((p) => p.pid === existente.pid), nuevo = { ...productos[pos], bundleCantidadEstandar: cantidadEstandar, bundleL, bundleW, bundleH, ...(iPeso >= 0 ? { bundlePeso: numero(f[iPeso]) * factorColumna(filas[hi][iPeso], "peso", unidades) } : {}) };
-    productos[pos] = nuevo;
-    actualizados++;
+    const cfg = { bundleCantidadEstandar: cantidadEstandar, bundleL, bundleW, bundleH, ...(iPeso >= 0 ? { bundlePeso: numero(f[iPeso]) * factorColumna(filas[hi][iPeso], "peso", unidades) } : {}) };
+    if (!delArchivo.has(claveSku(sku))) delArchivo.set(claveSku(sku), cfg);
+    if (!buscarSku(indice, sku)) noEncontrados.push(sku);
   }
+  let actualizados = 0, porBase = 0;
+  productos.forEach((p, pos) => {
+    const propia = delArchivo.get(claveSku(p.sku)) ?? delArchivo.get(claveSku(p.idProducto));
+    const base = !propia && skuBase(p.sku) ? delArchivo.get(claveSku(skuBase(p.sku))) : null;
+    const cfg = propia || base;
+    if (!cfg) return;
+    productos[pos] = { ...p, ...cfg };   // copia nueva: nunca se muta el producto que está en el estado de React
+    actualizados++; if (base) porBase++;
+  });
+  if (porBase) errores.push(`${porBase} SKU${porBase === 1 ? "" : "s"} con sufijo de variante (por ejemplo «-R006940») tomaron el Bundle de su SKU base.`);
   if (noEncontrados.length) errores.push(`${noEncontrados.length} SKU${noEncontrados.length === 1 ? "" : "s"} del archivo no ${noEncontrados.length === 1 ? "está" : "están"} en el maestro: ${noEncontrados.slice(0, 8).join(", ")}${noEncontrados.length > 8 ? "…" : ""}.`);
   return { productos, actualizados, errores };
 }

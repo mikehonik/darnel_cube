@@ -49,14 +49,19 @@ export function leerConversiones(buf, soloSkus = null) {
 export const UM_BULTO = ["CJ", "BL", "RL", "CS", "CJM", "PAC", "BLT"];
 export const esBulto = (um) => UM_BULTO.includes(normalizaUM(um));
 const entero = (v) => Math.abs(v - Math.round(v)) < 1e-6;
+// Qué hacer con una cantidad que no da un número entero de cajas. Es una decisión de operación, no del
+// programa: se elige en Reglas y siempre se reporta la cantidad original junto a la que se cubicó.
+export const REDONDEOS = [["arriba", "Hacia arriba (se despacha de más)"], ["abajo", "Hacia abajo (se despacha de menos)"], ["cercano", "Al más cercano"]];
+export const redondear = (v, modo) => (modo === "abajo" ? Math.max(1, Math.floor(v)) : modo === "cercano" ? Math.max(1, Math.round(v)) : Math.ceil(v));
 
-export function aCajas(cantidad, um, umCaja, tabla, piezasPorCaja) {
+export function aCajas(cantidad, um, umCaja, tabla, piezasPorCaja, redondeo = "arriba") {
+  const ceil = (v) => redondear(v, redondeo);
   const u = normalizaUM(um), c = normalizaUM(umCaja) || UM_CAJA_DEF;
   const porPiezas = piezasPorCaja > 0 ? piezasPorCaja : 0;
   // Sin unidad, o ya en la unidad de la caja: la cantidad son cajas. Solo se sube a entero si viene con decimales.
   const sinConvertir = (motivo) => entero(cantidad)
     ? { cajas: Math.round(cantidad), exacto: true, destino: u || c, ...(motivo ? { nota: motivo } : {}) }
-    : { cajas: Math.ceil(cantidad), exacto: false, exactas: cantidad, destino: u || c, ...(motivo ? { nota: motivo } : {}) };
+    : { cajas: ceil(cantidad), exacto: false, exactas: cantidad, destino: u || c, ...(motivo ? { nota: motivo } : {}) };
   if (!u || u === c) return sinConvertir();
   // El pedido ya viene en una unidad logística (caja, bolsa, rollo): eso ya son bultos, no se toca.
   if (esBulto(u)) return sinConvertir(u === c ? undefined : `el pedido ya viene en ${u}, no se convirtió`);
@@ -65,12 +70,12 @@ export function aCajas(cantidad, um, umCaja, tabla, piezasPorCaja) {
   // registrado un factor de caja para ese SKU, algo muy común en tejas, resinas o materiales a granel.
   const porUnidades = (piezasTotales) => {
     const exactas = piezasTotales / porPiezas;
-    return { cajas: entero(exactas) ? Math.round(exactas) : Math.ceil(exactas), exacto: entero(exactas), exactas, destino: c, viaPiezas: true };
+    return { cajas: entero(exactas) ? Math.round(exactas) : ceil(exactas), exacto: entero(exactas), exactas, destino: c, viaPiezas: true };
   };
   if (u === "UN" && porPiezas) return porUnidades(cantidad);
-  if (!tabla) return { cajas: Math.ceil(cantidad), exacto: false, motivo: `no hay tabla de conversiones para pasar de ${u} a ${c}` };
+  if (!tabla) return { cajas: ceil(cantidad), exacto: false, motivo: `no hay tabla de conversiones para pasar de ${u} a ${c}` };
   const fu = tabla[u];
-  if (!(fu > 0)) return { cajas: Math.ceil(cantidad), exacto: false, motivo: `no tiene la equivalencia de ${u}` };
+  if (!(fu > 0)) return { cajas: ceil(cantidad), exacto: false, motivo: `no tiene la equivalencia de ${u}` };
   // Manda el factor del ERP: si ese SKU tiene registrada la unidad de bulto (CJ, BL...), esa es la
   // verdad. Antes se prefería "piezas por caja" del maestro y eso daba números disparatados cuando
   // ese campo traía otro valor (por ejemplo 10 piezas cuando la caja real lleva 200).
@@ -80,11 +85,11 @@ export function aCajas(cantidad, um, umCaja, tabla, piezasPorCaja) {
   // del maestro (el caso de tejas, resinas o materiales que el ERP solo maneja en UN, ML o KG).
   if (!destino) {
     if (porPiezas && tabla.UN > 0) return porUnidades((cantidad * fu) / tabla.UN);
-    return { cajas: Math.ceil(cantidad), exacto: false, motivo: `no tiene la equivalencia de ${c} ni de otra unidad de empaque` };
+    return { cajas: ceil(cantidad), exacto: false, motivo: `no tiene la equivalencia de ${c} ni de otra unidad de empaque` };
   }
   fc = tabla[destino];
   const exactas = (cantidad * fu) / fc;
-  const cajas = entero(exactas) ? Math.round(exactas) : Math.ceil(exactas);
+  const cajas = entero(exactas) ? Math.round(exactas) : ceil(exactas);
   return { cajas, exacto: entero(exactas), exactas, destino, cambioDeUM: destino !== c ? destino : undefined };
 }
 

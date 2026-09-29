@@ -30,9 +30,21 @@ describe("correrConBundles", () => {
     expect(c.resultado.sinCargar).toBe(0);
     expect(c.resultado.avisos.join(" ")).toMatch(/se abren \d+ Bundles/);
   });
-  it("si abrirlos no ahorra un vehículo, no abre ninguno", async () => {
+  it("si no ahorra un vehículo, los abre para dejar el último más vacío (y lo dice)", async () => {
+    const sinAbrir = await correrConBundles({ items: [linea(24 * 60)], vehiculo, tarimas: [], reglas: { ...reglas, _maxContenedores: 1 } }, { ejecutor });
     const c = await correrConBundles({ items: [linea(24 * 60)], vehiculo, tarimas: [], reglas }, { ejecutor });
-    expect(c.resultado.contenedores.length).toBe(2);
+    expect(c.resultado.contenedores).toHaveLength(2);
+    expect(c.resultado.bundles.abiertos).toBeGreaterThan(0);
+    expect(c.resultado.bundles.ahorro).toBe(0);
+    expect(c.resultado.avisos.join(" ")).toMatch(/más vacío/);
+    // el primer vehículo va más lleno que sin abrir ninguno
+    expect(c.resultado.contenedores[0].vol).toBeGreaterThan(sinAbrir.resultado.contenedores[0].vol);
+    // y no se pierde ninguna caja
+    expect(c.carga.items.reduce((a, it) => a + (it.esBundle ? it.qty * 24 : it.qty), 0)).toBe(24 * 60);
+  });
+  it("con un solo vehículo no abre nada (abrir cuesta mano de obra y no gana espacio)", async () => {
+    const c = await correrConBundles({ items: [linea(24 * 10)], vehiculo, tarimas: [], reglas }, { ejecutor });
+    expect(c.resultado.contenedores).toHaveLength(1);
     expect(c.resultado.bundles.abiertos).toBe(0);
   });
 });

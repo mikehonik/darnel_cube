@@ -157,11 +157,20 @@ export async function correr(carga, { ejecutor, signal, onProgreso } = {}) {
 }
 
 // ---------- Corrida con Bundles ----------
-// Igual que correr(), pero las líneas que van en Bundle se optimizan como en el andén: primero todos los
-// Bundles completos y, solo si con eso se usa un vehículo más, se abren los MENOS Bundles posibles para que
-// sus cajas sueltas llenen los huecos y la carga quepa en menos vehículos (ver archivos/bundle.js).
-// La búsqueda de cuántos abrir se hace en nivel rápido; el resultado final, en el nivel pedido.
+// Igual que correr(), pero las líneas que van en Bundle se optimizan como en el andén (ver archivos/bundle.js):
+//   1. Primero todos los Bundles completos; lo que no completa un Bundle va suelto.
+//   2. Si con eso se ocupa un vehículo más, se abren los MENOS Bundles posibles para ahorrarlo.
+//   3. Si no se ahorra ninguno, se prueba abrirlos para dejar el último vehículo lo más vacío posible: sus
+//      cajas caben en los huecos de los anteriores, que es lo que pide el andén (llenar de verdad los que van).
+// La búsqueda se hace en nivel rápido; el resultado final se calcula en el nivel pedido.
 // El resultado lleva `bundles`: { lineas: [{ id, nombre, bundles, abiertos, cajasPorBundle }], abiertos, ahorro }.
+// Abrir Bundles cuesta mano de obra en el andén, así que para «llenar» se exige una mejora clara y se abren
+// los menos posibles que consigan casi toda esa mejora. Con reglas.abrirBundles se cambia la política:
+//   "llenar" (por omisión): para ahorrar vehículo y también para dejar el último lo más vacío posible
+//   "ahorrar": solo si se ahorra un vehículo completo   ·   "nunca": no se abre ninguno
+const MEJORA_MINIMA = 0.85;   // el último vehículo debe quedar al menos 15% más vacío
+const PARTE_DE_LA_MEJORA = 0.6;   // basta con conseguir el 60% de la mejora máxima
+
 export async function correrConBundles(carga, { ejecutor, signal, onProgreso, onFase } = {}) {
   const lineas = lineasBundle(carga.items);
   const con = (abiertos, reglas = carga.reglas) => correr({ ...carga, reglas, items: expandirBundles(carga.items, abiertos) }, { ejecutor, signal, onProgreso });
@@ -169,27 +178,59 @@ export async function correrConBundles(carga, { ejecutor, signal, onProgreso, on
     if (lineas.length) c.resultado.bundles = { lineas: lineas.map((l) => ({ ...l, abiertos: abiertos[l.id] || 0 })), abiertos: Object.values(abiertos).reduce((a, b) => a + b, 0), ahorro };
     return c;
   };
+  const detalle = (abiertos) => lineas.filter((l) => abiertos[l.id]).map((l) => `${l.nombre}: ${abiertos[l.id]}`).join(", ");
   const base = await con({});
   const n0 = base.resultado.contenedores.length, total = lineas.reduce((a, l) => a + l.bundles, 0);
-  if (!lineas.length || n0 < 2 || carga.reglas._maxContenedores) return conInfo(base, {});
+  const politica = carga.reglas.abrirBundles || "llenar";
+  if (!lineas.length || n0 < 2 || carga.reglas._maxContenedores || politica === "nunca") return conInfo(base, {});
 
-  onFase?.("Probando abrir Bundles para usar menos vehículos…");
+  // Cada k (cuántos Bundles se abren) se evalúa una sola vez: con pedidos grandes cada corrida cuesta segundos.
   const rapido = { ...carga.reglas, nivel: 1 };
   const usados = (c) => c.resultado.contenedores.length + (c.resultado.sinCargar > base.resultado.sinCargar ? 1000 : 0);
-  const cuenta = async (k) => usados(await con(repartirAbiertos(lineas, k), rapido));
-  const nRef = carga.reglas.nivel === 1 ? n0 : await cuenta(0);
-  if ((await cuenta(total)) >= nRef) return conInfo(base, {});   // ni abriendo todos se ahorra un vehículo: no se abre ninguno
-  let lo = 0, hi = total;
-  while (hi - lo > 1) { const m = Math.floor((lo + hi) / 2); if ((await cuenta(m)) < nRef) hi = m; else lo = m; }
+  const ultimo = (c) => (usados(c) > n0 ? Infinity : c.resultado.contenedores[c.resultado.contenedores.length - 1].vol);
+  const memo = new Map();
+  const evaluar = async (k) => {
+    if (memo.has(k)) return memo.get(k);
+    const c = await con(repartirAbiertos(lineas, k), rapido), r = { n: usados(c), cola: ultimo(c) };
+    memo.set(k, r); return r;
+  };
 
-  onFase?.("Calculando el acomodo final…");
-  for (const k of [...new Set([hi, Math.min(total, Math.ceil(hi * 1.25)), total])]) {
-    const abiertos = repartirAbiertos(lineas, k), c = await con(abiertos);
-    if (usados(c) < n0) {
-      const n = c.resultado.contenedores.length, detalle = lineas.filter((l) => abiertos[l.id]).map((l) => `${l.nombre}: ${abiertos[l.id]}`).join(", ");
-      c.resultado.avisos = [...(c.resultado.avisos || []), `Para usar ${n} ${n === 1 ? "vehículo" : "vehículos"} en lugar de ${n0} se abren ${k} ${k === 1 ? "Bundle" : "Bundles"} (${detalle}); sus cajas van sueltas en los huecos.`];
-      return conInfo(c, abiertos, n0 - n);
+  // ----- Usar un vehículo menos -----
+  onFase?.("Probando abrir Bundles para usar menos vehículos…");
+  const nRef = carga.reglas.nivel === 1 ? n0 : (await evaluar(0)).n;
+  if ((await evaluar(total)).n < nRef) {
+    let lo = 0, hi = total;
+    while (hi - lo > 1) { const m = Math.floor((lo + hi) / 2); if ((await evaluar(m)).n < nRef) hi = m; else lo = m; }
+    onFase?.("Calculando el acomodo final…");
+    for (const k of [...new Set([hi, Math.min(total, Math.ceil(hi * 1.25)), total])]) {
+      const abiertos = repartirAbiertos(lineas, k), c = await con(abiertos);
+      if (usados(c) < n0) {
+        const n = c.resultado.contenedores.length;
+        c.resultado.avisos = [...(c.resultado.avisos || []), `Para usar ${n} ${n === 1 ? "vehículo" : "vehículos"} en lugar de ${n0} se abren ${k} ${k === 1 ? "Bundle" : "Bundles"} (${detalle(abiertos)}); sus cajas van sueltas en los huecos.`];
+        return conInfo(c, abiertos, n0 - n);
+      }
     }
   }
-  return conInfo(base, {});
+
+  // ----- Llenar mejor los vehículos que sí van (dejar el último lo más vacío posible) -----
+  if (politica !== "llenar") return conInfo(base, {});
+  onFase?.("Probando abrir Bundles para llenar mejor…");
+  const colaBase = (await evaluar(0)).cola;
+  let mejor = 0, mejorCola = colaBase;
+  for (const k of [Math.max(1, Math.round(total / 2)), total]) {
+    const r = await evaluar(k);
+    if (r.n <= n0 && r.cola < mejorCola) { mejor = k; mejorCola = r.cola; }
+  }
+  if (!mejor || mejorCola > colaBase * MEJORA_MINIMA) return conInfo(base, {});
+  // Con los menos Bundles que conserven casi toda la mejora (abrir cuesta mano de obra)
+  const objetivo = colaBase - (colaBase - mejorCola) * PARTE_DE_LA_MEJORA;
+  let lo = 0, hi = mejor;
+  while (hi - lo > 1) { const m = Math.floor((lo + hi) / 2); const r = await evaluar(m); if (r.n <= n0 && r.cola <= objetivo) hi = m; else lo = m; }
+
+  onFase?.("Calculando el acomodo final…");
+  const abiertos = repartirAbiertos(lineas, hi), c = await con(abiertos);
+  if (usados(c) > n0 || ultimo(c) >= colaBase * MEJORA_MINIMA) return conInfo(base, {});
+  const pct = (1 - ultimo(c) / colaBase) * 100;
+  c.resultado.avisos = [...(c.resultado.avisos || []), `Se abren ${hi} ${hi === 1 ? "Bundle" : "Bundles"} (${detalle(abiertos)}) para aprovechar los huecos: el último vehículo queda ${pct.toFixed(0)}% más vacío y los demás van más llenos.`];
+  return conInfo(c, abiertos, 0);
 }

@@ -1,4 +1,5 @@
-import { NIVELES, REGLAS_APILAR } from "../referencia.js";
+import { ABRIR_BUNDLES, NIVELES, REGLAS_APILAR } from "../referencia.js";
+import { REDONDEOS } from "../../archivos/conversiones.js";
 import { T } from "../tema.js";
 import { Interruptor, Num, Sel, Tarjeta } from "../controles.jsx";
 
@@ -25,6 +26,8 @@ export function SeccionReglas({ editarRegla, reglas }) {
       </Tarjeta>
       <Tarjeta titulo="Estiba">
         <Sel etiqueta="Regla de apilamiento" valor={reglas.apilamiento} onChange={(v) => editarRegla("apilamiento", v)} opciones={REGLAS_APILAR} />
+        <Sel etiqueta="Cantidades con decimales" detalle="Qué hacer cuando un pedido no da un número entero de cajas (por venir en millares, kilos o metros). La cantidad original y la cubicada siempre quedan a la vista en la línea y en la Revisión del pedido." valor={reglas.redondeo || "arriba"} onChange={(v) => editarRegla("redondeo", v)} opciones={REDONDEOS} />
+        <Sel etiqueta="Abrir Bundles" detalle="Un Bundle abierto se carga como cajas sueltas y llena huecos, pero cuesta mano de obra en el andén. La herramienta siempre carga primero los Bundles completos y solo abre los menos posibles; aquí decides hasta dónde puede llegar." valor={reglas.abrirBundles || "llenar"} onChange={(v) => editarRegla("abrirBundles", v)} opciones={ABRIR_BUNDLES} />
         <div className="mt-2 divide-y" style={{ borderColor: T.linea }}>
           <Interruptor etiqueta="Respetar peso bruto máximo" valor={reglas.limitarPeso} onChange={(v) => editarRegla("limitarPeso", v)} />
                   <Interruptor etiqueta="Simular la carga real" detalle="Reproduce cómo se carga en el piso, no el óptimo teórico. Los bultos van de pie y solo se rotan donde ya no caben de pie: contra una pared, bajo el techo o en el sobrante. Las bolsas ceden bajo el peso de lo que llevan encima (4%, y la de hasta arriba nada); las cajas no ceden. Entre cajas queda una holgura chica que crece con la variedad de productos. Calibrado contra 1,841 contenedores reales. Apágalo para ver el óptimo geométrico puro." valor={reglas.compresionAuto !== false} onChange={(v) => editarRegla("compresionAuto", v)} />
