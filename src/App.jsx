@@ -13,7 +13,7 @@ import { leerVehiculos, libroVehiculos, plantillaVehiculos, vehiculoVacio } from
 import { leerPedido, libroPlantilla } from "./archivos/pedido.js";
 import { leerConversiones, aCajas, UM_CAJA_DEF, normalizaUM, nombreUM } from "./archivos/conversiones.js";
 import { libroResultados, etapasDe, htmlInstructivo, htmlInstructivoCompleto, nombreArchivo, libroSimple, MIME_XLSX } from "./archivos/resultados.js";
-import { EJEMPLOS, PALLETS_INICIALES, VEHICULOS, nuevoItem } from "./ui/referencia.js";
+import { EJEMPLOS, PALLETS_INICIALES, VEHICULOS, VERSION_ESTADO, nuevoItem, palletsAlDia } from "./ui/referencia.js";
 import { PALETAS, generarColores } from "./ui/colores.js";
 import { T } from "./ui/tema.js";
 import { VERSION, VERSION_COMPLETA } from "./version.js";
@@ -199,7 +199,7 @@ export default function Estiba3D({ usuario }) {
 
   // ---------- Guardar y cargar en la nube (un proyecto por usuario) ----------
   const estadoParaGuardar = () => ({
-    v: 2, proyecto, items, vehId, veh, vehiculos, pallets, reglas, tarifas,
+    v: VERSION_ESTADO, proyecto, items, vehId, veh, vehiculos, pallets, reglas, tarifas,
   });
   const guardarEnNube = async () => {
     setGuardandoNube(true); setError("");
@@ -224,7 +224,8 @@ export default function Estiba3D({ usuario }) {
     setVehiculos(conDeFabrica(e.vehiculos));
     setVehId(e.vehId ?? "53CS");
     if (e.veh) setVeh(e.veh);
-    if (e.pallets) setPallets(e.pallets);
+    const pal = palletsAlDia(e.pallets, e.v);
+    if (pal) setPallets(pal);
     if (e.reglas) setReglas(e.reglas);
     setTarifas(e.tarifas ?? []);
     // Los escenarios viejos (v1) traían una copia del maestro adentro. Ya no se usa: el maestro
@@ -244,7 +245,8 @@ export default function Estiba3D({ usuario }) {
       setVehiculos(conDeFabrica(e.vehiculos));
       setVehId(e.vehId ?? "53CS");
       if (e.veh) setVeh(e.veh);
-      if (e.pallets) setPallets(e.pallets);
+      const pal = palletsAlDia(e.pallets, e.v);
+      if (pal) setPallets(pal);
       if (e.reglas) setReglas(e.reglas);
       if (e.maestro) setMaestro((m) => (m.productos.length ? m : { ...m, ...e.maestro, sucio: false, origen: { tipo: "nube" } }));
       setUltimoGuardado(new Date(r.actualizado));

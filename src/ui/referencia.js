@@ -27,6 +27,20 @@ export const PALLETS_INICIALES = [
   { nombre: "Universal 1200×1000", L: 1200, W: 1000, esp: 150, peso: 25, altMax: 1800, maxKg: 1500, ovL: 15, ovW: 15, autoAltura: true },
   { nombre: "Europeo 1200×800", L: 1200, W: 800, esp: 144, peso: 25, altMax: 1800, maxKg: 1500, ovL: 15, ovW: 15, autoAltura: true },
 ];
+// Versión del estado guardado (cuenta y escenarios). Sube cuando cambia un valor de fábrica que hay que
+// llevarle a lo que la gente ya tiene guardado.
+export const VERSION_ESTADO = 3;
+// Un catálogo de pallets guardado antes de la v1.6.5 trae sobresaliente 0 porque ese era el valor de
+// fábrica de entonces, no porque alguien lo haya elegido. Al abrirlo se le pone el estándar de 15 mm por
+// lado, solo donde está en 0: si alguien capturó otro número, ese manda. Así todos quedan con el mismo
+// pallet sin tener que tocarlo uno por uno. «Subir hasta el techo» no hace falta migrarla: los pallets
+// guardados no traen la bandera y el motor la lee como encendida.
+export const palletsAlDia = (pallets, v) => {
+  if (!pallets?.length) return null;
+  if ((v || 1) >= VERSION_ESTADO) return pallets;
+  return pallets.map((t) => ({ ...t, ovL: t.ovL > 0 ? t.ovL : 15, ovW: t.ovW > 0 ? t.ovW : 15 }));
+};
+
 export const REGLAS_APILAR = [
   ["ninguna", "Sin regla adicional"], ["valorMayorAbajo", "Prioridad mayor va abajo"], ["mismoValor", "Solo sobre la misma prioridad"],
   ["masPesadoAbajo", "La caja más pesada va abajo"], ["mismaHuella", "Solo sobre una caja de la misma huella"],

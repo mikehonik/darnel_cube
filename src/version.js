@@ -20,7 +20,7 @@ export const NOVEDADES = [
     cambios: [
       "Cuando el último vehículo se va llevando solo Bundles, ahora se prueba abriendo exactamente esos antes que cualquier otra cosa. Pasaba que un pedido salía con un segundo contenedor cargando UN solo Bundle mientras al primero le sobraban 11 m³: la búsqueda general reparte los Bundles abiertos entre todas las líneas y se evalúa en nivel rápido, así que ese caso se le escapaba.",
       "Orden de cargue con Bundles, como lo pidió el andén: primero los pallets, después la pared con las cajas de los Bundles que hubo que abrir, y al final los Bundles enteros, que son un movimiento cada uno. Cuántos Bundles se abren lo sigue decidiendo el espacio: se abren los menos posibles.",
-      "El catálogo de pallets nuevo viene con 15 mm de sobresaliente por lado: en planta la caja nunca queda exactamente al ras de la tarima.",
+      "15 mm de sobresaliente por lado en el pallet, y no solo para los nuevos: al abrir tu cuenta, los pallets que ya tenías guardados con 0 quedan en 15 (en planta la caja nunca queda exactamente al ras de la tarima). Si capturaste otro número, ese se respeta.",
       "Nueva opción por pallet, encendida por omisión: «Subir hasta el techo cuando el estándar no cabe». Si las cajas por pallet o los niveles que trae el maestro no caben en la altura máxima del catálogo, el pallet se arma contra el techo del vehículo en lugar de recortarse, y lo avisa. La idea es simple: si en planta lo arman más alto que esa altura, la que está mal es la altura del catálogo, no el estándar. Si el estándar sí cabe, se respeta el tope de siempre.",
     ],
   },
