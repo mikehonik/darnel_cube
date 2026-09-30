@@ -37,7 +37,7 @@ function SelUM({ etiqueta, valor, onChange }) {
   );
 }
 
-export function FilaItem({ it, color, abierto, pallets, modoPallet, verMedidas = true, verRuta = true, anchoSku = 200, onToggle, editar, quitar, difiere, enMaestro, aMaestro, deMaestro, mover, primera, ultima }) {
+export function FilaItem({ it, color, abierto, pallets, modoPallet, verMedidas = true, verDesc = false, verRuta = true, anchoSku = 200, onToggle, editar, quitar, difiere, enMaestro, aMaestro, deMaestro, mover, primera, ultima }) {
   const sinOri = !it.oris.some(Boolean);
   const u = useUnidades();
   const num = (k) => (e) => editar(k, Math.max(0, Number(e.target.value) || 0));
@@ -73,6 +73,11 @@ export function FilaItem({ it, color, abierto, pallets, modoPallet, verMedidas =
             </p>
           )}
         </td>
+        {verDesc && (
+          <td className="px-1" style={{ ...td, minWidth: 160, maxWidth: 260 }}>
+            <span className="block truncate text-xs" style={{ color: T.suave }} title={it.desc || ""}>{it.desc || "—"}</span>
+          </td>
+        )}
         {[...(verMedidas ? ["L", "W", "H", "peso"] : []), "qty"].map((k) => (
           <td key={k} className="px-0.5" style={{ ...td, width: 56, minWidth: 56 }}><input type="number" value={vista(k, it[k])} onFocus={seleccionar} onChange={numU(k)} className={celda} aria-label={{ L: "Largo", W: "Ancho", H: "Alto", peso: "Peso", qty: "Cantidad" }[k]} /></td>
         ))}
@@ -106,7 +111,7 @@ export function FilaItem({ it, color, abierto, pallets, modoPallet, verMedidas =
       </tr>
       {abierto && (
         <tr>
-          <td colSpan={(verMedidas ? 12 : 8) - (verRuta ? 0 : 3) + (mover ? 1 : 0)} className="p-0" style={{ background: "#F7F9FB", borderBottom: `1px solid ${T.linea}` }}>
+          <td colSpan={(verMedidas ? 12 : 8) - (verRuta ? 0 : 3) + (mover ? 1 : 0) + (verDesc ? 1 : 0)} className="p-0" style={{ background: "#F7F9FB", borderBottom: `1px solid ${T.linea}` }}>
             <div className="p-3" style={{ position: "sticky", left: 0, width: "var(--anchoPanel, 100%)", boxSizing: "border-box" }}>
             {enMaestro && (
               <div className="flex flex-wrap items-center gap-2 mb-3 text-xs rounded-md px-2 py-1.5" style={{ background: difiere ? "#E8EEF8" : "#F1F3F6", color: T.suave }}>

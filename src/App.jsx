@@ -73,6 +73,8 @@ export default function Estiba3D({ usuario }) {
   const [seccion, setSeccion] = useState("mercancia");
   useEffect(() => { if (panelIzq.current) panelIzq.current.scrollTop = 0; }, [seccion]);
   const [verMedidas, setVerMedidas] = useState(true);
+  // La descripción del maestro, opcional: ayuda a reconocer el SKU pero ensancha mucho la tabla
+  const [verDesc, setVerDesc] = useState(false);
   const [verRutaManual, setVerRutaManual] = useState(false);   // columnas Entrega/Pedido/Destino aunque estén vacías // columnas Largo/Ancho/Alto/Kg; se ocultan cuando el pedido viene del maestro
   const [vehId, setVehId] = useState("53CS");
   const [veh, setVeh] = useState({ ...VEHICULOS[3], maxVolPct: 0, maxSkus: 0, maxPiezas: 0 });
@@ -1260,14 +1262,15 @@ export default function Estiba3D({ usuario }) {
                   <span>Toca el nombre de una fila para ver sus reglas de estiba y paletizado.</span>
                   <span className="flex gap-3 flex-none">
                     {!rutaEnUso && <button onClick={() => setVerRutaManual(!verRutaManual)} aria-pressed={verRuta} className="underline">{verRuta ? "Ocultar entrega y pedido" : "Entrega y pedido"}</button>}
+                    <button onClick={() => setVerDesc(!verDesc)} aria-pressed={verDesc} className="underline">{verDesc ? "Ocultar descripción" : "Ver descripción"}</button>
                     <button onClick={() => setVerMedidas(!verMedidas)} aria-pressed={verMedidas} className="underline">{verMedidas ? "Ocultar medidas" : "Ver medidas"}</button>
                   </span>
                 </div>
                 <div className="overflow-auto tabla-ancho" style={{ maxHeight: "calc(100vh - 260px)", minHeight: 200 }}>
-                  <table className="w-full text-sm" style={{ minWidth: (verMedidas ? 420 : 180) + (verRuta ? 220 : 0) + (reglas.usarLista ? 60 : 0), borderCollapse: "separate", borderSpacing: 0 }}>
+                  <table className="w-full text-sm" style={{ minWidth: (verMedidas ? 420 : 180) + (verDesc ? 180 : 0) + (verRuta ? 220 : 0) + (reglas.usarLista ? 60 : 0), borderCollapse: "separate", borderSpacing: 0 }}>
                     <thead className="sticky top-0 z-10" style={{ background: "#F3F5F8" }}>
                       <tr className="text-left text-xs" style={{ color: T.suave }}>
-                        {["SKU", ...(verMedidas ? [`Largo ${u.l}`, `Ancho ${u.l}`, `Alto ${u.l}`, u.p] : []), "Cajas", u.v, ...(verRuta ? ["Entrega", "Pedido", "Destino"] : []), ...(reglas.usarLista ? ["Orden"] : []), "", ""].map((h, i) => (
+                        {["SKU", ...(verDesc ? ["Descripción"] : []), ...(verMedidas ? [`Largo ${u.l}`, `Ancho ${u.l}`, `Alto ${u.l}`, u.p] : []), "Cajas", u.v, ...(verRuta ? ["Entrega", "Pedido", "Destino"] : []), ...(reglas.usarLista ? ["Orden"] : []), "", ""].map((h, i) => (
                           <th key={(h || "x") + i} className="font-medium px-2 py-2 whitespace-nowrap" style={{ borderBottom: `1px solid ${T.linea}`, textAlign: h === u.v ? "center" : "left", position: "relative", ...(i === 0 ? { position: "sticky", left: 0, background: "#F3F5F8", zIndex: 2, width: anchoSku, minWidth: anchoSku } : {}) }}>
                             {h}
                             {i === 0 && (
@@ -1286,7 +1289,7 @@ export default function Estiba3D({ usuario }) {
                     </thead>
                     <tbody>
                       {items.map((it, i) => (
-                        <FilaItem key={it.id} it={it} color={colores[i]} abierto={abierto === it.id} pallets={pallets} modoPallet={modoPallet} verMedidas={verMedidas} verRuta={verRuta}
+                        <FilaItem key={it.id} it={it} color={colores[i]} abierto={abierto === it.id} pallets={pallets} modoPallet={modoPallet} verMedidas={verMedidas} verDesc={verDesc} verRuta={verRuta}
                           anchoSku={anchoSku}
                           difiere={!it.esBundle && difiereDeMaestro(it)} enMaestro={!it.esBundle && !!buscarSku(mapaMaestro, it.nombre)} aMaestro={() => guardarEnMaestro(it)} deMaestro={() => volverAlMaestro(it)}
                           mover={reglas.usarLista ? (paso) => moverItem(it.id, paso) : null} primera={i === 0} ultima={i === items.length - 1}

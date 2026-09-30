@@ -97,7 +97,21 @@ function llenarContenedor(tipos, veh, reglas, op) {
       // La misma pieza siempre puede apoyarse sobre otra igual (torre del mismo SKU), igual que las
       // demás reglas de apilamiento. La categoría solo restringe el apoyo entre SKUs distintos.
       if (reglas.apilamiento === "mismaCategoria" && s.k !== k && (!sit.categoria || !it.categoria || String(sit.categoria).trim().toLowerCase() !== String(it.categoria).trim().toLowerCase())) return null;
-      area += ox * oy; apoyos.push({ j: cs[i], a: ox * oy });
+      // Sobre un pallet con el último tendido incompleto, la caja solo se apoya donde hay techo de verdad:
+      // lo que quede sobre el hueco no cuenta, así que el soporte mínimo rechaza sola la caja que vuela.
+      var ap = ox * oy;
+      if (sit.esPallet && sit.techo) {
+        ap = 0;
+        for (var ti = 0; ti < sit.techo.length; ti++) {
+          var r = sit.techo[ti], rx, ry, rl, rw;
+          if (s.ori === 2) { rx = s.x + r.y; ry = s.y + (sit.techoL - r.x - r.l); rl = r.w; rw = r.l; }
+          else { rx = s.x + r.x; ry = s.y + r.y; rl = r.l; rw = r.w; }
+          var tx = Math.min(x + l, rx + rl) - Math.max(x, rx), ty = Math.min(y + w, ry + rw) - Math.max(y, ry);
+          if (tx > 0 && ty > 0) ap += tx * ty;
+        }
+        if (ap <= 0) continue;
+      }
+      area += ap; apoyos.push({ j: cs[i], a: ap });
       if (s.k === k && s.nivel + 1 > nivel) nivel = s.nivel + 1;
     }
     return { frac: area / (l * w), apoyos: apoyos, nivel: nivel, area: area };
@@ -591,6 +605,10 @@ function definirPallet(cajas, pal, info) {
     sobraL: Math.max(0, ovL - minX, maxX - ovL - pal.L), sobraW: Math.max(0, ovW - minY, maxY - ovW - pal.W),
     capas: info.capas || 0, porCapa: info.porCapa || 0,
     techoPlano: areaTop >= 0.95 * areaBase && areaTop >= 0.6 * pal.L * pal.W, valor: valor,
+    // Perfil del techo: los rectángulos que de verdad quedan a la altura de arriba, en las mismas
+    // coordenadas que `cajas`. Con esto una caja puede apoyarse sobre la parte del pallet que sí está
+    // completa, en lugar de prohibir todo el nivel de arriba porque el último tendido quedó incompleto.
+    techo: cajas.filter(function (k) { return Math.abs(k.z + k.h - alto) < 1; }).map(function (k) { return { x: k.x - minX, y: k.y - minY, l: k.l, w: k.w }; }),
     cajas: cajas.map(function (k) { return { x: k.x - minX, y: k.y - minY, z: k.z, l: k.l, w: k.w, h: k.h, idx: k.idx, ori: k.ori }; })
   };
 }
@@ -750,8 +768,17 @@ function optimizar(items, veh, reglas, alProgreso, pallets) {
   // Con Bundles en la carga, el andén pide un orden fijo dentro de cada entrega: primero los pallets, luego
   // los Bundles completos y al final lo suelto (que así rellena los huecos que dejaron los dos anteriores).
   // Es una subfase de la zona, no una zona nueva: el suelto puede meterse entre los pallets, no detrás de ellos.
-  var hayBundle = items.some(function (x) { return x.esBundle && x.qty > 0; });
-  var subDe = function (it) { if (!hayBundle || reglas.ordenCargue === false) return 0; return it.esPallet ? 0 : it.esBundle ? 1 : 2; };
+  // Orden de cargue dentro de cada entrega: primero los pallets, luego los Bundles completos y al final
+  // lo suelto. No es solo por el andén: si lo suelto entra primero se lleva el contenedor completo (empaca
+  // mejor que un pallet) y los pallets terminan viajando solos, a media altura y sin nada encima. Cargando
+  // los pallets primero, lo suelto rellena el piso que sobra Y el hueco que queda arriba de cada pallet.
+  // Ojo: en `items` la paletización viene como `paletizar` (el pit con esPallet se arma más abajo).
+  var hayPallet = items.some(function (x) { return x.paletizar && x.qty > 0 && !veh.esPallet; });
+  var haySueltas = items.some(function (x) { return !x.paletizar && x.qty > 0; });
+  var subDe = function (it) {
+    if (reglas.ordenCargue === false || !hayPallet || !haySueltas) return 0;
+    return it.esPallet ? 0 : it.esBundle ? 1 : 2;
+  };
   var faseDe = function (it) {
     // Relleno opcional (completar espacios vacíos, ver archivos/relleno más abajo): siempre va al
     // final, después de toda la demanda real, sin importar entrega ni pedido. Así nunca le quita
@@ -768,7 +795,11 @@ function optimizar(items, veh, reglas, alProgreso, pallets) {
   var agregarPallet = function (def, n, it, idx, info) {
     var d = defs.length; defs.push(def);
     var pit = { nombre: def.nombre, L: def.L, W: def.W, H: def.alto, peso: def.peso, oris: [true, true, false, false, false, false], volteoPiso: false, maxNiveles: 0,
-      valorApilar: def.valor, pesoMaxEncima: 0, piso: "libre", soportaEncima: true, esPallet: true, aceptaCajas: info.aceptaCajas && def.techoPlano,
+      valorApilar: def.valor, pesoMaxEncima: 0, piso: "libre", soportaEncima: true, esPallet: true,
+      // Cajas encima: basta con que haya techo real bajo la caja (ver apoyoDe). Otro PALLET encima sí
+      // exige el techo plano completo: una tarima no se apoya en media superficie.
+      aceptaCajas: info.aceptaCajas && (def.techo && def.techo.length ? true : def.techoPlano),
+      techo: def.techo && def.techo.length ? def.techo : null, techoL: def.L,
       aceptaPallet: info.aceptaPallet && def.techoPlano, grupo: it.grupo, orden: it.orden, piezas: def.piezas };
     if (!cabeEn(pit, veh) || (reglas.limitarPeso && pit.peso > cargaMax)) { avisos.push("El pallet de " + def.nombre + " no cabe en el vehículo."); noCaben.push(def.nombre); return; }
     if (info.aceptaPallet) avisoApilarPallet(def, it);

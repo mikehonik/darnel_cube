@@ -238,12 +238,24 @@ export function Visor({ veh, base, cajas, pallets, paso, colores, formas, resalt
       medir(z1 - piso, [X1, P, Y1], [X1, Z1, Y1], 2, AZUL, [0.2, 0, 0.12]);
 
       // --- Sobre un pallet: cuánto sobresale la carga de la tarima, lado por lado ---
+      // El sobresaliente son milímetros sobre una tarima de más de un metro: dibujarlo a escala da una
+      // rayita de 1 mm en pantalla, invisible. Así que se marca el tramo, y de ahí sale una línea guía
+      // hacia AFUERA con el número, como en un plano acotado. Igual que el 6.36 / 6.45 de CubeMaster.
       if (base) {
-        const so = [[base.x - x0, [X0, P, Y0], [s(base.x), P, Y0], 0, [0, -0.2, 0]],
-                    [x1 - (base.x + base.l), [s(base.x + base.l), P, Y0], [X1, P, Y0], 0, [0, -0.2, 0]],
-                    [base.y - y0, [X0, P, Y0], [X0, P, s(base.y)], 1, [-0.2, -0.1, 0]],
-                    [y1 - (base.y + base.w), [X0, P, s(base.y + base.w)], [X0, P, Y1], 1, [-0.2, -0.1, 0]]];
-        so.forEach(([mm, a, b, eje, d]) => medir(mm, a, b, eje, ROJO, d));
+        const guia = (a, b, fuera) => {
+          const m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2];
+          const e = [m[0] + fuera[0] * k, m[1] + fuera[1] * k, m[2] + fuera[2] * k];
+          linea(a, b, ROJO);
+          // Patitas verticales en las puntas del tramo, para que se vea dónde empieza y dónde acaba
+          [a, b].forEach((q) => linea([q[0], q[1] - 0.05 * k, q[2]], [q[0], q[1] + 0.12 * k, q[2]], ROJO));
+          linea(m, e, ROJO);
+          return e;
+        };
+        const so = [[base.x - x0, [X0, P, Y0], [s(base.x), P, Y0], [-0.55, -0.35, -0.4]],
+                    [x1 - (base.x + base.l), [s(base.x + base.l), P, Y1], [X1, P, Y1], [0.55, -0.35, 0.4]],
+                    [base.y - y0, [X0, P, Y0], [X0, P, s(base.y)], [-0.55, -0.35, -0.4]],
+                    [y1 - (base.y + base.w), [X1, P, s(base.y + base.w)], [X1, P, Y1], [0.55, -0.35, 0.4]]];
+        so.forEach(([mm, a, b, fuera]) => { if (mm > 0.5) etiqueta(mm, guia(a, b, fuera), ROJO); });
       } else {
         // --- En un vehículo: lo que quedó libre al frente de la carga ---
         const L = s(veh.L), W = s(veh.W), H = s(veh.H);

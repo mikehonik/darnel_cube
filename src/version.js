@@ -16,12 +16,21 @@ export const VERSION_COMPLETA = `v${VERSION}${BUILD ? ` · ${BUILD}` : ""}${FECH
 // escrito para quien usa la herramienta (no para programadores).
 export const NOVEDADES = [
   {
+    version: "1.6.4", fecha: "30/09/2026",
+    cambios: [
+      "Orden de cargue: en cualquier carga que mezcle pallets y cajas sueltas, ahora entran primero los pallets y después lo suelto. Antes lo suelto ganaba el lugar (empaca mejor que un pallet), se llevaba los primeros vehículos completos y los pallets terminaban viajando solos, a media altura y sin nada encima. Medido en un pedido de 3 SKUs paletizados y 2 sueltos: pasó de 11 vehículos a 10 y subieron 302 cajas al techo de los pallets. Se apaga con la regla «Orden de cargue».",
+      "Un pallet cuyo último nivel queda incompleto ya puede recibir cajas encima, sobre la parte que sí está completa. Antes se prohibía todo el nivel de arriba y ese espacio se perdía entero. Sigue mandando el soporte mínimo: lo que quede volando sobre el hueco no se coloca. Para poner otro PALLET encima se sigue exigiendo el techo plano completo.",
+      "En el Pedido, junto a «Ver medidas», un nuevo «Ver descripción» muestra la descripción del maestro en la tabla.",
+      "La cota del sobresaliente sale con una línea guía hacia afuera del pallet: son milímetros sobre una tarima de más de un metro, y dibujada a escala no se apreciaba.",
+    ],
+  },
+  {
     version: "1.6.3", fecha: "30/09/2026",
     cambios: [
       "Corrección importante: al final del acomodo el motor podía acostar un pallet armado de costado para meterlo en el hueco de arriba. El 3D lo seguía dibujando de pie, así que se veía carga saliéndose del techo del contenedor, y en el instructivo salían pallets del mismo SKU unos a lo largo y otros a lo ancho. Ahora el pallet siempre va de pie.",
       "Al agregar un pallet en Paletizado, la pantalla baja hasta él y deja el cursor en su nombre. Antes se agregaba al final de la lista, fuera de la vista, y parecía que el botón no había hecho nada.",
       "Los campos numéricos se seleccionan al entrar, así el primer número que escribes reemplaza lo que había. Antes se pegaba al 0 y quedaban valores como 070.",
-      "«Medidas» ahora acota también lo que mide la carga, al estilo de CubeMaster: en azul el largo, el ancho y el alto total de lo cargado y, sobre un pallet, cuánto sobresale de la tarima por cada lado; en rojo sigue lo que quedó libre al frente. Las cotas van chicas a propósito, como en un plano, y se ajustan solas al tamaño de lo que estás viendo: se leen igual en un contenedor de 12 m que en un pallet de 1.2 m.",
+      "«Medidas» ahora acota también lo que mide la carga, al estilo de CubeMaster: en azul el largo, el ancho y el alto total de lo cargado y, sobre un pallet, cuánto sobresale de la tarima por cada lado (con una línea guía hacia afuera, porque son milímetros sobre una tarima de más de un metro y a escala no se verían); en rojo sigue lo que quedó libre al frente. Las cotas van chicas a propósito, como en un plano, y se ajustan solas al tamaño de lo que estás viendo: se leen igual en un contenedor de 12 m que en un pallet de 1.2 m.",
       "Cuando el maestro cargado no trae ningún Bundle configurado, el aviso lo dice así en lugar de señalar SKU por SKU: casi siempre es que falta la hoja «Bundles» o que el maestro no se ha guardado.",
     ],
   },
