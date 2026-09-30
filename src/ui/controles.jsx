@@ -10,6 +10,10 @@ export const estInp = { borderColor: T.linea, background: T.sup, color: T.tinta 
 // tipo "largo" o "peso": el valor llega y se devuelve en mm o kg, pero se muestra y se captura en la
 // unidad del usuario (pulgadas o libras si trabaja en americano), con la unidad al final de la etiqueta.
 // tipo "distancia" es igual que "largo" pero admite negativos (por ejemplo, la posición de un eje).
+// Un campo numérico que ya trae un valor (casi siempre 0) se selecciona al enfocarlo, para que el
+// primer número que se escriba lo reemplace. Sin esto, escribir 70 sobre el 0 dejaba 070.
+export const seleccionar = (e) => e.target.select();
+
 export function Num({ etiqueta, valor, onChange, ayuda, tipo }) {
   const u = useUnidades();
   const aVista = tipo === "peso" ? u.P : tipo ? u.L : (v) => v;
@@ -19,7 +23,8 @@ export function Num({ etiqueta, valor, onChange, ayuda, tipo }) {
   return (
     <label className="block text-xs" style={{ color: T.suave }} title={ayuda}>
       <span className="block mb-1">{etiqueta}{unidad ? ` ${unidad}` : ""}</span>
-      <input type="number" value={aVista(valor)} onChange={(e) => onChange(Math.max(minimo, aBase(Number(e.target.value) || 0)))} className={inp} style={estInp} />
+      {/* Al entrar se selecciona lo que hay: escribir reemplaza el valor en vez de pegarse al 0 y dejar "070" */}
+      <input type="number" value={aVista(valor)} onFocus={seleccionar} onChange={(e) => onChange(Math.max(minimo, aBase(Number(e.target.value) || 0)))} className={inp} style={estInp} />
     </label>
   );
 }

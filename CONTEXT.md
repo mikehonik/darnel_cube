@@ -69,6 +69,15 @@ Términos del dominio tal como se usan en el código. Un término, un significad
 - **Optimizar el pedido** (`motor/optimizarPedido.js`, `ui/secciones/OptimizarPedido.jsx`): tarjeta abajo a la izquierda del 3D. «Llenar con pedido sugerido» agranda el pedido en la misma proporción (búsqueda en nivel 1) y llena los huecos con relleno (`esRelleno`), todo comprobado en nivel 4. «Sugerir disminución» primero reacomoda en nivel 4 (con Bundles) y, si no alcanza, resta lo que quedó en el último vehículo hasta 4 veces. Vista previa con candado por línea, «Aplicar» deja el resultado ya calculado, «Deshacer» regresa. Reemplazan «¿Qué más cabe?» e «Intentar consolidar».
 - **Herramientas de capacidad**: el cálculo completo corre en nivel ≤ 2 (antes tardaba hasta 40 s) y en pallets completos se alterna «Vehículo / Pallet armado» (`vistaHerr.palDef`).
 
+## v1.6.3: el pallet armado no se acuesta
+
+- **Qué pasaba** (`motor/motor.js`, relleno final): «Rotar al final» le daba las seis orientaciones a TODOS los tipos, pallets incluidos, así que para llenar el hueco de arriba el motor acostaba un pallet de costado. El Visor solo sabe dibujar el pallet de pie (con giro de 90° sobre el eje vertical), así que lo pintaba parado y se veía carga fuera del techo; el instructivo, además, reportaba su `z` con la altura nominal del pallet. Reproducido en `motor/palletDePie.test.js`.
+- **Arreglo**: `orisRelleno` respeta `t.oris` cuando `it.esPallet`. El relleno sigue girando cajas, que es lo que de verdad hace el estibador.
+- Explica dos reportes de Santiago a la vez: «hay producto fuera del contenedor» y «está cargando pallets del mismo SKU unos a lo largo y otros a lo ancho».
+- **Cotas** (`visor/Visor.jsx`): además del espacio libre (rojo) se acota en azul lo que MIDE la carga — largo, ancho y alto total — y, en la vista de pallet (`base`), cuánto sobresale de la tarima por cada lado. Es lo que CubeMaster pone en su hoja de medidas, que es con lo que comparan en planta. Todo (letra, patitas, separación) se escala con `k = s(max(veh.L, veh.W, veh.H)) / 12`: la misma cota tiene que leerse igual en un contenedor de 12 m que en un pallet de 1.2 m.
+- **Aviso DU sin Bundle**: el falso positivo que reportaron NO era del lector (se reprodujo con su maestro real: `DU4061199V` sí queda en Bundle y solo `DU40B101V`, que no está en la hoja Bundles, dispara el aviso). Era el maestro guardado en la cuenta, sin bundles. Ahora, si NINGÚN producto del maestro tiene Bundle, el aviso lo dice así en vez de señalar SKU por SKU.
+- **UI**: al agregar un pallet en Paletizado se hace scroll hasta él y se enfoca su nombre (`SeccionPaletizado`); los campos numéricos se seleccionan al enfocarlos (`controles.jsx: seleccionar`, usado también en `filas.jsx`) para que escribir no deje «070».
+
 ## v1.6.2: holgura por bloque, cotas en el 3D y el costo de simular
 
 ### La holgura se paga por bloque, no por caja

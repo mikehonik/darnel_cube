@@ -308,9 +308,12 @@ function llenarContenedor(tipos, veh, reglas, op) {
   // cualquier esquina del hueco. Solo agrega carga; nunca mueve lo ya colocado.
   // "Rotar al final": durante la carga normal los bultos van de pie, pero al llegar a las esquinas,
   // al techo y al fondo la gente los gira en cualquier sentido para aprovechar lo que queda.
+  // Un PALLET no: nadie acuesta un pallet armado. Sin esta excepción el relleno lo tumbaba de costado
+  // para meterlo en el hueco de arriba, el 3D lo seguía dibujando de pie y se veía carga fuera del
+  // contenedor (además de un pallet acostado, que en el andén no existe).
   var orisRelleno = {};
   tipos.forEach(function (t) {
-    orisRelleno[t.k] = reglas.rotarAlFinal
+    orisRelleno[t.k] = reglas.rotarAlFinal && !t.it.esPallet
       ? orientacionesDe({ oris: [true, true, true, true, true, true], L: t.it.L, W: t.it.W, H: t.it.H })
       : t.oris;
   });

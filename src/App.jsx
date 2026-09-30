@@ -590,6 +590,9 @@ export default function Estiba3D({ usuario }) {
       const bundlesFormados = nuevos.filter((it) => it.enBundle).length;
       // Un SKU de manufactura propia (DU) que no tiene Bundle capturado se cargaría suelto sin que nadie lo note
       const duSinBundle = nuevos.filter((it) => esDeManufactura(it.nombre) && !tieneBundle(it)).map((it) => it.nombre);
+      // Si el maestro que está cargado no tiene NINGÚN Bundle, el problema no es el SKU: es que falta la hoja
+      // Bundles o no se ha guardado el maestro. Decir «este SKU no tiene Bundle» ahí manda a buscar donde no es.
+      const maestroSinBundles = duSinBundle.length > 0 && !maestro.productos.some((p) => tieneBundle(p));
       setItems(nuevos);
       setProyecto(datos.nombre || f.name.replace(/\.[^.]+$/, ""));
       const v = datos.vehiculo && vehiculos.find((x) => clave(x.nombre) === clave(datos.vehiculo) || clave(x.id) === clave(datos.vehiculo));
@@ -599,7 +602,8 @@ export default function Estiba3D({ usuario }) {
       setError("");
       setAviso(`Pedido cargado: ${nuevos.length} de ${filas.length} líneas, ${nuevos.reduce((a, x) => a + x.qty, 0).toLocaleString("es-MX")} cajas${v ? `, vehículo ${v.nombre}` : ""}.`
         + (bundlesFormados ? ` ${bundlesFormados} ${bundlesFormados === 1 ? "línea va" : "líneas van"} en Bundle.` : "")
-        + (duSinBundle.length ? " " + (duSinBundle.length === 1
+        + (maestroSinBundles ? " " + tr("Ojo: el maestro que tienes cargado no trae ningún Bundle configurado, así que todo se carga suelto. Revisa que tu maestro tenga la hoja «Bundles» y que lo hayas guardado.")
+          : duSinBundle.length ? " " + (duSinBundle.length === 1
           ? tr("Ojo: el SKU {0} empieza con DU y no tiene Bundle en el maestro, así que se carga suelto.", { 0: duSinBundle[0] })
           : tr("Ojo: {0} SKUs empiezan con DU y no tienen Bundle en el maestro, así que se cargan sueltos: {1}.", { 0: duSinBundle.length, 1: duSinBundle.slice(0, 6).join(", ") + (duSinBundle.length > 6 ? "…" : "") })) : "")
         + (revisar ? ` ${revisar} ${revisar === 1 ? "línea necesita" : "líneas necesitan"} revisión: abajo está el detalle.` : " Todas las cantidades cuadraron exactas."));

@@ -8,7 +8,7 @@ import { T } from "./tema.js";
 import { UM_COMUNES } from "../archivos/conversiones.js";
 import { RESTOS } from "./referencia.js";
 import { tieneBundle, cajasPorBundle } from "../archivos/bundle.js";
-import { Num, Sel, Interruptor } from "./controles.jsx";
+import { Num, Sel, Interruptor, seleccionar } from "./controles.jsx";
 import { useUnidades } from "./unidadesContexto.jsx";
 
 export function FormPallet({ p, editar }) {
@@ -74,7 +74,7 @@ export function FilaItem({ it, color, abierto, pallets, modoPallet, verMedidas =
           )}
         </td>
         {[...(verMedidas ? ["L", "W", "H", "peso"] : []), "qty"].map((k) => (
-          <td key={k} className="px-0.5" style={{ ...td, width: 56, minWidth: 56 }}><input type="number" value={vista(k, it[k])} onChange={numU(k)} className={celda} aria-label={{ L: "Largo", W: "Ancho", H: "Alto", peso: "Peso", qty: "Cantidad" }[k]} /></td>
+          <td key={k} className="px-0.5" style={{ ...td, width: 56, minWidth: 56 }}><input type="number" value={vista(k, it[k])} onFocus={seleccionar} onChange={numU(k)} className={celda} aria-label={{ L: "Largo", W: "Ancho", H: "Alto", peso: "Peso", qty: "Cantidad" }[k]} /></td>
         ))}
         <td className="px-1 text-center whitespace-nowrap" style={{ ...td, width: 54, minWidth: 54, color: T.suave }}
           title={it.umPedido ? `${it.qtyPedido.toLocaleString("es-MX")} ${it.umPedido} = ${it.qty.toLocaleString("es-MX")} cajas` : "Volumen de esta línea"}>
@@ -83,7 +83,7 @@ export function FilaItem({ it, color, abierto, pallets, modoPallet, verMedidas =
         </td>
         {verRuta && <>
         <td className="px-0.5" style={{ ...td, width: 52, minWidth: 52 }} title="Parada de la ruta: la 1 queda junto a las puertas. Vacío = se acomoda donde convenga, al fondo">
-          <input type="number" value={it.orden || ""} placeholder="—" onChange={num("orden")} className={celda} style={{ fontWeight: it.orden ? 600 : 400 }} />
+          <input type="number" value={it.orden || ""} placeholder="—" onFocus={seleccionar} onChange={num("orden")} className={celda} style={{ fontWeight: it.orden ? 600 : 400 }} />
         </td>
         <td className="px-0.5" style={{ ...td, minWidth: 78 }}><input value={it.grupo} onChange={(e) => editar("grupo", e.target.value)} className={celda} placeholder="—" title="Número de pedido. Con «Mantener juntos los pedidos» activa, sus SKUs se cargan seguidos" /></td>
         <td className="px-0.5" style={{ ...td, minWidth: 92 }}><input value={it.destino || ""} onChange={(e) => editar("destino", e.target.value)} className={celda} placeholder="—" title="Ciudad o punto de entrega, para el resumen de entregas y el flete" /></td>
@@ -340,7 +340,7 @@ export function FilaMaestro({ p, pallets, abierto, onToggle, editar, quitar }) {
         </td>
         <td className="px-0.5" style={td}><input value={p.desc} onChange={(e) => editar("desc", e.target.value)} className={celda} style={{ minWidth: 110 }} placeholder="—" /></td>
         {["L", "W", "H", "peso"].map((k) => (
-          <td key={k} className="px-0.5" style={{ ...td, width: 60 }}><input type="number" value={k === "peso" ? u.P(p[k]) : u.L(p[k])} onChange={numU(k)} className={celda} /></td>
+          <td key={k} className="px-0.5" style={{ ...td, width: 60 }}><input type="number" value={k === "peso" ? u.P(p[k]) : u.L(p[k])} onFocus={seleccionar} onChange={numU(k)} className={celda} /></td>
         ))}
         <td className="px-1 text-xs whitespace-nowrap" style={{ ...td, color: p.paletizar ? T.aviso : T.suave }}>{p.paletizar === "mixto" ? "Mixto" : p.paletizar ? `×${p.porPallet || "máx"}` : "—"}</td>
         <td className="px-1 whitespace-nowrap" style={td}>
