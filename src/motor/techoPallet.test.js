@@ -90,3 +90,26 @@ describe("orden de cargue: primero los pallets, luego lo suelto", () => {
     expect(encima(con)).toBeGreaterThan(10 * Math.max(1, encima(sin)));
   }, 300000);
 });
+
+// Orden que pidió el andén cuando hay Bundles: pallets, después la pared con las cajas de los Bundles
+// que hubo que abrir, y al final los Bundles enteros (un movimiento cada uno, así se cierra más rápido).
+describe("orden de cargue con Bundles abiertos", () => {
+  const bdl = (d) => ({ ...base, oris: [true, true, false, false, false, false], ...d });
+  it("la pared de cajas abiertas va antes que los Bundles enteros", async () => {
+    const items = [
+      bdl({ id: 1, nombre: "PAL", L: 500, W: 400, H: 350, peso: 9, qty: 460, paletizar: true, porPallet: 23 }),
+      // el motor recibe los Bundles ya expandidos: enteros por un lado, cajas abiertas por el otro
+      bdl({ id: 2, nombre: "BDL", L: 1100, W: 950, H: 1900, peso: 90, qty: 8, esBundle: true, cantidadPorBundle: 30, lineaId: 2 }),
+      bdl({ id: "2-suelto", nombre: "BDL", L: 300, W: 250, H: 220, peso: 3, qty: 120, deBundle: true, abiertos: 4, lineaId: 2 }),
+    ];
+    const c = await correr({ items, vehiculo, tarimas, reglas: { ...reglas, nivel: 1 } }, { ejecutor });
+    const v = c.resultado.contenedores[0];
+    // El orden que importa es el de CARGUE (el orden en que el motor las coloca), no dónde quedan: una
+    // subfase posterior puede meterse entre lo anterior, que es justo lo que hace que rellene huecos.
+    const ult = (f) => v.cajas.reduce((m, b, i) => (f(b) ? i : m), -1);
+    const pri = (f) => v.cajas.findIndex(f);
+    const esAbierta = (b) => b.pal < 0 && items[b.idx].deBundle, esEntero = (b) => b.pal < 0 && items[b.idx].esBundle;
+    expect(ult((b) => b.pal >= 0)).toBeLessThan(pri(esAbierta));
+    expect(ult(esAbierta)).toBeLessThan(pri(esEntero));
+  }, 300000);
+});

@@ -22,6 +22,11 @@ export function FormPallet({ p, editar }) {
       <Num etiqueta="Carga máx." tipo="peso" valor={p.maxKg} onChange={(v) => editar("maxKg", v)} ayuda="0 = sin límite" />
       <Num etiqueta="Sobresale a lo largo" tipo="largo" valor={p.ovL ?? 0} onChange={(v) => editar("ovL", v)} ayuda="Cuánto pueden salir las cajas por cada extremo del largo del pallet" />
       <Num etiqueta="Sobresale a lo ancho" tipo="largo" valor={p.ovW ?? 0} onChange={(v) => editar("ovW", v)} ayuda="Cuánto pueden salir las cajas por cada costado del ancho del pallet" />
+      <div className="col-span-4">
+        <Interruptor etiqueta="Subir hasta el techo cuando el estándar no cabe"
+          detalle="Si las cajas por pallet o los niveles que trae el maestro no caben en la altura máxima de arriba, el pallet se arma contra el techo del vehículo en lugar de recortarse. La idea: si en planta lo arman más alto que esta altura, la que está mal es la altura del catálogo, no el estándar. Si el estándar sí cabe en la altura máxima, se respeta el tope. Un pallet armado así no recibe otro encima."
+          valor={p.autoAltura !== false} onChange={(v) => editar("autoAltura", v)} />
+      </div>
     </div>
   );
 }

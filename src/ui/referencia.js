@@ -18,10 +18,14 @@ export const VEHICULOS = [
 ];
 // Carga máxima de 1,500 kg en los tres: con 1,200 kg el peso recortaba pallets que en planta sí se arman
 // completos (un SKU de 22 kg se quedaba en 54 cajas en lugar de 60). Cada quien la ajusta en Paletizado.
+// Sobresaliente de 15 mm por lado: en planta la caja nunca queda exactamente al ras de la tarima.
+// autoAltura: si el estándar del maestro (cajas por pallet o niveles) no cabe en la altura del catálogo,
+// se arma contra el techo del vehículo. La lógica: si en planta arman más alto que la altura de catálogo,
+// la que está mal es la altura del catálogo, no el estándar. Si el estándar sí cabe, se respeta el tope.
 export const PALLETS_INICIALES = [
-  { nombre: "Americano 1219×1016", L: 1219, W: 1016, esp: 150, peso: 25, altMax: 1800, maxKg: 1500, ovL: 0, ovW: 0 },
-  { nombre: "Universal 1200×1000", L: 1200, W: 1000, esp: 150, peso: 25, altMax: 1800, maxKg: 1500, ovL: 0, ovW: 0 },
-  { nombre: "Europeo 1200×800", L: 1200, W: 800, esp: 144, peso: 25, altMax: 1800, maxKg: 1500, ovL: 0, ovW: 0 },
+  { nombre: "Americano 1219×1016", L: 1219, W: 1016, esp: 150, peso: 25, altMax: 1800, maxKg: 1500, ovL: 15, ovW: 15, autoAltura: true },
+  { nombre: "Universal 1200×1000", L: 1200, W: 1000, esp: 150, peso: 25, altMax: 1800, maxKg: 1500, ovL: 15, ovW: 15, autoAltura: true },
+  { nombre: "Europeo 1200×800", L: 1200, W: 800, esp: 144, peso: 25, altMax: 1800, maxKg: 1500, ovL: 15, ovW: 15, autoAltura: true },
 ];
 export const REGLAS_APILAR = [
   ["ninguna", "Sin regla adicional"], ["valorMayorAbajo", "Prioridad mayor va abajo"], ["mismoValor", "Solo sobre la misma prioridad"],

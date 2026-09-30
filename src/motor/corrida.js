@@ -195,6 +195,28 @@ export async function correrConBundles(carga, { ejecutor, signal, onProgreso, on
     memo.set(k, r); return r;
   };
 
+  // ----- Lo primero: los Bundles que quedaron solos en el último vehículo -----
+  // El caso más común y más caro: el último vehículo va casi vacío y lo que lleva son Bundles. Abrir
+  // justo esos (no un reparto proporcional entre todas las líneas) es lo que el andén haría, y es una
+  // sola corrida. Se prueba antes que la búsqueda general porque es la más barata y la que más pega.
+  const ult0 = base.resultado.contenedores[n0 - 1], itemsBase = base.carga.items;
+  const bundlesDelUltimo = {};
+  let soloBundles = ult0.cajas.length > 0;
+  ult0.cajas.forEach((c) => {
+    const it = itemsBase[c.idx];
+    if (it && it.esBundle) bundlesDelUltimo[it.lineaId] = (bundlesDelUltimo[it.lineaId] || 0) + 1;
+    else soloBundles = false;
+  });
+  if (soloBundles && Object.keys(bundlesDelUltimo).length) {
+    onFase?.("Probando abrir los Bundles que quedaron solos en el último vehículo…");
+    const c = await con(bundlesDelUltimo);
+    if (usados(c) < n0) {
+      const k = Object.values(bundlesDelUltimo).reduce((a, b) => a + b, 0), n = c.resultado.contenedores.length;
+      c.resultado.avisos = [...(c.resultado.avisos || []), `El último vehículo llevaba solo ${k} ${k === 1 ? "Bundle" : "Bundles"} (${detalle(bundlesDelUltimo)}). Abriéndolos la carga entra en ${n} ${n === 1 ? "vehículo" : "vehículos"}: sus cajas van sueltas en los huecos.`];
+      return conInfo(c, bundlesDelUltimo, n0 - n);
+    }
+  }
+
   // ----- Usar un vehículo menos -----
   onFase?.("Probando abrir Bundles para usar menos vehículos…");
   const nRef = carga.reglas.nivel === 1 ? n0 : (await evaluar(0)).n;

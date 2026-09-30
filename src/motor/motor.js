@@ -765,19 +765,24 @@ function optimizar(items, veh, reglas, alProgreso, pallets) {
   var cargaMax = veh.maxKg > 0 ? veh.maxKg - (veh.tara || 0) : Infinity;
   var grupoDe = function (g) { g = g || ""; if (gruposOrden[g] === undefined) gruposOrden[g] = ng++; return gruposOrden[g]; };
   var MAXP = 99999999;
-  // Con Bundles en la carga, el andén pide un orden fijo dentro de cada entrega: primero los pallets, luego
-  // los Bundles completos y al final lo suelto (que así rellena los huecos que dejaron los dos anteriores).
-  // Es una subfase de la zona, no una zona nueva: el suelto puede meterse entre los pallets, no detrás de ellos.
-  // Orden de cargue dentro de cada entrega: primero los pallets, luego los Bundles completos y al final
-  // lo suelto. No es solo por el andén: si lo suelto entra primero se lleva el contenedor completo (empaca
-  // mejor que un pallet) y los pallets terminan viajando solos, a media altura y sin nada encima. Cargando
-  // los pallets primero, lo suelto rellena el piso que sobra Y el hueco que queda arriba de cada pallet.
+  // Orden de cargue dentro de cada entrega. Es una subfase de la zona, no una zona nueva: lo de después
+  // puede meterse entre lo de antes, no queda detrás.
+  //   0 pallets · 1 cajas de los Bundles que hubo que abrir · 2 Bundles enteros · 3 el resto del suelto
+  // Dos motivos distintos. Espacio: si lo suelto entra primero se lleva el vehículo completo (empaca mejor
+  // que un pallet) y los pallets terminan viajando solos, a media altura y sin nada encima; con los pallets
+  // primero, lo suelto rellena el piso que sobra Y el hueco de arriba de cada pallet. Tiempo de cargue: el
+  // andén pide armar la pared de las cajas abiertas justo después de los pallets, y dejar los Bundles
+  // enteros para el final, que son un solo movimiento cada uno.
   // Ojo: en `items` la paletización viene como `paletizar` (el pit con esPallet se arma más abajo).
   var hayPallet = items.some(function (x) { return x.paletizar && x.qty > 0 && !veh.esPallet; });
+  var hayBundle = items.some(function (x) { return x.esBundle && x.qty > 0; });
   var haySueltas = items.some(function (x) { return !x.paletizar && x.qty > 0; });
   var subDe = function (it) {
-    if (reglas.ordenCargue === false || !hayPallet || !haySueltas) return 0;
-    return it.esPallet ? 0 : it.esBundle ? 1 : 2;
+    if (reglas.ordenCargue === false || (!hayPallet && !hayBundle) || !haySueltas) return 0;
+    if (it.esPallet) return 0;
+    if (it.deBundle && it.abiertos > 0) return 1;
+    if (it.esBundle) return 2;
+    return 3;
   };
   var faseDe = function (it) {
     // Relleno opcional (completar espacios vacíos, ver archivos/relleno más abajo): siempre va al
@@ -843,7 +848,26 @@ function optimizar(items, veh, reglas, alProgreso, pallets) {
     // catálogo. Con producto liviano el techo es el límite real; el peso máximo del pallet y la resistencia
     // de la caja de abajo siguen aplicando igual.
     var pal = it.paletizar && !veh.esPallet ? pallets[it.palletId || 0] : null;
-    if (pal && it.altLibre && veh.H > pal.altMax) pal = Object.assign({}, pal, { altMax: veh.H, _altLibre: true });
+    if (pal && veh.H > pal.altMax) {
+      var sinTope = function () { return Object.assign({}, pal, { altMax: veh.H, _altLibre: true }); };
+      if (it.altLibre) pal = sinTope();
+      else if (pal.autoAltura !== false && (it.porPallet > 0 || it.capasPallet > 0)) {
+        // El maestro dice cuántas cajas (o niveles) lleva el pallet en planta. Si eso no cabe en la altura
+        // del catálogo pero sí bajo el techo del vehículo, la que está mal es la altura del catálogo: se
+        // arma contra el techo en lugar de recortar el estándar. Si el estándar sí cabe, manda el catálogo.
+        var obj0 = it.porPallet > 0 ? Math.min(it.porPallet, it.qty) : it.qty;
+        var conTope = armarPalletUniforme(it, pal, obj0, reglas);
+        var corto = conTope && ((it.porPallet > 0 && conTope.cajas.length < obj0) || (it.capasPallet > 0 && conTope.capas < it.capasPallet));
+        if (corto) {
+          var libre = sinTope(), masAlto = armarPalletUniforme(it, libre, obj0, reglas);
+          if (masAlto && masAlto.cajas.length > conTope.cajas.length) {
+            avisos.push(it.nombre + ": su estándar de " + (it.porPallet > 0 ? it.porPallet + " cajas" : it.capasPallet + " niveles") +
+              " no cabe en la altura máxima de " + pal.nombre + ", así que el pallet se arma hasta el techo del vehículo. Se apaga en Paletizado.");
+            pal = libre;
+          }
+        }
+      }
+    }
     if (!pal) {
       if (!((!reglas.limitarPeso || it.peso <= cargaMax) && cabeEn(it, veh))) { noCaben.push(it.nombre); return; }
       sueltas(it, idx, it.qty); return;

@@ -16,6 +16,15 @@ export const VERSION_COMPLETA = `v${VERSION}${BUILD ? ` · ${BUILD}` : ""}${FECH
 // escrito para quien usa la herramienta (no para programadores).
 export const NOVEDADES = [
   {
+    version: "1.6.5", fecha: "30/09/2026",
+    cambios: [
+      "Cuando el último vehículo se va llevando solo Bundles, ahora se prueba abriendo exactamente esos antes que cualquier otra cosa. Pasaba que un pedido salía con un segundo contenedor cargando UN solo Bundle mientras al primero le sobraban 11 m³: la búsqueda general reparte los Bundles abiertos entre todas las líneas y se evalúa en nivel rápido, así que ese caso se le escapaba.",
+      "Orden de cargue con Bundles, como lo pidió el andén: primero los pallets, después la pared con las cajas de los Bundles que hubo que abrir, y al final los Bundles enteros, que son un movimiento cada uno. Cuántos Bundles se abren lo sigue decidiendo el espacio: se abren los menos posibles.",
+      "El catálogo de pallets nuevo viene con 15 mm de sobresaliente por lado: en planta la caja nunca queda exactamente al ras de la tarima.",
+      "Nueva opción por pallet, encendida por omisión: «Subir hasta el techo cuando el estándar no cabe». Si las cajas por pallet o los niveles que trae el maestro no caben en la altura máxima del catálogo, el pallet se arma contra el techo del vehículo en lugar de recortarse, y lo avisa. La idea es simple: si en planta lo arman más alto que esa altura, la que está mal es la altura del catálogo, no el estándar. Si el estándar sí cabe, se respeta el tope de siempre.",
+    ],
+  },
+  {
     version: "1.6.4", fecha: "30/09/2026",
     cambios: [
       "Orden de cargue: en cualquier carga que mezcle pallets y cajas sueltas, ahora entran primero los pallets y después lo suelto. Antes lo suelto ganaba el lugar (empaca mejor que un pallet), se llevaba los primeros vehículos completos y los pallets terminaban viajando solos, a media altura y sin nada encima. Medido en un pedido de 3 SKUs paletizados y 2 sueltos: pasó de 11 vehículos a 10 y subieron 302 cajas al techo de los pallets. Se apaga con la regla «Orden de cargue».",
