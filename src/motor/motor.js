@@ -140,7 +140,18 @@ function llenarContenedor(tipos, veh, reglas, op) {
     return true;
   };
 
-  var actualizarEspacios = function (bx, by, bz, BX, BY, BZ, minDim) {
+  // Holgura entre bloques (ver corrida.js: holguraPorMezcla). Al reservar el lugar de un bloque se
+  // reserva también media holgura a cada lado, así el bloque de al lado no le queda pegado al
+  // milímetro y entre dos bloques vecinos queda la holgura completa. Dentro del bloque las cajas van
+  // pegadas, que es como quedan de verdad. No se aplica hacia arriba ni contra las paredes del
+  // vehículo, ni a las bolsas, que se amoldan al hueco.
+  var media = (reglas.holgura > 0 ? reglas.holgura : 0) / 2;
+  var sinHolgura = function (it) { return String(it.umCaja || "CJ").trim().toUpperCase() === "BL"; };
+  var actualizarEspacios = function (bx, by, bz, BX, BY, BZ, minDim, it) {
+    if (media > 0 && it && !sinHolgura(it)) {
+      bx = Math.max(0, bx - media); by = Math.max(0, by - media);
+      BX = Math.min(L, BX + media); BY = Math.min(W, BY + media);
+    }
     var nuevos = [];
     for (var i = 0; i < espacios.length; i++) {
       var s = espacios[i];
@@ -268,7 +279,7 @@ function llenarContenedor(tipos, veh, reglas, op) {
               b.t.rem -= b.n; peso += b.n * b.t.it.peso; vol += b.nx * b.ny * b.o.d[0] * b.o.d[1] * altoPila(b.t.it, b.o.d[2], b.nz);
               if (!skus[b.t.k]) { skus[b.t.k] = 1; nSkus++; }
               ultimoTipo = b.t.k;
-              actualizarEspacios(anclas[an][0], anclas[an][1], s.z, anclas[an][0] + bl2, anclas[an][1] + bw, s.z + bh, minDim);
+              actualizarEspacios(anclas[an][0], anclas[an][1], s.z, anclas[an][0] + bl2, anclas[an][1] + bw, s.z + bh, minDim, b.t.it);
             }
           }
           // si no cabe entero, intentar una sola columna/caja del mismo tipo
@@ -280,7 +291,7 @@ function llenarContenedor(tipos, veh, reglas, op) {
               b.t.rem -= b1.n; peso += b1.n * b.t.it.peso; vol += b.o.d[0] * b.o.d[1] * altoPila(b.t.it, b.o.d[2], b1.nz);
               if (!skus[b.t.k]) { skus[b.t.k] = 1; nSkus++; }
               ultimoTipo = b.t.k;
-              actualizarEspacios(a1[0], a1[1], s.z, a1[0] + b.o.d[0], a1[1] + b.o.d[1], s.z + altoPila(b.t.it, b.o.d[2], b.nz), minDim);
+              actualizarEspacios(a1[0], a1[1], s.z, a1[0] + b.o.d[0], a1[1] + b.o.d[1], s.z + altoPila(b.t.it, b.o.d[2], b.nz), minDim, b.t.it);
             }
           }
         }

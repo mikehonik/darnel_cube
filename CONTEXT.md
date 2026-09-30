@@ -69,6 +69,29 @@ Términos del dominio tal como se usan en el código. Un término, un significad
 - **Optimizar el pedido** (`motor/optimizarPedido.js`, `ui/secciones/OptimizarPedido.jsx`): tarjeta abajo a la izquierda del 3D. «Llenar con pedido sugerido» agranda el pedido en la misma proporción (búsqueda en nivel 1) y llena los huecos con relleno (`esRelleno`), todo comprobado en nivel 4. «Sugerir disminución» primero reacomoda en nivel 4 (con Bundles) y, si no alcanza, resta lo que quedó en el último vehículo hasta 4 veces. Vista previa con candado por línea, «Aplicar» deja el resultado ya calculado, «Deshacer» regresa. Reemplazan «¿Qué más cabe?» e «Intentar consolidar».
 - **Herramientas de capacidad**: el cálculo completo corre en nivel ≤ 2 (antes tardaba hasta 40 s) y en pallets completos se alterna «Vehículo / Pallet armado» (`vistaHerr.palDef`).
 
+## v1.6.2: holgura por bloque, cotas en el 3D y el costo de simular
+
+### La holgura se paga por bloque, no por caja
+
+- **Qué era** (`motor/corrida.js: holguraPorMezcla`): con "Simular la carga real" encendido se le sumaban 2 mm por SKU distinto (tope 6 mm) al largo y ancho de CADA caja antes de buscarle lugar. La idea era modelar que con variedad se pierde espacio entre bultos.
+- **Por qué estaba mal**: castigaba la cantidad de cajas, no la variedad. Dentro de un bloque del mismo SKU las cajas encajan solas y el estibador las arrima, así que ahí no hay holgura real; sin embargo una fila de 24 cajas iguales perdía 24 × 6 = 144 mm de contenedor. Además satura en 4 SKUs, y un pedido real trae 15 líneas, o sea que en la práctica siempre eran 6 mm.
+- **Qué es ahora** (`motor/motor.js: actualizarEspacios`): la holgura se le aplica al ENVOLVENTE del bloque al reservar su lugar — media holgura por lado, recortada contra las paredes del vehículo — así entre dos bloques vecinos queda la holgura completa y dentro del bloque las cajas van pegadas. `prepararEntrada` ya no toca `L`/`W`; pasa `reglas.holgura`. Las bolsas (UM = BL) siguen sin holgura, y el relleno final tampoco la paga (ahí ya se mete a presión lo que quepa).
+- **Medido** (caso Elkin, 4 SKUs, contenedor 40' HC): nivel 4 pasó de 78.1% a 89.2% en el primer contenedor. El costo de la holgura bajó de ~8 puntos a ~1.4.
+- **Pendiente**: los 2 mm/SKU y el tope de 6 venían calibrados contra 1,185 contenedores reales con el modelo viejo. Con el modelo nuevo esa calibración ya no aplica; hay que volver a medirla contra la base de contenedores reales.
+- Pruebas: `motor/holgura.test.js`.
+
+### Cotas del espacio libre en el 3D (`visor/Visor.jsx`, prop `cotas`)
+- Botón «Medidas» en la barra del 3D (`App.jsx: verCotas`), apagado por omisión. `cotas` es una función mm → texto (la del sistema de unidades elegido); si viene null no se dibuja nada.
+- Se acota el fondo, el ancho y el alto libres, medidos contra el bulto que más avanzó en cada eje — lo mismo que reporta CubeMaster en su hoja «3D Measurements».
+- Las tres van en la cara DELANTERA de la carga (x = maxX), no en la puerta: con un vehículo medio vacío la puerta queda lejos del hueco y la cota no dice nada. Menos de 10 mm no se acota.
+- Las cotas no salen en las capturas del instructivo (`dibujar(paso, limpio)` con `limpio = true` las omite, igual que las marcas de edición).
+
+### Cuánto cuesta simular la carga real (`App.jsx: medirCostoReal`, `ui/secciones/AvisoCargaReal.jsx`)
+- Corre la MISMA carga con `compresionAuto: false` y compara: vehículos usados y ocupación del primer vehículo. Avisa si se ahorra un vehículo o si la diferencia llega a `DIFERENCIA_QUE_IMPORTA` (2 puntos), con un botón que deja puesta esa corrida y apaga el flag.
+- No se corre en cada cálculo (duplicaría el tiempo): solo cuando quedan 2 o más vehículos y cuando se pide una sugerencia de llenar o disminuir, que es donde 2 puntos cambian una decisión.
+- Si sin simular no cupo todo (`sinCargar` mayor), la comparación no se muestra: no diría nada útil.
+- La nota vive dentro de la tarjeta de sugerencias (`OptimizarPedido`), no en una tarjeta aparte: las dos salen en el mismo momento y en el mismo lugar del 3D.
+
 ## v1.6.0: Bundles en serio, candados y altura libre
 
 - **Orden de cargue** (`motor/motor.js: faseDe/subDe`): cuando la carga trae Bundles, dentro de cada zona (entrega y pedido) se cargan primero los pallets, luego los Bundles y al final lo suelto. Es una SUBfase de la zona (`fase = zona * 4 + sub`): la frontera entre zonas solo avanza cuando cambia la zona, así el suelto rellena los huecos de los pallets en vez de quedarse detrás. Se apaga con `reglas.ordenCargue = false`. Medido: en un pedido mixto subió el primer vehículo de 75.7% a 81.5%.

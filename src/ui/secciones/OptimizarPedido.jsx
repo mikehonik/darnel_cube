@@ -5,6 +5,7 @@
 import { useEffect, useState } from "react";
 import { PackagePlus, PackageMinus, Loader2, X, Lock, Unlock, Undo2, CheckCircle2, Info } from "lucide-react";
 import { T } from "../tema.js";
+import { NotaCargaReal } from "./AvisoCargaReal.jsx";
 
 const nVeh = (n) => `${n} ${n === 1 ? "vehículo" : "vehículos"}`;
 const pcts = (lista) => lista.map((p) => `${p.toFixed(0)}%`).join(" + ");
@@ -14,7 +15,7 @@ const Boton = ({ onClick, children, primario, titulo }) => (
     style={primario ? { background: T.nav, color: "#fff" } : { border: `1px solid ${T.linea}`, background: T.sup, color: T.tinta }}>{children}</button>
 );
 
-export function OptimizarPedido({ reporte, items, optim, progreso, onCalcular, onAplicar, onDeshacer, onCerrar, onCancelar, onFijarLinea }) {
+export function OptimizarPedido({ reporte, items, optim, progreso, onCalcular, onAplicar, onDeshacer, onCerrar, onCancelar, onFijarLinea, costoReal, onQuitarSimulacion }) {
   const [oculto, setOculto] = useState(false);
   useEffect(() => { setOculto(false); }, [reporte]);
   // El candado es el mismo de la tabla del pedido (it.fijo): lo que se fija aquí queda fijo allá.
@@ -90,6 +91,7 @@ export function OptimizarPedido({ reporte, items, optim, progreso, onCalcular, o
             : !sinCambio && <Boton primario onClick={onAplicar}><CheckCircle2 size={13} />Aplicar</Boton>}
           <Boton onClick={onCerrar}>{sinCambio ? "Cerrar" : "Cancelar"}</Boton>
         </div>
+        <NotaCargaReal costo={costoReal} onQuitarSimulacion={onQuitarSimulacion} />
       </div>
     );
   }
@@ -117,6 +119,7 @@ export function OptimizarPedido({ reporte, items, optim, progreso, onCalcular, o
         {reducir && <Boton primario onClick={() => onCalcular("reducir", fijas)} titulo="Primero prueba reacomodar sin cambiar cantidades; si no alcanza, sugiere qué bajar. Calcula en nivel 4."><PackageMinus size={13} />Sugerir disminución del pedido</Boton>}
         {llenar && <Boton primario={!reducir} onClick={() => onCalcular("llenar", fijas)} titulo="Sugiere más cajas de los SKUs de este pedido sin sumar vehículos. Calcula en nivel 4."><PackagePlus size={13} />{n === 1 ? "Llenar con pedido sugerido" : `Llenar el vehículo ${n}`}</Boton>}
       </div>
+      <NotaCargaReal costo={costoReal} onQuitarSimulacion={onQuitarSimulacion} />
     </div>
   );
 }

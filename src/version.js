@@ -16,6 +16,14 @@ export const VERSION_COMPLETA = `v${VERSION}${BUILD ? ` · ${BUILD}` : ""}${FECH
 // escrito para quien usa la herramienta (no para programadores).
 export const NOVEDADES = [
   {
+    version: "1.6.2", fecha: "30/09/2026",
+    cambios: [
+      "La holgura de «Simular la carga real» pasó de cobrarse por caja a cobrarse por bloque. Antes, con 4 SKUs o más se le sumaban 6 mm al largo y ancho de cada caja, así que una fila de 24 cajas iguales perdía 14 cm de contenedor. Ahora las cajas de un mismo bloque van pegadas (que es como quedan de verdad) y la holgura solo se paga en la junta contra el bloque de al lado. En un caso real de 4 SKUs el primer contenedor pasó de 78% a 89% de ocupación.",
+      "Nuevo botón «Medidas» sobre el 3D: acota en el dibujo el fondo, el ancho y el alto que quedaron libres al frente de la carga, en la unidad que tengas elegida. Va apagado por omisión para no ensuciar la imagen, y no sale en el instructivo.",
+      "Cuando sobra un vehículo, o al pedir una sugerencia, la herramienta corre también el cálculo sin «Simular la carga real» y avisa si la simulación te está costando un vehículo o 2 puntos de ocupación, con un botón para ver el resultado sin ella. La simulación sigue encendida por omisión porque se parece más a lo que pasa en el andén.",
+    ],
+  },
+  {
     version: "1.6.0", fecha: "29/09/2026",
     cambios: [
       "El catálogo de pallets nuevo viene con carga máxima de 1,500 kg (antes 1,200 y 1,000): con el tope viejo, un SKU de 22 kg por caja se quedaba en 54 cajas por pallet en lugar de 60. Los pallets que ya tengas guardados no cambian; se ajustan en Paletizado.",

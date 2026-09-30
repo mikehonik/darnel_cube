@@ -14,7 +14,9 @@ const VISTAS = { iso: [-0.85, 1.05], frente: [0, 1.5], lado: [Math.PI / 2, 1.5],
 
 // Edición a mano: con `onElegir`, un clic (sin arrastrar) sobre un bulto avisa su índice; `seleccion` lo
 // marca en ámbar y `problemas` (índices) en rojo. Las marcas no salen en las imágenes del instructivo.
-export function Visor({ veh, base, cajas, pallets, paso, colores, formas, resaltado, camara, api, seleccion = null, problemas = null, onElegir = null }) {
+// Cotas: con `cotas` (una función mm → texto, la del sistema de unidades elegido) se acota el espacio
+// que quedó libre en la puerta. Van apagadas por omisión y tampoco salen en el instructivo.
+export function Visor({ veh, base, cajas, pallets, paso, colores, formas, resaltado, camara, api, seleccion = null, problemas = null, onElegir = null, cotas = null }) {
   const montaje = useRef(null);
   const ref3 = useRef({});
   const elegirRef = useRef(onElegir);
@@ -190,12 +192,43 @@ export function Visor({ veh, base, cajas, pallets, paso, colores, formas, resalt
       } else caja(c.x, c.y, c.z, c.l, c.w, c.h, c.idx, ultima);
     });
     bultoActual = null;
+    // ---- Cotas del espacio libre ----
+    // Lo que el de andén necesita para decidir si le mete algo más: cuánto fondo, ancho y alto quedaron
+    // sin usar. Es lo mismo que reporta CubeMaster. Las tres se dibujan en la cara delantera de la carga
+    // (no en la puerta, que con un vehículo medio vacío queda lejos de donde está el hueco).
+    if (!limpio && cotas && pasoN > 0) {
+      const puestas = cajas.slice(0, pasoN);
+      const tope = (f) => puestas.reduce((m, c) => Math.max(m, f(c)), 0);
+      const fx = tope((c) => c.x + c.l), fy = tope((c) => c.y + c.w), fz = tope((c) => c.z + c.h);
+      const libre = { x: veh.L - fx, y: veh.W - fy, z: veh.H - fz };
+      const mat = new THREE.LineBasicMaterial({ color: 0xb3261e, depthTest: false, transparent: true, opacity: 0.95 });
+      const linea = (a, b) => { const o = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...a), new THREE.Vector3(...b)]), mat); o.renderOrder = 11; grupo.add(o); };
+      // Una cota: la línea entre los dos extremos y una patita en cada punta, perpendicular
+      const cota = (a, b, pata) => { linea(a, b); [a, b].forEach((q) => linea([q[0] - pata[0], q[1] - pata[1], q[2] - pata[2]], [q[0] + pata[0], q[1] + pata[1], q[2] + pata[2]])); };
+      const etiqueta = (mm, en) => {
+        const txt = cotas(mm), F = "700 40px system-ui, sans-serif";
+        const cv = document.createElement("canvas"), ctx = cv.getContext("2d");
+        ctx.font = F; cv.width = Math.ceil(ctx.measureText(txt).width) + 28; cv.height = 60;
+        const c2 = cv.getContext("2d");
+        c2.fillStyle = "rgba(255,255,255,.95)"; c2.strokeStyle = "#b3261e"; c2.lineWidth = 3;
+        c2.fillRect(0, 0, cv.width, cv.height); c2.strokeRect(1.5, 1.5, cv.width - 3, cv.height - 3);
+        c2.font = F; c2.fillStyle = "#b3261e"; c2.textBaseline = "middle"; c2.fillText(txt, 14, cv.height / 2);
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), depthTest: false, transparent: true }));
+        sp.scale.set((cv.width / cv.height) * 0.34, 0.34, 1);
+        sp.position.set(...en); sp.renderOrder = 12; grupo.add(sp);
+      };
+      const MIN = 10;           // menos de 1 cm no vale la pena acotar: sería ruido
+      const X = s(veh.L), Y = s(veh.W), Z = s(veh.H), F = s(fx);
+      if (libre.x > MIN) { cota([F, 0, Y], [X, 0, Y], [0, 0.09, 0]); etiqueta(libre.x, [(F + X) / 2, 0.22, Y]); }
+      if (libre.y > MIN) { cota([F, 0, s(fy)], [F, 0, Y], [0.07, 0, 0]); etiqueta(libre.y, [F, 0.22, (s(fy) + Y) / 2]); }
+      if (libre.z > MIN) { cota([F, s(fz), Y], [F, Z, Y], [0.07, 0, 0]); etiqueta(libre.z, [F, (s(fz) + Z) / 2, Y]); }
+    }
     if (!limpio && problemas) cajas.slice(0, pasoN).forEach((c, i) => { if (problemas.has(i) && i !== seleccion) marcoBulto(c, 0xd11f1f, 0); });
     if (!limpio && seleccion != null && cajas[seleccion]) marcoBulto(cajas[seleccion], problemas?.has(seleccion) ? 0xd11f1f : 0xf2b705, 8);
     };
     ref3.current.dibujar = dibujar; ref3.current.pasoActual = paso;
     dibujar(paso, false);
-  }, [veh, base, cajas, pallets, paso, colores, formas, resaltado, seleccion, problemas, !!onElegir]);
+  }, [veh, base, cajas, pallets, paso, colores, formas, resaltado, seleccion, problemas, !!onElegir, cotas]);
 
   return <div ref={montaje} className="absolute inset-0" style={{ cursor: onElegir ? "pointer" : "grab" }} />;
 }

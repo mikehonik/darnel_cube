@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { Package, Truck, Layers, SlidersHorizontal, HelpCircle, Play, FilePlus, ClipboardPaste, AlertTriangle, Loader2, Plus, Trash2, X, ChevronDown, ChevronLeft, ChevronRight, Database, FolderOpen, Save, Upload, FileSpreadsheet, Search, RefreshCw, CheckCircle2, Repeat, Calculator, PackagePlus, MoreHorizontal, LogOut, BookOpen, Hand, Download } from "lucide-react";
+import { Package, Truck, Layers, SlidersHorizontal, HelpCircle, Play, FilePlus, ClipboardPaste, AlertTriangle, Loader2, Plus, Trash2, X, ChevronDown, ChevronLeft, ChevronRight, Database, FolderOpen, Save, Upload, FileSpreadsheet, Search, RefreshCw, CheckCircle2, Repeat, Calculator, PackagePlus, MoreHorizontal, LogOut, BookOpen, Hand, Download, Ruler } from "lucide-react";
 import { correr, correrConBundles, ejecutorWorker, ErrorCorrida } from "./motor/corrida.js";
 import { sugerirLlenado, sugerirDisminucion } from "./motor/optimizarPedido.js";
 import MotorWorker from "./motor/motor.worker.js?worker&inline";
@@ -109,6 +109,9 @@ export default function Estiba3D({ usuario }) {
   const [resaltado, setResaltado] = useState(null);
   const [pestana, setPestana] = useState("resumen");
   const [camara, setCamara] = useState(null);
+  // Cotas del espacio libre en el 3D: apagadas por omisión, se prenden con el botón «Medidas»
+  const [verCotas, setVerCotas] = useState(false);
+  const [costoReal, setCostoReal] = useState(null);
   const [paleta, setPaleta] = useState("vivos");
   const [maestro, setMaestro] = useState({ productos: [], origen: null, sucio: false, guardado: null, errores: [], conversiones: null });
   const [reconectar, setReconectar] = useState(null);
@@ -683,6 +686,9 @@ export default function Estiba3D({ usuario }) {
       const c = await correrConBundles(cargaPara(items, reglas), { ejecutor, signal: ctrl.signal, onProgreso: (i, n) => setProgreso((x) => ({ ...x, i, n })), onFase: (fase) => setProgreso((x) => ({ ...x, fase })) });
       const r = c.resultado; setCorrida(c); setRes(r); setSel(0); setPaso(r.contenedores[0]?.cajas.length || 0);
       setPestana(r.avisos.length || r.sinCargar || r.noCaben.length ? "avisos" : "resumen");
+      setCostoReal(null);
+      // Solo si sobró un vehículo: ahí es donde saber qué cuesta la simulación cambia la decisión
+      if (r.contenedores.length >= 2) medirCostoReal(r, items);
     } catch (e) {
       if (e instanceof ErrorCorrida && e.tipo === "cancelada") { /* el usuario canceló: sin mensaje */ }
       else if (e instanceof ErrorCorrida && e.tipo === "entrada_invalida") setError("Revisa estos datos: " + e.detalle.problemas.map((p) => p.mensaje).join(" "));
@@ -691,6 +697,41 @@ export default function Estiba3D({ usuario }) {
     corridaRef.current = null; setProgreso(null);
   };
   calcularRef.current = calcular;
+
+  // ---------- Cuánto cuesta simular la carga real ----------
+  // La misma carga sin el flag, para poder decirle al usuario qué le está costando la simulación.
+  // No se corre en cada cálculo (duplicaría el tiempo): solo cuando sobra un vehículo o cuando se pide
+  // una sugerencia, que es donde 2 puntos cambian una decisión. Ver ui/secciones/AvisoCargaReal.jsx.
+  const DIFERENCIA_QUE_IMPORTA = 2;   // puntos de ocupación del primer vehículo
+  const costoRef = useRef(null);
+  const medirCostoReal = async (rCon, lista) => {
+    costoRef.current?.abort();
+    if (reglas.compresionAuto === false || !rCon?.contenedores.length) { setCostoReal(null); return; }
+    const ctrl = new AbortController(); costoRef.current = ctrl;
+    setCostoReal({ midiendo: true });
+    try {
+      const c = await correrConBundles(cargaPara(lista, { ...reglas, compresionAuto: false }), { ejecutor, signal: ctrl.signal });
+      const rSin = c.resultado;
+      const volV = vehCalc.L * vehCalc.W * vehCalc.H;
+      const ocup = (r) => (r.contenedores[0] ? (r.contenedores[0].vol / volV) * 100 : 0);
+      const nCon = rCon.contenedores.length, nSin = rSin.contenedores.length;
+      const pp = ocup(rSin) - ocup(rCon);
+      // Si sin simular no cupo todo, la comparación no dice nada útil
+      const valida = (rSin.sinCargar || 0) <= (rCon.sinCargar || 0);
+      setCostoReal({ nCon, nSin, pp, corrida: c, vale: valida && (nSin < nCon || pp >= DIFERENCIA_QUE_IMPORTA) });
+    } catch { setCostoReal(null); }
+    finally { if (costoRef.current === ctrl) costoRef.current = null; }
+  };
+  const calcularSinSimular = () => {
+    const c = costoReal?.corrida; if (!c) return;
+    intentoRef.current++;
+    // setReglas directo, no editarRegla: ese invalida el resultado y aquí justamente queremos dejar puesto
+    // el que ya se calculó sin la simulación.
+    setReglas((p) => ({ ...p, compresionAuto: false }));
+    mostrarCorrida(c);
+    setCostoReal(null);
+    setAviso("Recalculado sin simular la carga real: es el óptimo geométrico, más optimista que el andén. Se prende otra vez en Reglas.");
+  };
   // Ctrl+Enter (o Cmd+Enter) calcula desde cualquier parte
   useEffect(() => {
     const tecla = (e) => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); if (!corridaRef.current) calcularRef.current?.(); } };
@@ -767,6 +808,8 @@ export default function Estiba3D({ usuario }) {
         : await sugerirDisminucion({ items, nActual: res.contenedores.length, correrPedido, correrFinal, fijas, onFase });
       if (token !== intentoRef.current) return;
       setOptim({ tipo, propuesta: r, fijas });
+      // En el llenado sugerido el acomodo es más delicado: unos milímetros deciden si entra otra caja
+      medirCostoReal(res, items);
     } catch (e) {
       if (token !== intentoRef.current) return;
       setOptim(null);
@@ -1355,7 +1398,7 @@ export default function Estiba3D({ usuario }) {
         {/* ============ Área de trabajo: visor + resultados ============ */}
         <main className="flex-1 flex flex-col min-w-0 min-h-0">
           <div className="relative flex-1" style={{ minHeight: 360, background: T.visor }}>
-            <Visor veh={visor.veh} base={visor.base} cajas={visor.cajas} pallets={vistaHerr ? vistaHerr.pallets : res?.pallets || []} paso={vistaHerr || res ? paso : 0} colores={vistaHerr ? vistaHerr.colores : coloresCarga} formas={vistaHerr ? vistaHerr.formas : formasCarga} resaltado={vistaHerr ? null : resaltado} camara={camara} api={apiVisor}
+            <Visor veh={visor.veh} base={visor.base} cajas={visor.cajas} pallets={vistaHerr ? vistaHerr.pallets : res?.pallets || []} paso={vistaHerr || res ? paso : 0} colores={vistaHerr ? vistaHerr.colores : coloresCarga} formas={vistaHerr ? vistaHerr.formas : formasCarga} resaltado={vistaHerr ? null : resaltado} camara={camara} api={apiVisor} cotas={verCotas ? ((mm) => u.fL(mm, 0)) : null}
               seleccion={edicion ? edicion.elegida : null} problemas={edicion ? problemasSet : null} onElegir={edicion ? (i) => setEdicion((e) => ({ ...e, elegida: i, mensaje: null })) : null} />
             <div className="absolute top-3 left-3 right-3 flex flex-wrap items-center gap-2 pointer-events-none">
               {vistaHerr && <>
@@ -1426,6 +1469,12 @@ export default function Estiba3D({ usuario }) {
                   <Hand size={13} />{edicion ? "Terminar edición" : "Editar a mano"}
                 </button>
               )}
+              {(res || vistaHerr) && (
+                <button onClick={() => setVerCotas(!verCotas)} aria-pressed={verCotas} className="pointer-events-auto flex items-center gap-1 text-xs px-2.5 py-1 rounded-full shadow-sm font-medium"
+                  style={{ background: verCotas ? T.acento : "rgba(255,255,255,.92)", color: T.nav }} title="Acotar en el dibujo el fondo, ancho y alto que quedaron libres en la puerta">
+                  <Ruler size={13} />Medidas
+                </button>
+              )}
               <div className="pointer-events-auto flex rounded-full overflow-hidden shadow-sm" style={{ background: "rgba(255,255,255,.92)" }}>
                 {[["iso", "3D"], ["frente", "Puerta"], ["lado", "Lado"], ["arriba", "Planta"]].map(([k, t]) => (
                   <button key={k} onClick={() => setCamara({ tipo: k, n: Date.now() })} className="text-xs px-2.5 py-1">{t}</button>
@@ -1467,7 +1516,8 @@ export default function Estiba3D({ usuario }) {
             {res && reporte && !vistaHerr && !palVista && !modoPallet && !edicion && (optim?.calculando || !calculando) && (
               <OptimizarPedido reporte={reporte} items={items} optim={optim} progreso={progreso} onCalcular={optimizarPedido} onAplicar={aplicarOptimizacion}
                 onDeshacer={deshacerOptimizacion} onCerrar={() => setOptim(null)} onCancelar={() => { cancelarCorrida(); setOptim(null); }}
-                onFijarLinea={(id) => editarItem(id, "fijo", !items.find((x) => x.id === id)?.fijo)} />
+                onFijarLinea={(id) => editarItem(id, "fijo", !items.find((x) => x.id === id)?.fijo)}
+                costoReal={costoReal} onQuitarSimulacion={calcularSinSimular} />
             )}
             {edicion && cont && validacion && (
               <PanelEdicion edicion={edicion} setEdicion={setEdicion} cont={cont} validacion={validacion} items={corrida.carga.items} pallets={res.pallets} vehNum={sel + 1}
