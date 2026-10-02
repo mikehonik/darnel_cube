@@ -179,6 +179,15 @@ export async function correrConBundles(carga, { ejecutor, signal, onProgreso, on
     return c;
   };
   const detalle = (abiertos) => lineas.filter((l) => abiertos[l.id]).map((l) => `${l.nombre}: ${abiertos[l.id]}`).join(", ");
+  // Apertura impuesta a mano: el andén eligió cuántos Bundles abrir de cada SKU, así que no se busca nada.
+  if (carga.reglas._abiertos) {
+    const fijos = {};
+    lineas.forEach((l) => { const k = Math.max(0, Math.min(l.bundles, Math.round(carga.reglas._abiertos[l.id] || 0))); if (k) fijos[l.id] = k; });
+    const c = await con(fijos);
+    const k = Object.values(fijos).reduce((a, b) => a + b, 0);
+    if (k) c.resultado.avisos = [...(c.resultado.avisos || []), `Se abren ${k} ${k === 1 ? "Bundle" : "Bundles"} (${detalle(fijos)}) porque así se pidió; sus cajas van sueltas y se cargan antes que los Bundles enteros.`];
+    return conInfo(c, fijos);
+  }
   const base = await con({});
   const n0 = base.resultado.contenedores.length, total = lineas.reduce((a, l) => a + l.bundles, 0);
   const politica = carga.reglas.abrirBundles || "llenar";

@@ -16,6 +16,14 @@ export const VERSION_COMPLETA = `v${VERSION}${BUILD ? ` · ${BUILD}` : ""}${FECH
 // escrito para quien usa la herramienta (no para programadores).
 export const NOVEDADES = [
   {
+    version: "1.6.7", fecha: "02/10/2026",
+    cambios: [
+      "Cuando sale más de un vehículo hay tres botones nuevos, porque muchas veces el vehículo de más no lo decide el acomodo sino cómo se decidió paletizar o abrir Bundles. «¿Y si un SKU va suelto?» prueba uno por uno los SKUs paletizados y te dice cuál, yendo suelto, ahorra el vehículo (un pallet cobra su tarima y el aire de arriba; suelto, ese SKU rellena los huecos de los demás). «Juntar pallets medio vacíos» prueba armar en pallets mixtos los SKUs cuyo pallet va a menos de la mitad. «Elegir qué Bundles abrir» te deja decidir a mano, SKU por SKU, cuántos se abren.",
+      "En «Elegir qué Bundles abrir» aparece la lista con cuántos Bundles tiene cada SKU y cuántos se abren, con + y − para subirlo o bajarlo; cada cambio recalcula y dice en cuántos vehículos queda. Así se pueden dejar enteros los Bundles que ocupan lo mismo abiertos que cerrados y abrir solo los que de verdad completan una hilera.",
+      "El avance ya no dice «intento 3 de 7» sino un porcentaje con su barra. El número de intentos cambia durante la búsqueda y con él el ancho del texto, así que el botón y la tarjeta se movían solos mientras calculaba.",
+    ],
+  },
+  {
     version: "1.6.6", fecha: "02/10/2026",
     cambios: [
       "El remate de los Bundles que quedan solos en el último vehículo ahora se repite. Antes solo se miraba el primer cálculo, así que si en ese momento el último vehículo llevaba aunque fuera una caja suelta, el atajo no se intentaba nunca; y después de abrir Bundles para llenar volvía a quedar un último vehículo con dos o tres Bundles que ya nadie revisaba.",

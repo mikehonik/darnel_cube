@@ -41,6 +41,14 @@ export const palletsAlDia = (pallets, v) => {
   return pallets.map((t) => ({ ...t, ovL: t.ovL > 0 ? t.ovL : 15, ovW: t.ovW > 0 ? t.ovW : 15 }));
 };
 
+// Avance en porcentaje. Antes se mostraba «intento 3 de 7»: el total cambia durante la búsqueda y el
+// ancho del texto también, así que el botón y la tarjeta se movían solos mientras calculaba. Nunca llega
+// a 100 por su cuenta: el 100 es cuando termina y desaparece.
+export const pctProgreso = (p) => {
+  if (!p || !(p.n > 0)) return 0;
+  return Math.max(1, Math.min(99, Math.round(((p.i || 0) / p.n) * 100)));
+};
+
 export const REGLAS_APILAR = [
   ["ninguna", "Sin regla adicional"], ["valorMayorAbajo", "Prioridad mayor va abajo"], ["mismoValor", "Solo sobre la misma prioridad"],
   ["masPesadoAbajo", "La caja más pesada va abajo"], ["mismaHuella", "Solo sobre una caja de la misma huella"],

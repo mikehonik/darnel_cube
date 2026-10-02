@@ -69,6 +69,16 @@ Términos del dominio tal como se usan en el código. Un término, un significad
 - **Optimizar el pedido** (`motor/optimizarPedido.js`, `ui/secciones/OptimizarPedido.jsx`): tarjeta abajo a la izquierda del 3D. «Llenar con pedido sugerido» agranda el pedido en la misma proporción (búsqueda en nivel 1) y llena los huecos con relleno (`esRelleno`), todo comprobado en nivel 4. «Sugerir disminución» primero reacomoda en nivel 4 (con Bundles) y, si no alcanza, resta lo que quedó en el último vehículo hasta 4 veces. Vista previa con candado por línea, «Aplicar» deja el resultado ya calculado, «Deshacer» regresa. Reemplazan «¿Qué más cabe?» e «Intentar consolidar».
 - **Herramientas de capacidad**: el cálculo completo corre en nivel ≤ 2 (antes tardaba hasta 40 s) y en pallets completos se alterna «Vehículo / Pallet armado» (`vistaHerr.palDef`).
 
+## v1.6.7: tres palancas más cuando sobra un vehículo
+
+Las tres salen del mismo hallazgo repetido en los casos reales de Darnel: cuando sobra un vehículo, muchas veces no lo decide el acomodo sino cómo se decidió paletizar o abrir Bundles. Van como tres mensajes separados en la tarjeta de sugerencias (decisión del usuario), no como un panel único.
+
+- **`sugerirSinPaletizar`** (`motor/optimizarPedido.js`): prueba cada SKU paletizado yendo suelto, una corrida por SKU, y elige el que ahorra el vehículo dejando el último más lleno. Medido en tres pedidos: ahorró el vehículo en los tres, y no siempre con el mismo SKU.
+- **`sugerirPalletMixto`**: `palletsPobres()` marca los pallets de un SKU con `utilVol < 0.5` (van a menos de la mitad); si hay dos o más, prueba pasarlos a `paletizar: "mixto"`.
+- **`sugerirAbrirBundles`** + `reglas._abiertos` (`motor/corrida.js`): apertura impuesta a mano. Con `_abiertos` el motor NO busca nada, usa el mapa que le den. La UI es una lista por SKU con + y −, y cada cambio recalcula.
+- Las tres solo se ofrecen con `n >= 2`, y solo cuando pueden aplicar (hay SKUs paletizados, hay dos o más pallets pobres, hay Bundles).
+- **`pctProgreso`** (`ui/referencia.js`): el avance pasa de «intento 3 de 7» a porcentaje con barra. El total cambia durante la búsqueda y el ancho del texto movía el botón y la tarjeta.
+
 ## v1.6.6: el remate de Bundles se repite, y no se le cree al nivel rápido
 
 - **`rematar()`** (`motor/corrida.js`): el atajo de la v1.6.5 miraba SOLO el cálculo base. Si en ese momento el último vehículo llevaba una caja suelta, `soloBundles` era false y no se intentaba nunca; y la fase «llenar» volvía a dejar un último vehículo con dos o tres Bundles que ya nadie revisaba. Ahora es una función que se aplica al resultado de cada rama (base, fase A y fase B) y se repite hasta `MAX_REMATES` mientras siga bajando el número de vehículos.

@@ -147,3 +147,97 @@ export async function sugerirDisminucion({ items, nActual, correrPedido, correrF
   }
   return { tipo: "reducir", cambios: [], antes: resumen(ref), despues: resumen(ref), corrida: ref, items, logrado: false };
 }
+
+// ---------- Sugerir qué SKU dejar sin paletizar ----------
+// Tercera pregunta del planeador, y la que más veces decide el camión: salió un vehículo de más, pero no
+// por cómo se acomodó sino por QUÉ se paletizó. Un pallet cobra su deck y el aire que queda sobre la torre;
+// ese mismo SKU suelto rellena los huecos de los demás. Medido en tres pedidos reales de Darnel: dejar UN
+// SKU suelto ahorró el vehículo en los tres, y no siempre el mismo (conviene el que menos Bundles obligue
+// a abrir después). Se prueba uno por uno, que son pocas corridas: una por SKU paletizado.
+export async function sugerirSinPaletizar({ items, correrPedido, correrFinal = correrPedido, fijas = new Set(), onFase }) {
+  const ref = await correrPedido(items);
+  const n0 = ref.resultado.contenedores.length;
+  const candidatos = items.filter((it) => it.paletizar && it.qty > 0 && !it.fijo && !fijas.has(it.id));
+  if (n0 < 2 || !candidatos.length) return { tipo: "sinPaletizar", cambios: [], antes: resumen(ref), despues: resumen(ref), corrida: ref, items, opciones: [], motivo: n0 < 2 ? "cabeIgual" : "sinCandidatos" };
+
+  const opciones = [];
+  for (let i = 0; i < candidatos.length; i++) {
+    const it = candidatos[i];
+    onFase?.(`Probando con ${it.nombre} sin paletizar…`);
+    const lista = items.map((x) => (x.id === it.id ? { ...x, paletizar: false } : x));
+    const c = await correrPedido(lista);
+    if (c.resultado.contenedores.length < n0 && c.resultado.sinCargar <= ref.resultado.sinCargar) {
+      opciones.push({ id: it.id, nombre: it.nombre, lista, n: c.resultado.contenedores.length, ocupaciones: resumen(c).ocupaciones });
+    }
+  }
+  if (!opciones.length) return { tipo: "sinPaletizar", cambios: [], antes: resumen(ref), despues: resumen(ref), corrida: ref, items, opciones: [], motivo: "noAhorra" };
+  // La mejor: la que use menos vehículos y, a igualdad, la que deje el último más lleno
+  opciones.sort((a, b) => a.n - b.n || (b.ocupaciones[b.ocupaciones.length - 1] - a.ocupaciones[a.ocupaciones.length - 1]));
+  const g = opciones[0];
+  onFase?.("Calculando el resultado final…");
+  const f = await correrFinal(g.lista);
+  return { tipo: "sinPaletizar", cambios: [], antes: resumen(ref), despues: resumen(f), corrida: f, items: g.lista,
+    elegido: g.nombre, opciones: opciones.map(({ id, nombre, n }) => ({ id, nombre, n })) };
+}
+
+// ---------- Sugerir juntar los pallets de un SKU que van medio vacíos ----------
+// Un SKU paletizado con poca cantidad arma un pallet incompleto que viaja casi vacío (12 cajas en una
+// tarima de 1,382 mm, por ejemplo). Varios de esos juntos en pallets mixtos liberan piso. Solo se ofrece
+// cuando salió más de un vehículo: con uno solo, un pallet por SKU es más cómodo en el andén y no cuesta.
+const UTIL_POBRE = 0.5;   // un pallet que usa menos de la mitad de su espacio va «medio vacío»
+
+export function palletsPobres(corrida) {
+  const defs = corrida.resultado.pallets || [];
+  const usados = new Set();
+  corrida.resultado.contenedores.forEach((v) => v.cajas.forEach((k) => { if (k.pal >= 0) usados.add(k.pal); }));
+  return defs.map((d, i) => ({ ...d, i })).filter((d) => usados.has(d.i) && !d.mixto && d.utilVol < UTIL_POBRE);
+}
+
+export async function sugerirPalletMixto({ items, correrPedido, correrFinal = correrPedido, fijas = new Set(), onFase }) {
+  onFase?.("Revisando qué pallets van medio vacíos…");
+  const ref = await correrPedido(items);
+  const n0 = ref.resultado.contenedores.length;
+  const pobres = palletsPobres(ref);
+  const nombres = new Set(pobres.map((d) => d.nombre.replace(/ \(incompleto\)$/, "")));
+  const candidatos = items.filter((it) => it.paletizar === true && it.qty > 0 && !it.fijo && !fijas.has(it.id) && nombres.has(it.nombre));
+  if (n0 < 2 || candidatos.length < 2) {
+    return { tipo: "palletMixto", cambios: [], antes: resumen(ref), despues: resumen(ref), corrida: ref, items, pobres: [],
+      motivo: n0 < 2 ? "cabeIgual" : "pocosPobres" };
+  }
+  onFase?.("Probando armarlos como pallets mixtos…");
+  const lista = items.map((x) => (candidatos.some((c) => c.id === x.id) ? { ...x, paletizar: "mixto" } : x));
+  const c = await correrPedido(lista);
+  if (!(c.resultado.contenedores.length < n0) || c.resultado.sinCargar > ref.resultado.sinCargar) {
+    return { tipo: "palletMixto", cambios: [], antes: resumen(ref), despues: resumen(c), corrida: ref, items,
+      pobres: candidatos.map((x) => x.nombre), motivo: "noAhorra" };
+  }
+  onFase?.("Calculando el resultado final…");
+  const f = await correrFinal(lista);
+  return { tipo: "palletMixto", cambios: [], antes: resumen(ref), despues: resumen(f), corrida: f, items: lista,
+    pobres: candidatos.map((x) => x.nombre) };
+}
+
+// ---------- Abrir Bundles a mano ----------
+// El motor abre los menos posibles y casi siempre acierta, pero el andén sabe cosas que la herramienta no
+// (que ese SKU viene flejado de planta, que ese otro se abre en dos minutos). Así que cuando sale más de un
+// vehículo se ofrece la lista: cuántos Bundles tiene cada SKU y cuántos propone abrir, para subir o bajar
+// cada uno y volver a calcular. Las cajas de los Bundles abiertos se cargan ANTES que los Bundles enteros
+// (ver motor/motor.js: subDe), que es el orden que pidió el andén.
+import { lineasBundle } from "../archivos/bundle.js";
+
+// Propuesta inicial: lo que el motor decidió solo, para que el usuario arranque de ahí y no de cero.
+export async function sugerirAbrirBundles({ items, correrPedido, correrFinal = correrPedido, abiertos = null, onFase }) {
+  const lineas = lineasBundle(items);
+  if (!lineas.length) return { tipo: "abrirBundles", cambios: [], lineas: [], motivo: "sinBundles" };
+  onFase?.(abiertos ? "Recalculando con los Bundles que elegiste…" : "Calculando con la apertura que propone el motor…");
+  const reglas = abiertos ? { _abiertos: abiertos } : null;
+  const c = await (reglas ? correrFinal(items, abiertos) : correrFinal(items));
+  const prop = c.resultado.bundles;
+  const elegidos = abiertos || Object.fromEntries((prop?.lineas || []).map((l) => [l.id, l.abiertos]));
+  return {
+    tipo: "abrirBundles", cambios: [], items, corrida: c,
+    antes: resumen(c), despues: resumen(c),
+    lineas: lineas.map((l) => ({ id: l.id, nombre: l.nombre, bundles: l.bundles, cajasPorBundle: l.cajasPorBundle, abiertos: elegidos[l.id] || 0 })),
+    abiertos: elegidos,
+  };
+}

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { Package, Truck, Layers, SlidersHorizontal, HelpCircle, Play, FilePlus, ClipboardPaste, AlertTriangle, Loader2, Plus, Trash2, X, ChevronDown, ChevronLeft, ChevronRight, Database, FolderOpen, Save, Upload, FileSpreadsheet, Search, RefreshCw, CheckCircle2, Repeat, Calculator, PackagePlus, MoreHorizontal, LogOut, BookOpen, Hand, Download, Ruler } from "lucide-react";
 import { correr, correrConBundles, ejecutorWorker, ErrorCorrida } from "./motor/corrida.js";
-import { sugerirLlenado, sugerirDisminucion } from "./motor/optimizarPedido.js";
+import { sugerirLlenado, sugerirDisminucion, sugerirSinPaletizar, sugerirPalletMixto, sugerirAbrirBundles } from "./motor/optimizarPedido.js";
 import MotorWorker from "./motor/motor.worker.js?worker&inline";
 import { armarReporte } from "./motor/reporte.js";
 import { rotar, mover, pegar as pegarBulto, quitar, colocar, validar, recalcularContenedor } from "./motor/edicion.js";
@@ -13,7 +13,7 @@ import { leerVehiculos, libroVehiculos, plantillaVehiculos, vehiculoVacio } from
 import { leerPedido, libroPlantilla } from "./archivos/pedido.js";
 import { leerConversiones, aCajas, UM_CAJA_DEF, normalizaUM, nombreUM } from "./archivos/conversiones.js";
 import { libroResultados, etapasDe, htmlInstructivo, htmlInstructivoCompleto, nombreArchivo, libroSimple, MIME_XLSX } from "./archivos/resultados.js";
-import { EJEMPLOS, PALLETS_INICIALES, VEHICULOS, VERSION_ESTADO, nuevoItem, palletsAlDia } from "./ui/referencia.js";
+import { EJEMPLOS, PALLETS_INICIALES, VEHICULOS, VERSION_ESTADO, nuevoItem, palletsAlDia, pctProgreso } from "./ui/referencia.js";
 import { PALETAS, generarColores } from "./ui/colores.js";
 import { T } from "./ui/tema.js";
 import { VERSION, VERSION_COMPLETA } from "./version.js";
@@ -796,7 +796,7 @@ export default function Estiba3D({ usuario }) {
   // Ambas corren en nivel 4 y se comprueban antes de proponerse (ver motor/optimizarPedido.js). La vista
   // previa muestra qué cambia; «Aplicar» deja puesto el resultado ya calculado y «Deshacer» regresa al anterior.
   const NIVEL_OPTIMIZAR = 4;
-  const optimizarPedido = async (tipo, fijas = new Set(items.filter((it) => it.fijo).map((it) => it.id))) => {
+  const optimizarPedido = async (tipo, fijas = new Set(items.filter((it) => it.fijo).map((it) => it.id)), extra = null) => {
     if (!res || !corrida) return;
     const token = ++intentoRef.current;
     const ctrl = new AbortController(); corridaRef.current = ctrl;
@@ -811,13 +811,16 @@ export default function Estiba3D({ usuario }) {
     const onFase = (fase) => setProgreso((x) => ({ ...(x || { i: 0, n: 1 }), fase }));
     setError(""); setOptim({ tipo, calculando: true, fijas }); setProgreso({ i: 0, n: 1 });
     try {
-      const r = tipo === "llenar"
-        ? await sugerirLlenado({ items, correrPedido, correrCarga, correrRapido, correrFinal, fijas, onFase })
+      const conAbiertos = (lista, abiertos) => correrConBundles(cargaPara(lista, { ...reglas, nivel: NIVEL_OPTIMIZAR, _abiertos: abiertos }), op);
+      const r = tipo === "llenar" ? await sugerirLlenado({ items, correrPedido, correrCarga, correrRapido, correrFinal, fijas, onFase })
+        : tipo === "sinPaletizar" ? await sugerirSinPaletizar({ items, correrPedido, correrFinal, fijas, onFase })
+        : tipo === "palletMixto" ? await sugerirPalletMixto({ items, correrPedido, correrFinal, fijas, onFase })
+        : tipo === "abrirBundles" ? await sugerirAbrirBundles({ items, correrPedido, correrFinal: (l, a) => (a ? conAbiertos(l, a) : correrFinal(l)), abiertos: extra?.abiertos || null, onFase })
         : await sugerirDisminucion({ items, nActual: res.contenedores.length, correrPedido, correrFinal, fijas, onFase });
       if (token !== intentoRef.current) return;
       setOptim({ tipo, propuesta: r, fijas });
       // En el llenado sugerido el acomodo es más delicado: unos milímetros deciden si entra otra caja
-      medirCostoReal(res, items);
+      if (tipo === "llenar" || tipo === "reducir") medirCostoReal(res, items);
     } catch (e) {
       if (token !== intentoRef.current) return;
       setOptim(null);
@@ -835,9 +838,13 @@ export default function Estiba3D({ usuario }) {
     setItems(pr.items); mostrarCorrida(pr.corrida);
     setOptim({ tipo: optim.tipo, aplicado: true, anterior });
     const n = pr.despues.n;
-    setAviso(pr.tipo === "llenar" ? `Pedido completado: ${pr.cambios.reduce((a, c) => a + c.delta, 0).toLocaleString("es-MX")} cajas más, en ${n} ${n === 1 ? "vehículo" : "vehículos"}.`
-      : pr.tipo === "reacomodo" ? `Reacomodado sin cambiar cantidades: la carga queda en ${n} ${n === 1 ? "vehículo" : "vehículos"}.`
-      : `Pedido ajustado: la carga queda en ${n} ${n === 1 ? "vehículo" : "vehículos"}.`);
+    const enN = `${n} ${n === 1 ? "vehículo" : "vehículos"}`;
+    setAviso(pr.tipo === "llenar" ? `Pedido completado: ${pr.cambios.reduce((a, c) => a + c.delta, 0).toLocaleString("es-MX")} cajas más, en ${enN}.`
+      : pr.tipo === "reacomodo" ? `Reacomodado sin cambiar cantidades: la carga queda en ${enN}.`
+      : pr.tipo === "sinPaletizar" ? `${pr.elegido} ahora va suelto, sin paletizar: la carga queda en ${enN}. Se vuelve a paletizar en su línea del pedido.`
+      : pr.tipo === "palletMixto" ? `${pr.pobres.length} SKUs pasaron a pallet mixto: la carga queda en ${enN}.`
+      : pr.tipo === "abrirBundles" ? `Apertura de Bundles aplicada: la carga queda en ${enN}.`
+      : `Pedido ajustado: la carga queda en ${enN}.`);
   };
   const deshacerOptimizacion = () => {
     const a = optim?.anterior; if (!a) return;
@@ -1065,7 +1072,8 @@ export default function Estiba3D({ usuario }) {
         </div>
           <button onClick={calcular} disabled={calculando || !items.length} className="flex flex-none items-center gap-2 text-sm font-semibold px-4 py-2 rounded-md whitespace-nowrap"
           style={{ background: T.acento, color: T.nav, opacity: calculando ? 0.8 : 1, minWidth: 150, justifyContent: "center" }}>
-          {calculando ? <><Loader2 size={16} className="animate-spin" />Estrategia {progreso.i}/{progreso.n}</> : <><Play size={16} />{modoPallet ? "Armar pallet" : "Calcular carga"}</>}
+          {/* Porcentaje y no «3 de 7»: el número de intentos cambia de ancho y movía el botón entero */}
+          {calculando ? <><Loader2 size={16} className="animate-spin" />Calculando {pctProgreso(progreso)}%</> : <><Play size={16} />{modoPallet ? "Armar pallet" : "Calcular carga"}</>}
         </button>
         {calculando && (
           <button onClick={cancelarCorrida} aria-label="Cancelar cálculo" title="Cancelar cálculo" className="flex items-center justify-center rounded-md"
