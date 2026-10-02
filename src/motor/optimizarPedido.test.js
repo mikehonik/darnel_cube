@@ -37,6 +37,27 @@ describe("sugerirLlenado", () => {
     expect(r.cambios).toEqual([]);
     expect(r.motivo).toBe("sinCandidatos");
   });
+  // Llenar significa lleno: la prueba del andén es agregar una caja a mano y ver si se va otro vehículo.
+  // Si todavía cabe, la propuesta se quedó corta y nadie le vuelve a creer a la sugerencia.
+  it("deja la carga saturada: ni una caja más de ninguna referencia", async () => {
+    const items = [caja({ id: 1, qty: 40 }), caja({ id: 2, nombre: "B", L: 260, W: 240, H: 180, qty: 25 })];
+    const r = await sugerirLlenado({ items, nActual: 1, correrPedido, correrCarga });
+    expect(r.cambios.length).toBeGreaterThan(0);
+    expect(r.despues.n).toBe(1);
+    expect(r.saturado).toBe(true);
+    const n0 = r.despues.n;
+    for (const it of r.items.filter((x) => x.qty > 0)) {
+      const mas = sumarAlPedido(r.items, new Map([[it.id, 1]]));
+      const c = await correrPedido(mas);
+      const cabe = c.resultado.contenedores.length <= n0 && (c.resultado.sinCargar || 0) === 0;
+      expect(cabe, `todavía cabe una caja más de ${it.nombre}`).toBe(false);
+    }
+  }, 300000);
+  // No llenar a costa de un camión: lo que solo entra sumando vehículo no se propone
+  it("nunca propone un llenado que sume un vehículo", async () => {
+    const r = await sugerirLlenado({ items: [caja({ qty: 40 })], nActual: 1, correrPedido, correrCarga });
+    expect(r.despues.n).toBeLessThanOrEqual(1);
+  }, 300000);
 });
 
 describe("sugerirDisminucion", () => {

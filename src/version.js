@@ -16,6 +16,13 @@ export const VERSION_COMPLETA = `v${VERSION}${BUILD ? ` · ${BUILD}` : ""}${FECH
 // escrito para quien usa la herramienta (no para programadores).
 export const NOVEDADES = [
   {
+    version: "1.6.11", fecha: "02/10/2026",
+    cambios: [
+      "«Llenar con pedido sugerido» ahora quiere decir lleno de verdad: que no cabe ni una caja más de ninguna referencia. Antes proponía una cantidad y la comprobaba una vez; si después uno agregaba una caja a mano y seguía entrando en el mismo vehículo, la propuesta se quedaba corta y con razón nadie le creía. Ahora, después de comprobar la propuesta, la herramienta sigue empujando: primero mete tandas grandes mientras quepan y al final prueba referencia por referencia hasta que el motor dice que no. Medido en BDL_7.1: antes proponía 307 cajas, ahora 361, y agregando una caja de cualquiera de las 11 referencias ya se va un segundo vehículo.",
+      "Y cuando no alcanza el tiempo a comprobarlo todo, la tarjeta lo dice en vez de prometerlo. En verde «Comprobado referencia por referencia: no cabe ni una caja más sin sumar un vehículo»; en ámbar «No alcanzó a comprobarse que quede lleno del todo». Comprobar cuesta corridas y en un pedido de 30 SKUs cada una tarda, así que hay un tope de tres minutos para esa parte; volver a darle a Llenar sigue desde donde quedó.",
+    ],
+  },
+  {
     version: "1.6.10", fecha: "02/10/2026",
     cambios: [
       "El avance es una sola barra de 1 a 100% para todo el cálculo, y solo sube. El motor reporta su avance dentro de cada corrida, y una búsqueda de sugerencia hace varias, así que la barra hacía el 0→99 una vez por corrida y se reiniciaba cuatro o cinco veces. Ahora cada fase se lleva su tramo del total y dentro del tramo se interpola. En la tarjeta de sugerencia el porcentaje va escrito al lado de la barra, igual que en el botón de arriba.",

@@ -177,6 +177,14 @@ export function OptimizarPedido({ reporte, items, optim, progreso, onCalcular, o
           <button onClick={onCerrar} aria-label="Cerrar"><X size={14} color={T.suave} /></button>
         </div>
         <p className="text-xs mt-1" style={{ color: sinCambio ? T.suave : T.tinta }}>{mensaje}</p>
+        {/* Llenar significa que no cabe ni una caja más de ninguna referencia, y eso se comprueba caja por
+            caja. Si no alcanzó a comprobarse, se dice: prometer que está lleno y que luego entre una más
+            a mano es lo que hace que nadie le crea a la propuesta. */}
+        {pr.tipo === "llenar" && !sinCambio && (
+          pr.saturado
+            ? <p className="mt-1" style={{ fontSize: 10, color: T.ok }}>Comprobado referencia por referencia: no cabe ni una caja más sin sumar un vehículo.</p>
+            : <p className="mt-1" style={{ fontSize: 10, color: T.aviso }}>No alcanzó a comprobarse que quede lleno del todo: puede que todavía entre alguna caja más.</p>
+        )}
         {optim.nivel === 1 && <p className="mt-1" style={{ fontSize: 10, color: T.aviso }}>Calculado en nivel 1 (rápido): es aproximado. El cálculo bueno puede meter un poco más.</p>}
         {/* Con o sin la simulación de cargue son dos conversaciones distintas con el andén: una dice qué va
             a pasar de verdad y la otra, cuánto espacio hay en el contenedor. Conviene poder ver las dos. */}
