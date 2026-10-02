@@ -10,7 +10,7 @@ const vehiculo = { L: 5898, W: 2352, H: 2393, tara: 2200, maxKg: 30480, maxVolPc
 const reglas = { nivel: 1, limitarPeso: true, soporteMin: 75, usarOrden: true, agrupar: false, juntos: true, apilamiento: "ninguna" };
 const ejecutor = ejecutorEnProceso(optimizar);
 const correrPedido = (items) => correrConBundles({ items, vehiculo, tarimas: [], reglas }, { ejecutor });
-const correrCarga = (items) => correr({ items, vehiculo, tarimas: [], reglas }, { ejecutor });
+const correrCarga = (items, maxVehiculos = 0) => correr({ items, vehiculo, tarimas: [], reglas: maxVehiculos > 0 ? { ...reglas, _maxContenedores: maxVehiculos } : reglas }, { ejecutor });
 
 describe("sumar y restar al pedido", () => {
   it("lo extra de una línea paletizada va en una línea suelta aparte", () => {
@@ -41,7 +41,7 @@ describe("sugerirLlenado", () => {
   // Si todavía cabe, la propuesta se quedó corta y nadie le vuelve a creer a la sugerencia.
   it("deja la carga saturada: ni una caja más de ninguna referencia", async () => {
     const items = [caja({ id: 1, qty: 40 }), caja({ id: 2, nombre: "B", L: 260, W: 240, H: 180, qty: 25 })];
-    const r = await sugerirLlenado({ items, nActual: 1, correrPedido, correrCarga });
+    const r = await sugerirLlenado({ items, nActual: 1, saturar: true, correrPedido, correrCarga });
     expect(r.cambios.length).toBeGreaterThan(0);
     expect(r.despues.n).toBe(1);
     expect(r.saturado).toBe(true);
@@ -53,6 +53,14 @@ describe("sugerirLlenado", () => {
       expect(cabe, `todavía cabe una caja más de ${it.nombre}`).toBe(false);
     }
   }, 300000);
+  // La base rápida: propone algo que cabe seguro, y no se hace pasar por llena
+  it("sin saturar da una base que cabe y no promete estar llena", async () => {
+    const r = await sugerirLlenado({ items: [caja({ qty: 40 })], nActual: 1, correrPedido, correrCarga });
+    expect(r.cambios.length).toBeGreaterThan(0);
+    expect(r.despues.n).toBe(1);
+    expect(r.rapido).toBe(true);
+    expect(r.saturado).toBe(false);
+  }, 120000);
   // No llenar a costa de un camión: lo que solo entra sumando vehículo no se propone
   it("nunca propone un llenado que sume un vehículo", async () => {
     const r = await sugerirLlenado({ items: [caja({ qty: 40 })], nActual: 1, correrPedido, correrCarga });

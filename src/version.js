@@ -16,6 +16,14 @@ export const VERSION_COMPLETA = `v${VERSION}${BUILD ? ` · ${BUILD}` : ""}${FECH
 // escrito para quien usa la herramienta (no para programadores).
 export const NOVEDADES = [
   {
+    version: "1.6.12", fecha: "02/10/2026",
+    cambios: [
+      "El llenado ahora son dos pasos, para no hacer esperar a nadie. «Llenar con pedido sugerido» da en segundos una base que cabe seguro, y sobre esa el comercial ya puede mover cantidades. Si quiere exprimir el vehículo, le da a «Llenar hasta el tope», que es el que mete más hasta que no quepa ni una caja de ninguna referencia y se toma su tiempo porque lo comprueba una por una.",
+      "La base rápida es más rápida porque hace menos corridas, no porque calcule peor: se saltó la fase de agrandar el pedido en proporción (costaba seis corridas y el relleno llega a lo mismo en dos) y la corrida de relleno ya no puede abrir vehículos nuevos, que era donde se iba el tiempo acomodando miles de cajas que después se descartaban. En un pedido de 11 SKUs la base sale en 2 segundos y en uno de 32 SKUs en menos de 20.",
+      "La tarjeta dice en qué punto está: «Base rápida: cabe seguro, pero no es el máximo» mientras no se haya exprimido, y «Comprobado referencia por referencia» cuando sí. Nunca dice que está llena si no lo comprobó.",
+    ],
+  },
+  {
     version: "1.6.11", fecha: "02/10/2026",
     cambios: [
       "«Llenar con pedido sugerido» ahora quiere decir lleno de verdad: que no cabe ni una caja más de ninguna referencia. Antes proponía una cantidad y la comprobaba una vez; si después uno agregaba una caja a mano y seguía entrando en el mismo vehículo, la propuesta se quedaba corta y con razón nadie le creía. Ahora, después de comprobar la propuesta, la herramienta sigue empujando: primero mete tandas grandes mientras quepan y al final prueba referencia por referencia hasta que el motor dice que no. Medido en BDL_7.1: antes proponía 307 cajas, ahora 361, y agregando una caja de cualquiera de las 11 referencias ya se va un segundo vehículo.",

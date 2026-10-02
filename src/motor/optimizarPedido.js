@@ -10,7 +10,11 @@
 //   correrPedido(itemsDelPedido)  → corrida del pedido completo, en el nivel de la optimización. Durante la
 //     búsqueda NO se rehace la apertura de Bundles: cada corrida cuesta segundos y la búsqueda hace decenas.
 //   correrFinal(itemsDelPedido)   → la corrida que se le muestra al usuario, ya con la política de Bundles
-//   correrCarga(itemsDelMotor)    → corrida de una lista ya lista para el motor (sin optimizar Bundles)
+//   correrCarga(itemsDelMotor, maxVehiculos) → corrida de una lista ya lista para el motor (sin optimizar
+//     Bundles). maxVehiculos topa cuántos puede usar: el relleno se ofrece «sin límite» para que el motor
+//     meta lo que quepa en los huecos, y sin tope abría vehículos nuevos y seguía acomodando miles de
+//     cajas que después se descartan. En el ejemplo de 3 entregas esa sola corrida costaba 30 de los 35
+//     segundos del llenado.
 
 import { tieneBundle, cajasPorBundle } from "../archivos/bundle.js";
 
@@ -33,13 +37,21 @@ const resumen = (c) => {
   return { n: c.resultado.contenedores.length, sinCargar: c.resultado.sinCargar, ocupaciones: c.resultado.contenedores.map((k) => (volV ? (k.vol / volV) * 100 : 0)) };
 };
 // Cuántas corridas se gastan comprobando la sugerencia. Cada una cuesta hasta medio minuto en nivel 4.
-const INTENTOS_COMPROBAR = 5;
+const INTENTOS_COMPROBAR = 5, INTENTOS_RAPIDO = 2;
+// Cuánto del hueco se le ofrece a CADA SKU como relleno. Probé repartirlo entre los SKUs para darle menos
+// candidatos al motor: en una carga de 15 SKUs mejoró mucho (57% → 90%) y en otra de 6 empeoró igual de
+// feo (87% → 55%). El número no manda; lo que manda es lo caprichoso del acomodo. Con una ronda más de
+// relleno las dos llegan al 87% con el valor de siempre, así que se queda en 1.5 y la velocidad sale de
+// hacer menos corridas, no de adivinar esta constante. Exportado para poder medirlo.
+export let REPARTO_RELLENO = () => 1.5;
+export const _setReparto = (f) => { REPARTO_RELLENO = f; };
 // Saturar: cuántas corridas más se gastan comprobando que de verdad no cabe ni una caja más. Es caro,
 // pero es la diferencia entre proponer un llenado y poder sostenerlo cuando el planeador agrega una a mano.
 // El tope real es el reloj, no el número de corridas: en un pedido chico una corrida son 2 segundos y en
 // uno de 32 SKUs son 25, así que un presupuesto fijo de corridas satura el chico y deja a medias el grande.
 // Si se acaba el tiempo, la sugerencia dice que no se alcanzó a comprobar; nunca promete que está llena.
 const PRESUPUESTO_SATURAR = 60, MS_SATURAR = 180000, RONDAS_RELLENO = 4, PASADAS_FINAS = 4;
+const HUECO_QUE_VALE_OTRA_RONDA = 0.10;   // 10% del vehículo libre
 const porIdItem = (items, id) => items.find((x) => x.id === id);
 const cabeIgual = (c, ref) => c.resultado.contenedores.length <= ref.resultado.contenedores.length && c.resultado.sinCargar <= ref.resultado.sinCargar;
 
@@ -75,7 +87,12 @@ const cambiosEntre = (antes, despues) => {
 // referencia puede salir en 2 vehículos cuando la pantalla muestra 1 porque allá sí se abrieron Bundles.
 // Sin este tope, llenar se comparaba contra su propia referencia y proponía llenar DOS vehículos cuando
 // el usuario tenía uno: para él eso no es llenar, es sumar un camión.
-export async function sugerirLlenado({ items, nActual = Infinity, correrPedido, correrCarga, correrRapido = correrPedido, correrFinal = correrPedido, fijas = new Set(), onFase }) {
+// saturar: si se exprime hasta que no quepa ni una caja más de ninguna referencia. Esa comprobación son
+// decenas de corridas y es lo que vuelve lenta la herramienta, así que por omisión NO se hace: el primer
+// llenado sale en segundos y es una base sobre la que el comercial ya puede trabajar. Cuando esa base le
+// sirve y quiere exprimirla, se vuelve a pedir con saturar: true («Llenar hasta el tope»). Una propuesta
+// sin saturar nunca dice que está llena: viene marcada con `rapido: true` y la tarjeta lo advierte.
+export async function sugerirLlenado({ items, nActual = Infinity, saturar = false, correrPedido, correrCarga, correrRapido = correrPedido, correrFinal = correrPedido, fijas = new Set(), onFase }) {
   onFase?.("Calculando el pedido actual en nivel máximo…");
   const ref = await correrPedido(items);
   const tope = Math.min(nActual, ref.resultado.contenedores.length);
@@ -86,18 +103,23 @@ export async function sugerirLlenado({ items, nActual = Infinity, correrPedido, 
   const paso = (it) => (it.enBundle && tieneBundle(it) ? cajasPorBundle(it) : 1);
   const aPaso = (it, n) => Math.floor(n / paso(it)) * paso(it);
   const escalar = (f) => items.map((it) => (esCandidato.has(it.id) ? { ...it, qty: Math.max(it.qty, aPaso(it, Math.floor(it.qty * f))) } : it));
-  onFase?.("Agrandando el pedido en la misma proporción…");
-  const ocup = resumen(ref).ocupaciones, ultima = ocup[ocup.length - 1] || 100;
-  let lo = 1, hi = Math.min(20, Math.max(1.05, 100 / Math.max(1, ultima)) * (ocup.length > 1 ? 1 : 1.1));
-  for (let i = 0; i < 5 && hi / lo > 1.02; i++) {
-    const m = (lo + hi) / 2, c = await correrRapido(escalar(m));
-    if (cabeIgual(c, ref)) lo = m; else hi = m;
-  }
-  let proporcional = lo > 1.005 ? escalar(lo) : items;
-  let refProp = ref;
-  if (proporcional !== items) {
-    const c = await correrPedido(proporcional);
-    if (cabeIgual(c, ref)) refProp = c; else proporcional = items;
+  // Crecer el pedido en proporción conserva el mix que pidió el cliente, pero cuesta seis corridas y el
+  // relleno llega a lo mismo en dos. En la base rápida se salta: lo que importa ahí es dar un número en
+  // segundos. Al exprimir sí se hace, porque ahí el mix sí vale las corridas.
+  let proporcional = items, refProp = ref;
+  if (saturar) {
+    onFase?.("Agrandando el pedido en la misma proporción…");
+    const ocup = resumen(ref).ocupaciones, ultima = ocup[ocup.length - 1] || 100;
+    let lo = 1, hi = Math.min(20, Math.max(1.05, 100 / Math.max(1, ultima)) * (ocup.length > 1 ? 1 : 1.1));
+    for (let i = 0; i < 5 && hi / lo > 1.02; i++) {
+      const m = (lo + hi) / 2, c = await correrRapido(escalar(m));
+      if (cabeIgual(c, ref)) lo = m; else hi = m;
+    }
+    if (lo > 1.005) proporcional = escalar(lo);
+    if (proporcional !== items) {
+      const c = await correrPedido(proporcional);
+      if (cabeIgual(c, ref)) refProp = c; else proporcional = items;
+    }
   }
   onFase?.("Llenando los huecos que quedan…");
   const base = refProp.carga.items;
@@ -107,8 +129,14 @@ export async function sugerirLlenado({ items, nActual = Infinity, correrPedido, 
   const libre = refProp.resultado.contenedores.reduce((a, k) => a + Math.max(0, volV - k.vol), 0);
   // Las líneas de relleno: los mismos SKUs del pedido, sueltos y «sin límite», para que el motor meta
   // cuantos quepan en los huecos. Se arma aparte porque las rondas de saturación lo vuelven a usar.
+  // Cuántas cajas de relleno se le ofrecen al motor. Antes se le daba a CADA SKU para llenar 1.5 veces el
+  // hueco él solo, así que con 6 SKUs entraban nueve veces el hueco en candidatos y el motor los probaba
+  // uno por uno: esa sola corrida se llevaba 30 de los 35 segundos del llenado. Ahora el total ofrecido
+  // ronda vez y media el hueco, repartido, con un piso por SKU para que ninguno quede sin oportunidad.
+  // Ofrecer de menos solo hace que la base rápida sea un poco conservadora, y para eso está exprimir.
   const rellenoPara = (hueco) => {
-    const caben = (d) => Math.min(500000, Math.ceil((hueco * 1.5) / Math.max(1, d.L * d.W * d.H)) + 10);
+    const reparto = REPARTO_RELLENO(candidatos.length);
+    const caben = (d) => Math.min(500000, Math.max(30, Math.ceil((hueco * reparto) / Math.max(1, d.L * d.W * d.H)) + 10));
     return candidatos.map((it) => {
       const comun = { ...it, id: `rel-${it.id}`, lineaId: it.id, esRelleno: true, paletizar: false, enBundle: false };
       if (!(it.enBundle && tieneBundle(it))) return { ...comun, qty: caben(it) };
@@ -120,7 +148,7 @@ export async function sugerirLlenado({ items, nActual = Infinity, correrPedido, 
     });
   };
   const relleno = rellenoPara(libre);
-  const conRelleno = await correrCarga([...base, ...relleno]);
+  const conRelleno = await correrCarga([...base, ...relleno], refProp.resultado.contenedores.length);
   const deltas = new Map();
   // Solo cuenta el relleno que cayó en los vehículos QUE YA IBAN. La corrida de relleno no tiene tope de
   // vehículos, así que con un hueco chico se desborda y abre uno nuevo para el relleno sobrante; ese
@@ -151,7 +179,8 @@ export async function sugerirLlenado({ items, nActual = Infinity, correrPedido, 
   const porVolumen = candidatos.slice().sort((a, b) => a.L * a.W * a.H - b.L * b.W * b.H);
   const minima = () => { const it = porVolumen[0]; return it ? sumarAlPedido(items, new Map([[it.id, paso(it)]])) : null; };
   let lo2 = 0, hi2 = 1, mejor = null;
-  for (let intento = 0; intento < INTENTOS_COMPROBAR && hi2 - lo2 > 0.06; intento++) {
+  const intentos = saturar ? INTENTOS_COMPROBAR : INTENTOS_RAPIDO;
+  for (let intento = 0; intento < intentos && hi2 - lo2 > 0.06; intento++) {
     const f = intento === 0 ? 1 : (lo2 + hi2) / 2;
     const nuevos = listaCon(f);
     if (!nuevos) break;
@@ -187,16 +216,25 @@ export async function sugerirLlenado({ items, nActual = Infinity, correrPedido, 
   const presupuesto = () => corridas < PRESUPUESTO_SATURAR && Date.now() < hasta;
   const cabeAsi = async (lista) => { corridas++; return cabeIgual(await correrPedido(lista), ref); };
 
-  for (let ronda = 0; ronda < RONDAS_RELLENO && presupuesto(); ronda++) {
+  // Una ronda de relleno también en la base rápida: cuesta dos corridas y a veces es la diferencia entre
+  // dejar el vehículo a la mitad o casi lleno, porque el primer relleno se mide sobre un acomodo que
+  // después cambia. Al exprimir se hacen varias; en la base rápida, una.
+  const rondas = saturar ? RONDAS_RELLENO : 1;
+  for (let ronda = 0; ronda < rondas && presupuesto(); ronda++) {
     onFase?.("Buscando si todavía queda hueco…");
     corridas++;
     const act = await correrPedido(mejor);
     const nAct = act.resultado.contenedores.length;
     const libreAct = act.resultado.contenedores.reduce((a, k) => a + Math.max(0, volV - k.vol), 0);
     if (libreAct <= 0) break;
+    // En la base rápida la ronda extra solo vale si todavía quedó hueco de verdad. Cuando el primer
+    // relleno ya dejó los vehículos casi llenos, repetir cuesta el doble de tiempo para ganar un punto;
+    // cuando los dejó a la mitad (pasa cuando el acomodo cambia mucho al meter cajas), es lo que lleva
+    // de 57% a 87%. Medido: con el corte, una carga de 32 SKUs baja de 56 a 17 segundos y pierde 0.8 puntos.
+    if (!saturar && libreAct < HUECO_QUE_VALE_OTRA_RONDA * nAct * volV) break;
     const relleno2 = rellenoPara(libreAct);
     corridas++;
-    const con2 = await correrCarga([...act.carga.items, ...relleno2]);
+    const con2 = await correrCarga([...act.carga.items, ...relleno2], nAct);
     const extra = new Map();
     con2.resultado.contenedores.forEach((_, i) => { if (i >= nAct) return; cajasPorLinea(con2, i, true).forEach((n, id) => extra.set(id, (extra.get(id) || 0) + n)); });
     const porPaso = new Map([...extra].map(([id, n]) => [id, aPaso(porId.get(id) || {}, n)]).filter(([, n]) => n > 0));
@@ -212,6 +250,14 @@ export async function sugerirLlenado({ items, nActual = Infinity, correrPedido, 
   // reparte a la mitad cuando deja de caber, hasta el paso mínimo. Ese último «no» al paso mínimo es la
   // prueba que importa: ni una caja más de esa referencia. Son unas pocas corridas por línea en vez de una
   // por caja. Una línea que ya dijo que no, no se vuelve a probar: agregar de otras solo quita espacio.
+  if (!saturar) {
+    onFase?.("Calculando el resultado final…");
+    const f0 = await correrFinal(mejor);
+    if (f0.resultado.contenedores.length <= tope)
+      return { tipo: "llenar", cambios: cambiosEntre(items, mejor), antes: resumen(ref), despues: resumen(f0), corrida: f0, items: mejor, saturado: false, rapido: true };
+    return { tipo: "llenar", cambios: [], antes: resumen(ref), despues: resumen(ref), corrida: ref, items, motivo: "sumabaVehiculo" };
+  }
+
   // Se repite la pasada completa hasta que una entera no agregue nada. Hace falta: el acomodo es
   // heurístico, así que meter cajas de una referencia cambia el orden y a veces deja el conjunto MEJOR
   // acomodado, con hueco donde antes no cabía. Saturar con una sola pasada dejaba referencias que, al

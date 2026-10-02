@@ -37,7 +37,7 @@ export function OptimizarPedido({ reporte, items, optim, progreso, onCalcular, o
 
   if (optim?.calculando) return caja(
     <div className="px-3 py-2.5">
-      <div className="flex items-center gap-2 font-semibold"><Loader2 size={15} className="animate-spin" />{optim.tipo === "llenar" ? "Buscando qué más cabe" : "Buscando cómo usar un vehículo menos"}</div>
+      <div className="flex items-center gap-2 font-semibold"><Loader2 size={15} className="animate-spin" />{optim.tipo === "llenar" ? (optim.saturar ? "Llenando hasta el tope" : "Buscando qué más cabe") : "Buscando cómo usar un vehículo menos"}</div>
       <p className="text-xs mt-1" style={{ color: T.suave }}>{progreso?.fase || "Calculando en nivel 4…"}</p>
       {optim.sinSimular && <p className="text-xs mt-0.5" style={{ color: T.aviso }}>Sin simular la carga real: maximizando el espacio geométrico.</p>}
       {/* Barra y porcentaje en vez de «intento 3 de 7»: el total cambia durante la búsqueda y el texto
@@ -50,7 +50,8 @@ export function OptimizarPedido({ reporte, items, optim, progreso, onCalcular, o
         <span className="tabular-nums" style={{ fontSize: 11, color: T.suave, minWidth: 30, textAlign: "right" }}>{pctProgreso(progreso)}%</span>
       </div>
       <p className="text-xs mt-1" style={{ color: T.suave }}>
-        {optim.nivel === 1 ? "En nivel 1 sale en segundos, pero sugiere menos: acomoda peor que el cálculo bueno."
+        {optim.saturar ? "Exprimiendo: prueba referencia por referencia hasta que no entre ni una caja más. Tarda, y se puede cancelar."
+          : optim.nivel === 1 ? "En nivel 1 sale en segundos, pero sugiere menos: acomoda peor que el cálculo bueno."
           : "En nivel 4 cada cálculo tarda hasta medio minuto, y la búsqueda hace varios."}
       </p>
       <div className="flex flex-wrap gap-1.5 mt-2">
@@ -183,9 +184,11 @@ export function OptimizarPedido({ reporte, items, optim, progreso, onCalcular, o
         {pr.tipo === "llenar" && !sinCambio && (
           pr.saturado
             ? <p className="mt-1" style={{ fontSize: 10, color: T.ok }}>Comprobado referencia por referencia: no cabe ni una caja más sin sumar un vehículo.</p>
-            : <p className="mt-1" style={{ fontSize: 10, color: T.aviso }}>No alcanzó a comprobarse que quede lleno del todo: puede que todavía entre alguna caja más.</p>
+            : pr.rapido
+              ? <p className="mt-1" style={{ fontSize: 10, color: T.suave }}>Base rápida: cabe seguro, pero no es el máximo. Ajusta las cantidades que quieras y, si buscas exprimirlo, dale a «Llenar hasta el tope».</p>
+              : <p className="mt-1" style={{ fontSize: 10, color: T.aviso }}>No alcanzó a comprobarse que quede lleno del todo: puede que todavía entre alguna caja más.</p>
         )}
-        {optim.nivel === 1 && <p className="mt-1" style={{ fontSize: 10, color: T.aviso }}>Calculado en nivel 1 (rápido): es aproximado. El cálculo bueno puede meter un poco más.</p>}
+        {optim.nivel === 1 && !(pr.tipo === "llenar" && pr.rapido) && <p className="mt-1" style={{ fontSize: 10, color: T.aviso }}>Calculado en nivel 1 (rápido): es aproximado. El cálculo bueno puede meter un poco más.</p>}
         {/* Con o sin la simulación de cargue son dos conversaciones distintas con el andén: una dice qué va
             a pasar de verdad y la otra, cuánto espacio hay en el contenedor. Conviene poder ver las dos. */}
         {optim.sinSimular && <p className="mt-1" style={{ fontSize: 10, color: T.aviso }}>
@@ -218,6 +221,13 @@ export function OptimizarPedido({ reporte, items, optim, progreso, onCalcular, o
             : !sinCambio && <Boton primario onClick={onAplicar}><CheckCircle2 size={13} />Aplicar</Boton>}
           {/* Si no encontró nada en nivel 4, en nivel 1 a veces sí: el cálculo de referencia también
               acomoda peor, así que queda más hueco por llenar. Y sale en segundos. */}
+          {/* La base sale en segundos; exprimirla hasta que no entre ni una caja más son decenas de
+              corridas, así que se pide aparte y solo cuando esa base ya le sirve al comercial. */}
+          {pr.tipo === "llenar" && !sinCambio && !pr.saturado && (
+            <Boton onClick={() => onCalcular("llenar", fijas, { saturar: true })} titulo="Exprime la carga: mete más hasta que no quepa ni una caja de ninguna referencia. Tarda más, porque lo comprueba una por una.">
+              <PackagePlus size={13} />Llenar hasta el tope
+            </Boton>
+          )}
           {sinCambio && optim.nivel !== 1 && (
             <Boton onClick={() => onCalcular(optim.tipo, fijas, { nivel: 1 })} titulo="Repite la búsqueda en nivel 1: sale en segundos y a veces encuentra lo que el nivel 4 descartó"><Zap size={13} />Probar rápido (nivel 1)</Boton>
           )}

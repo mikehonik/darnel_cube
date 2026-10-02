@@ -813,7 +813,11 @@ export default function Estiba3D({ usuario }) {
     // Nivel de la búsqueda. El 4 es el bueno pero cada corrida tarda hasta medio minuto y la búsqueda hace
     // varias; con un pedido grande se vuelve eterno. Con `extra.nivel` el usuario la repite en nivel 1: es
     // aproximada (empaca peor, así que sugiere menos) pero sale en segundos.
-    const nivelOpt = extra?.nivel || NIVEL_OPTIMIZAR;
+    // El llenado sale rápido por omisión: nivel 1 y sin exprimir. Da una base en segundos sobre la que el
+    // comercial ya puede decidir, y si quiere el máximo pide «Llenar hasta el tope», que sí va en nivel 4
+    // y comprueba referencia por referencia. Las demás búsquedas siguen en el nivel configurado.
+    const saturar = !!extra?.saturar;
+    const nivelOpt = extra?.nivel || (tipo === "llenar" && !saturar ? 1 : NIVEL_OPTIMIZAR);
     // Con extra.sinSimular toda la búsqueda corre sin «Simular la carga real»: sin compresión, sin holgura
     // y sin acomodar los bultos de pie, o sea maximizando el espacio geométrico. Sirve para saber si el
     // vehículo de más lo decide el acomodo o lo decide la simulación, que son dos conversaciones distintas
@@ -823,7 +827,7 @@ export default function Estiba3D({ usuario }) {
     const reglas4 = { ...reglasOpt, nivel: nivelOpt, abrirBundles: "nunca" };
     const op = { ejecutor, signal: ctrl.signal, onProgreso: (i, n) => setProgreso((x) => avanzarProgreso(x, { i, n })) };
     const correrPedido = (lista) => correrConBundles(cargaPara(lista, reglas4), op);
-    const correrCarga = (lista) => correr({ ...corrida.carga, items: lista, reglas: { ...corrida.carga.reglas, nivel: nivelOpt, ...(sinSimular ? { compresionAuto: false } : {}) } }, op);
+    const correrCarga = (lista, maxVehiculos = 0) => correr({ ...corrida.carga, items: lista, reglas: { ...corrida.carga.reglas, nivel: nivelOpt, ...(maxVehiculos > 0 ? { _maxContenedores: maxVehiculos } : {}), ...(sinSimular ? { compresionAuto: false } : {}) } }, op);
     const correrRapido = (lista) => correrConBundles(cargaPara(lista, { ...reglasOpt, nivel: 1, abrirBundles: "nunca" }), op);   // solo para buscar la proporción
     const correrFinal = (lista) => correrConBundles(cargaPara(lista, { ...reglasOpt, nivel: nivelOpt }), op);
     const onFase = (fase) => setProgreso((x) => avanzarProgreso(x, { fase, faseN: (x?.faseN || 0) + 1, i: 0 }));
@@ -831,16 +835,16 @@ export default function Estiba3D({ usuario }) {
     // cerrar la tarjeta. Perder una sugerencia ya calculada por un error de la siguiente es inaceptable:
     // son minutos de cálculo y el usuario ya no puede aplicarla.
     const previa = optim?.propuesta ? optim : null;
-    setError(""); setOptim({ tipo, calculando: true, fijas, nivel: nivelOpt, sinSimular }); setProgreso({ i: 0, n: 1, faseN: 0, pct: 0 });
+    setError(""); setOptim({ tipo, calculando: true, fijas, nivel: nivelOpt, sinSimular, saturar }); setProgreso({ i: 0, n: 1, faseN: 0, pct: 0 });
     try {
       const conAbiertos = (lista, abiertos) => correrConBundles(cargaPara(lista, { ...reglasOpt, nivel: nivelOpt, _abiertos: abiertos }), op);
-      const r = tipo === "llenar" ? await sugerirLlenado({ items, nActual: res.contenedores.length, correrPedido, correrCarga, correrRapido, correrFinal, fijas, onFase })
+      const r = tipo === "llenar" ? await sugerirLlenado({ items, nActual: res.contenedores.length, saturar, correrPedido, correrCarga, correrRapido, correrFinal, fijas, onFase })
         : tipo === "sinPaletizar" ? await sugerirSinPaletizar({ items, correrPedido, correrFinal, fijas, onFase })
         : tipo === "palletMixto" ? await sugerirPalletMixto({ items, correrPedido, correrFinal, fijas, onFase })
         : tipo === "abrirBundles" ? await sugerirAbrirBundles({ items, correrPedido, correrFinal: (l, a) => (a ? conAbiertos(l, a) : correrFinal(l)), abiertos: extra?.abiertos || null, onFase })
         : await sugerirDisminucion({ items, nActual: res.contenedores.length, correrPedido, correrFinal, fijas, onFase });
       if (token !== intentoRef.current) return;
-      setOptim({ tipo, propuesta: r, fijas, nivel: nivelOpt, sinSimular });
+      setOptim({ tipo, propuesta: r, fijas, nivel: nivelOpt, sinSimular, saturar });
       // En el llenado sugerido el acomodo es más delicado: unos milímetros deciden si entra otra caja.
       // Si la búsqueda ya fue sin simular, comparar contra el óptimo sin simular no dice nada.
       if (!sinSimular && (tipo === "llenar" || tipo === "reducir")) medirCostoReal(res, items);

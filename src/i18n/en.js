@@ -2,6 +2,11 @@
 // Llave: el texto en español tal como sale en pantalla ({0}, {1}… marcan los datos). Valor: su traducción.
 // Si una frase no está aquí, la pantalla la deja en español. Al agregar texto nuevo a la interfaz, agrega aquí su traducción.
 export const EN = {
+ "Llenar hasta el tope": "Fill to the brim",
+ "Base rápida: cabe seguro, pero no es el máximo. Ajusta las cantidades que quieras y, si buscas exprimirlo, dale a «Llenar hasta el tope».": "Quick baseline: it fits for sure, but it isn't the maximum. Adjust any quantities you like and, if you want to squeeze it, hit “Fill to the brim”.",
+ "Exprime la carga: mete más hasta que no quepa ni una caja de ninguna referencia. Tarda más, porque lo comprueba una por una.": "Squeezes the load: adds more until not one box of any reference fits. It takes longer, because it checks them one by one.",
+ "Llenando hasta el tope": "Filling to the brim",
+ "Exprimiendo: prueba referencia por referencia hasta que no entre ni una caja más. Tarda, y se puede cancelar.": "Squeezing: it tries reference by reference until not one more box goes in. It takes a while, and can be cancelled.",
  "Comprobado referencia por referencia: no cabe ni una caja más sin sumar un vehículo.": "Checked reference by reference: not one more box fits without adding a vehicle.",
  "No alcanzó a comprobarse que quede lleno del todo: puede que todavía entre alguna caja más.": "There wasn't time to confirm it's completely full: another box may still fit.",
  "Buscando si todavía queda hueco…": "Looking for any gap left…",
