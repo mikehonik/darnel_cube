@@ -42,8 +42,12 @@ export function OptimizarPedido({ reporte, items, optim, progreso, onCalcular, o
       {optim.sinSimular && <p className="text-xs mt-0.5" style={{ color: T.aviso }}>Sin simular la carga real: maximizando el espacio geométrico.</p>}
       {/* Barra y porcentaje en vez de «intento 3 de 7»: el total cambia durante la búsqueda y el texto
           cambiaba de ancho, así que la tarjeta se movía sola mientras calculaba. */}
-      <div className="mt-1.5 rounded-full overflow-hidden" style={{ height: 4, background: T.linea }}>
-        <div style={{ width: `${pctProgreso(progreso)}%`, height: "100%", background: T.nav, transition: "width .3s" }} />
+      <div className="flex items-center gap-2 mt-1.5">
+        <div className="flex-1 rounded-full overflow-hidden" style={{ height: 4, background: T.linea }}>
+          <div style={{ width: `${pctProgreso(progreso)}%`, height: "100%", background: T.nav, transition: "width .3s" }} />
+        </div>
+        {/* El mismo número que el botón de arriba: una sola barra para todo el cálculo, que solo sube */}
+        <span className="tabular-nums" style={{ fontSize: 11, color: T.suave, minWidth: 30, textAlign: "right" }}>{pctProgreso(progreso)}%</span>
       </div>
       <p className="text-xs mt-1" style={{ color: T.suave }}>
         {optim.nivel === 1 ? "En nivel 1 sale en segundos, pero sugiere menos: acomoda peor que el cálculo bueno."

@@ -44,10 +44,22 @@ export const palletsAlDia = (pallets, v) => {
 // Avance en porcentaje. Antes se mostraba «intento 3 de 7»: el total cambia durante la búsqueda y el
 // ancho del texto también, así que el botón y la tarjeta se movían solos mientras calculaba. Nunca llega
 // a 100 por su cuenta: el 100 es cuando termina y desaparece.
-export const pctProgreso = (p) => {
-  if (!p || !(p.n > 0)) return 0;
-  return Math.max(1, Math.min(99, Math.round(((p.i || 0) / p.n) * 100)));
-};
+// ---------- Avance ----------
+// Una sola barra de 1 a 100 para todo lo que esté calculando, aunque por dentro sean muchas corridas.
+// El motor reporta i de n DENTRO de cada corrida, así que si se mostrara eso tal cual, una búsqueda de
+// sugerencia haría el 0→99 una vez por corrida y el usuario vería la barra reiniciarse cinco veces.
+// Aquí cada fase se lleva su tramo del total y, dentro del tramo, se interpola con el i/n del motor.
+// Además nunca retrocede: `pct` se guarda en el propio estado y solo sube, que es lo que la gente
+// espera de una barra. Al arrancar un cálculo hay que poner { i: 0, n: 1, faseN: 0, pct: 0 }.
+export const FASES_ESTIMADAS = 8;   // fases típicas de una búsqueda; de más es mejor que de menos
+export function avanzarProgreso(prev, cambio) {
+  const p = { i: 0, n: 1, faseN: 0, pct: 0, ...(prev || {}), ...cambio };
+  const dentro = p.n > 0 ? Math.min(1, (p.i || 0) / p.n) : 0;
+  const bruto = p.faseN > 0 ? (p.faseN - 1 + dentro) / FASES_ESTIMADAS : dentro;
+  p.pct = Math.max(prev?.pct || 0, Math.max(1, Math.min(99, Math.round(bruto * 100))));
+  return p;
+}
+export const pctProgreso = (p) => (p && p.pct != null ? p.pct : 0);
 
 export const REGLAS_APILAR = [
   ["ninguna", "Sin regla adicional"], ["valorMayorAbajo", "Prioridad mayor va abajo"], ["mismoValor", "Solo sobre la misma prioridad"],

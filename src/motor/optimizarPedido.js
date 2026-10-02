@@ -34,6 +34,7 @@ const resumen = (c) => {
 };
 // Cuántas corridas se gastan comprobando la sugerencia. Cada una cuesta hasta medio minuto en nivel 4.
 const INTENTOS_COMPROBAR = 5;
+const porIdItem = (items, id) => items.find((x) => x.id === id);
 const cabeIgual = (c, ref) => c.resultado.contenedores.length <= ref.resultado.contenedores.length && c.resultado.sinCargar <= ref.resultado.sinCargar;
 
 // Suma cantidades al pedido. Lo extra de una línea paletizada entra como línea suelta aparte (el relleno se
@@ -129,6 +130,12 @@ export async function sugerirLlenado({ items, nActual = Infinity, correrPedido, 
     const escalado = new Map([...deltas].map(([id, n]) => [id, aPaso(porId.get(id) || {}, Math.floor(n * factor))]).filter(([, n]) => n > 0));
     return escalado.size ? sumarAlPedido(items, escalado) : null;
   };
+  // El piso de la bisección: una sola unidad de la línea más chica. Si ni eso cabe, de verdad no cabe
+  // nada; pero el andén sí notaba la diferencia entre «no cabe nada» y «cabe una caja más», porque
+  // sumando una a mano veía que seguía en el mismo contenedor. La bisección por factores no puede llegar
+  // ahí: con 2,000 cajas de propuesta, el factor más chico que prueba ya son más de cien.
+  const porVolumen = [...deltas.keys()].map((id) => porIdItem(items, id)).filter(Boolean).sort((a, b) => a.L * a.W * a.H - b.L * b.W * b.H);
+  const minima = () => { const it = porVolumen[0]; return it ? sumarAlPedido(items, new Map([[it.id, paso(it)]])) : null; };
   let lo2 = 0, hi2 = 1, mejor = null;
   for (let intento = 0; intento < INTENTOS_COMPROBAR && hi2 - lo2 > 0.06; intento++) {
     const f = intento === 0 ? 1 : (lo2 + hi2) / 2;
@@ -138,13 +145,22 @@ export async function sugerirLlenado({ items, nActual = Infinity, correrPedido, 
     const c = await correrPedido(nuevos);
     if (cabeIgual(c, ref)) { mejor = nuevos; lo2 = f; if (f === 1) break; } else hi2 = f;
   }
+  if (!mejor) {
+    // Antes de rendirse: ¿cabe aunque sea una unidad más?
+    const una = minima();
+    if (una) {
+      onFase?.("Probando si cabe aunque sea una unidad más…");
+      const c = await correrPedido(una);
+      if (cabeIgual(c, ref)) { mejor = una; lo2 = 0; }
+    }
+  }
   if (mejor) {
     onFase?.("Calculando el resultado final…");
     let f = await correrFinal(mejor);
     // El de verdad es el resultado final, no la corrida de búsqueda: si ahí se pasa del tope, se recorta.
     for (let i = 0; i < 3 && f.resultado.contenedores.length > tope; i++) {
       hi2 = lo2; lo2 = lo2 / 2;
-      const menos = listaCon(lo2);
+      const menos = listaCon(lo2) || minima();
       if (!menos) { mejor = null; break; }
       onFase?.("Ajustando la sugerencia para que no sume un vehículo…");
       mejor = menos; f = await correrFinal(menos);

@@ -13,7 +13,7 @@ import { leerVehiculos, libroVehiculos, plantillaVehiculos, vehiculoVacio } from
 import { leerPedido, libroPlantilla } from "./archivos/pedido.js";
 import { leerConversiones, aCajas, UM_CAJA_DEF, normalizaUM, nombreUM } from "./archivos/conversiones.js";
 import { libroResultados, etapasDe, htmlInstructivo, htmlInstructivoCompleto, nombreArchivo, libroSimple, MIME_XLSX } from "./archivos/resultados.js";
-import { EJEMPLOS, PALLETS_INICIALES, VEHICULOS, VERSION_ESTADO, nuevoItem, palletsAlDia, pctProgreso } from "./ui/referencia.js";
+import { EJEMPLOS, PALLETS_INICIALES, VEHICULOS, VERSION_ESTADO, nuevoItem, palletsAlDia, pctProgreso, avanzarProgreso } from "./ui/referencia.js";
 import { PALETAS, generarColores } from "./ui/colores.js";
 import { T } from "./ui/tema.js";
 import { VERSION, VERSION_COMPLETA } from "./version.js";
@@ -650,13 +650,13 @@ export default function Estiba3D({ usuario }) {
   const recomendar = async () => {
     setError(""); setRecomendacion(null); setResaltado(null); setVista(null);
     const candidatos = vehiculos.filter((v) => v.L > 0 && v.W > 0 && v.H > 0);
-    setProgreso({ i: 0, n: candidatos.length });
+    setProgreso(avanzarProgreso(null, { i: 0, n: candidatos.length }));
     const ctrl = empezar();
     const filas = [];
     try {
       for (let i = 0; i < candidatos.length; i++) {
         const v = { ...candidatos[i], maxVolPct: veh.maxVolPct, maxSkus: veh.maxSkus, maxPiezas: veh.maxPiezas };
-        setProgreso({ i, n: candidatos.length });
+        setProgreso((x) => avanzarProgreso(x, { i, n: candidatos.length }));
         try {
           const c = await correrConBundles({ items, vehiculo: v, tarimas: pallets, reglas: { ...reglas, nivel: 1 } }, { ejecutor, signal: ctrl.signal });
           const r = c.resultado, volV = v.L * v.W * v.H;
@@ -696,10 +696,10 @@ export default function Estiba3D({ usuario }) {
   };
 
   const calcular = async () => {
-    setVistaHerr(null); setEdicion(null); setError(""); setProgreso({ i: 0, n: 1 }); setResaltado(null); setVista(null); setOptim(null); intentoRef.current++;
+    setVistaHerr(null); setEdicion(null); setError(""); setProgreso({ i: 0, n: 1, faseN: 0, pct: 0 }); setResaltado(null); setVista(null); setOptim(null); intentoRef.current++;
     const ctrl = empezar();
     try {
-      const c = await correrConBundles(cargaPara(items, reglas), { ejecutor, signal: ctrl.signal, onProgreso: (i, n) => setProgreso((x) => ({ ...x, i, n })), onFase: (fase) => setProgreso((x) => ({ ...x, fase })) });
+      const c = await correrConBundles(cargaPara(items, reglas), { ejecutor, signal: ctrl.signal, onProgreso: (i, n) => setProgreso((x) => avanzarProgreso(x, { i, n })), onFase: (fase) => setProgreso((x) => avanzarProgreso(x, { fase, faseN: (x?.faseN || 0) + 1, i: 0 })) });
       const r = c.resultado; setCorrida(c); setRes(r); setSel(0); setPaso(r.contenedores[0]?.cajas.length || 0);
       setPestana(r.avisos.length || r.sinCargar || r.noCaben.length ? "avisos" : "resumen");
       setCostoReal(null);
@@ -761,7 +761,7 @@ export default function Estiba3D({ usuario }) {
   // SKU y un solo vehículo: lo que no cabe se queda fuera, así que lo cargado es la capacidad máxima. Devuelve
   // el resultado y deja la vista en el 3D.
   const calcularHerramienta = async ({ tipo, producto, oris, veh: vHerr, palletIdx = 0, config = {}, qty, titulo, color }) => {
-    setError(""); setProgreso({ i: 0, n: 1 });
+    setError(""); setProgreso({ i: 0, n: 1, faseN: 0, pct: 0 });
     const ctrl = empezar();
     const extra = tipo === "pallets"
       ? { qty, enBundle: false, paletizar: true, palletId: palletIdx, porPallet: config.porPallet || 0, porCapa: config.porCapa || 0, capasPallet: config.capasPallet || 0, resto: "sueltas" }
@@ -771,7 +771,7 @@ export default function Estiba3D({ usuario }) {
     try {
       // Nivel rápido: con miles de cajas de un solo SKU el nivel alto no cambia el resultado y tardaba hasta 40 s
       const c = await correr({ items: [it], vehiculo, tarimas: pallets, reglas: { ...reglas, nivel: Math.min(reglas.nivel, 2), usarLista: false, _maxContenedores: 1 } },
-        { ejecutor, signal: ctrl.signal, onProgreso: (i, n) => setProgreso({ i, n }) });
+        { ejecutor, signal: ctrl.signal, onProgreso: (i, n) => setProgreso((x) => avanzarProgreso(x, { i, n })) });
       const r = c.resultado, k = r.contenedores[0] || { cajas: [], peso: 0, vol: 0 };
       const nPallets = k.cajas.filter((x) => x.pal >= 0).length;
       const nCajas = k.cajas.reduce((a, x) => a + (x.pal >= 0 ? r.pallets[x.pal]?.n || 0 : 1), 0);
@@ -821,17 +821,17 @@ export default function Estiba3D({ usuario }) {
     const sinSimular = !!extra?.sinSimular;
     const reglasOpt = sinSimular ? { ...reglas, compresionAuto: false } : reglas;
     const reglas4 = { ...reglasOpt, nivel: nivelOpt, abrirBundles: "nunca" };
-    const op = { ejecutor, signal: ctrl.signal, onProgreso: (i, n) => setProgreso((x) => ({ ...x, i, n })) };
+    const op = { ejecutor, signal: ctrl.signal, onProgreso: (i, n) => setProgreso((x) => avanzarProgreso(x, { i, n })) };
     const correrPedido = (lista) => correrConBundles(cargaPara(lista, reglas4), op);
     const correrCarga = (lista) => correr({ ...corrida.carga, items: lista, reglas: { ...corrida.carga.reglas, nivel: nivelOpt, ...(sinSimular ? { compresionAuto: false } : {}) } }, op);
     const correrRapido = (lista) => correrConBundles(cargaPara(lista, { ...reglasOpt, nivel: 1, abrirBundles: "nunca" }), op);   // solo para buscar la proporción
     const correrFinal = (lista) => correrConBundles(cargaPara(lista, { ...reglasOpt, nivel: nivelOpt }), op);
-    const onFase = (fase) => setProgreso((x) => ({ ...(x || { i: 0, n: 1 }), fase }));
+    const onFase = (fase) => setProgreso((x) => avanzarProgreso(x, { fase, faseN: (x?.faseN || 0) + 1, i: 0 }));
     // Si ya había una sugerencia en pantalla se guarda: si esta búsqueda falla, se devuelve esa en vez de
     // cerrar la tarjeta. Perder una sugerencia ya calculada por un error de la siguiente es inaceptable:
     // son minutos de cálculo y el usuario ya no puede aplicarla.
     const previa = optim?.propuesta ? optim : null;
-    setError(""); setOptim({ tipo, calculando: true, fijas, nivel: nivelOpt, sinSimular }); setProgreso({ i: 0, n: 1 });
+    setError(""); setOptim({ tipo, calculando: true, fijas, nivel: nivelOpt, sinSimular }); setProgreso({ i: 0, n: 1, faseN: 0, pct: 0 });
     try {
       const conAbiertos = (lista, abiertos) => correrConBundles(cargaPara(lista, { ...reglasOpt, nivel: nivelOpt, _abiertos: abiertos }), op);
       const r = tipo === "llenar" ? await sugerirLlenado({ items, nActual: res.contenedores.length, correrPedido, correrCarga, correrRapido, correrFinal, fijas, onFase })

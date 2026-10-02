@@ -16,6 +16,13 @@ export const VERSION_COMPLETA = `v${VERSION}${BUILD ? ` · ${BUILD}` : ""}${FECH
 // escrito para quien usa la herramienta (no para programadores).
 export const NOVEDADES = [
   {
+    version: "1.6.10", fecha: "02/10/2026",
+    cambios: [
+      "El avance es una sola barra de 1 a 100% para todo el cálculo, y solo sube. El motor reporta su avance dentro de cada corrida, y una búsqueda de sugerencia hace varias, así que la barra hacía el 0→99 una vez por corrida y se reiniciaba cuatro o cinco veces. Ahora cada fase se lleva su tramo del total y dentro del tramo se interpola. En la tarjeta de sugerencia el porcentaje va escrito al lado de la barra, igual que en el botón de arriba.",
+      "«Llenar con pedido sugerido» ya no dice «no cabe nada» cuando sí cabe algo. Si la cantidad propuesta no se comprueba, antes de rendirse se prueba si cabe aunque sea una unidad más del SKU más chico. Era lo que pasaba en BDL_7.1: la herramienta decía que no cabía nada y sumando cajas a mano la carga seguía entrando en el mismo contenedor.",
+    ],
+  },
+  {
     version: "1.6.9", fecha: "02/10/2026",
     cambios: [
       "Se arregló que la herramienta se quedara «calculando» para siempre. Pedir una sugerencia, o volver a calcular, mientras otro cálculo seguía vivo dejaba los dos corriendo a la vez: se peleaban el procesador (por eso parecía trabada), los dos escribían el mismo porcentaje de avance (el encabezado decía 21% y la tarjeta otra cosa) y, al terminar el viejo, apagaba el botón de Cancelar del nuevo. Ahora arrancar un cálculo cancela el anterior, y uno que ya no es el vigente no toca la pantalla.",
