@@ -637,13 +637,21 @@ export default function Estiba3D({ usuario }) {
   }, [maestro.productos, busqueda]);
 
   // Una corrida a la vez. El AbortController permite cancelarla desde el botón o al desmontar.
+  // `empezar` es obligatorio para arrancar cualquier corrida: CANCELA la anterior antes de tomar el turno.
+  // Sin esto, pedir una sugerencia o recalcular mientras otra corrida seguía viva dejaba las dos corriendo:
+  // se peleaban el procesador (parecía colgado), las dos escribían el mismo `progreso` (el encabezado decía
+  // «Calculando 21%» mientras la tarjeta decía otra cosa) y, al terminar, la vieja limpiaba el
+  // corridaRef de la NUEVA, así que «Cancelar» ya no cancelaba nada. `soltar` solo limpia si el turno sigue
+  // siendo suyo, para que una corrida vieja no le apague el progreso a la que está en curso.
   const corridaRef = useRef(null);
+  const empezar = () => { corridaRef.current?.abort(); const c = new AbortController(); corridaRef.current = c; return c; };
+  const soltar = (ctrl) => { if (corridaRef.current === ctrl) { corridaRef.current = null; setProgreso(null); } };
   // Recomendación: corre el mismo pedido contra cada vehículo de la lista y compara
   const recomendar = async () => {
     setError(""); setRecomendacion(null); setResaltado(null); setVista(null);
     const candidatos = vehiculos.filter((v) => v.L > 0 && v.W > 0 && v.H > 0);
     setProgreso({ i: 0, n: candidatos.length });
-    const ctrl = new AbortController(); corridaRef.current = ctrl;
+    const ctrl = empezar();
     const filas = [];
     try {
       for (let i = 0; i < candidatos.length; i++) {
@@ -684,12 +692,12 @@ export default function Estiba3D({ usuario }) {
     } catch (e) {
       if (!(e instanceof ErrorCorrida && e.tipo === "cancelada")) setError("La recomendación falló: " + (e.detalle?.original || e.message));
     }
-    corridaRef.current = null; setProgreso(null);
+    soltar(ctrl);
   };
 
   const calcular = async () => {
     setVistaHerr(null); setEdicion(null); setError(""); setProgreso({ i: 0, n: 1 }); setResaltado(null); setVista(null); setOptim(null); intentoRef.current++;
-    const ctrl = new AbortController(); corridaRef.current = ctrl;
+    const ctrl = empezar();
     try {
       const c = await correrConBundles(cargaPara(items, reglas), { ejecutor, signal: ctrl.signal, onProgreso: (i, n) => setProgreso((x) => ({ ...x, i, n })), onFase: (fase) => setProgreso((x) => ({ ...x, fase })) });
       const r = c.resultado; setCorrida(c); setRes(r); setSel(0); setPaso(r.contenedores[0]?.cajas.length || 0);
@@ -702,7 +710,7 @@ export default function Estiba3D({ usuario }) {
       else if (e instanceof ErrorCorrida && e.tipo === "entrada_invalida") setError("Revisa estos datos: " + e.detalle.problemas.map((p) => p.mensaje).join(" "));
       else setError("El cálculo falló: " + (e.detalle?.original || e.message));
     }
-    corridaRef.current = null; setProgreso(null);
+    soltar(ctrl);
   };
   calcularRef.current = calcular;
 
@@ -754,7 +762,7 @@ export default function Estiba3D({ usuario }) {
   // el resultado y deja la vista en el 3D.
   const calcularHerramienta = async ({ tipo, producto, oris, veh: vHerr, palletIdx = 0, config = {}, qty, titulo, color }) => {
     setError(""); setProgreso({ i: 0, n: 1 });
-    const ctrl = new AbortController(); corridaRef.current = ctrl;
+    const ctrl = empezar();
     const extra = tipo === "pallets"
       ? { qty, enBundle: false, paletizar: true, palletId: palletIdx, porPallet: config.porPallet || 0, porCapa: config.porCapa || 0, capasPallet: config.capasPallet || 0, resto: "sueltas" }
       : { qty, enBundle: false, paletizar: false, ...(oris ? { oris } : {}) };
@@ -779,7 +787,7 @@ export default function Estiba3D({ usuario }) {
     } catch (e) {
       if (!(e instanceof ErrorCorrida && e.tipo === "cancelada")) setError("El cálculo de la herramienta falló: " + (e.detalle?.original || e.message));
       return null;
-    } finally { corridaRef.current = null; setProgreso(null); }
+    } finally { soltar(ctrl); }
   };
   // Muestra en el 3D un pallet ya armado (pallet óptimo, patrones de fabricación): la base es el pallet vacío.
   const verPalletHerr = ({ def, titulo, color, forma }) => {
@@ -799,7 +807,7 @@ export default function Estiba3D({ usuario }) {
   const optimizarPedido = async (tipo, fijas = new Set(items.filter((it) => it.fijo).map((it) => it.id)), extra = null) => {
     if (!res || !corrida) return;
     const token = ++intentoRef.current;
-    const ctrl = new AbortController(); corridaRef.current = ctrl;
+    const ctrl = empezar();
     // Durante la búsqueda no se rehace la apertura de Bundles (cada corrida cuesta segundos y se hacen decenas);
     // la corrida que se muestra al final sí usa la política configurada.
     // Nivel de la búsqueda. El 4 es el bueno pero cada corrida tarda hasta medio minuto y la búsqueda hace
@@ -819,10 +827,14 @@ export default function Estiba3D({ usuario }) {
     const correrRapido = (lista) => correrConBundles(cargaPara(lista, { ...reglasOpt, nivel: 1, abrirBundles: "nunca" }), op);   // solo para buscar la proporción
     const correrFinal = (lista) => correrConBundles(cargaPara(lista, { ...reglasOpt, nivel: nivelOpt }), op);
     const onFase = (fase) => setProgreso((x) => ({ ...(x || { i: 0, n: 1 }), fase }));
+    // Si ya había una sugerencia en pantalla se guarda: si esta búsqueda falla, se devuelve esa en vez de
+    // cerrar la tarjeta. Perder una sugerencia ya calculada por un error de la siguiente es inaceptable:
+    // son minutos de cálculo y el usuario ya no puede aplicarla.
+    const previa = optim?.propuesta ? optim : null;
     setError(""); setOptim({ tipo, calculando: true, fijas, nivel: nivelOpt, sinSimular }); setProgreso({ i: 0, n: 1 });
     try {
       const conAbiertos = (lista, abiertos) => correrConBundles(cargaPara(lista, { ...reglasOpt, nivel: nivelOpt, _abiertos: abiertos }), op);
-      const r = tipo === "llenar" ? await sugerirLlenado({ items, correrPedido, correrCarga, correrRapido, correrFinal, fijas, onFase })
+      const r = tipo === "llenar" ? await sugerirLlenado({ items, nActual: res.contenedores.length, correrPedido, correrCarga, correrRapido, correrFinal, fijas, onFase })
         : tipo === "sinPaletizar" ? await sugerirSinPaletizar({ items, correrPedido, correrFinal, fijas, onFase })
         : tipo === "palletMixto" ? await sugerirPalletMixto({ items, correrPedido, correrFinal, fijas, onFase })
         : tipo === "abrirBundles" ? await sugerirAbrirBundles({ items, correrPedido, correrFinal: (l, a) => (a ? conAbiertos(l, a) : correrFinal(l)), abiertos: extra?.abiertos || null, onFase })
@@ -834,9 +846,9 @@ export default function Estiba3D({ usuario }) {
       if (!sinSimular && (tipo === "llenar" || tipo === "reducir")) medirCostoReal(res, items);
     } catch (e) {
       if (token !== intentoRef.current) return;
-      setOptim(null);
-      if (!(e instanceof ErrorCorrida && e.tipo === "cancelada")) setError("No se pudo calcular la sugerencia: " + (e.detalle?.original || e.message));
-    } finally { corridaRef.current = null; setProgreso(null); }
+      setOptim(previa);
+      if (!(e instanceof ErrorCorrida && e.tipo === "cancelada")) setError("No se pudo calcular la sugerencia: " + (e.detalle?.original || e.message) + (previa ? " Se dejó la sugerencia anterior." : ""));
+    } finally { soltar(ctrl); }
   };
   const mostrarCorrida = (c) => {
     setCorrida(c); setRes(c.resultado); setSel(0); setPaso(c.resultado.contenedores[0]?.cajas.length || 0); setVista(null); setResaltado(null);

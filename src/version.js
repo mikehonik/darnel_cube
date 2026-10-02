@@ -16,6 +16,16 @@ export const VERSION_COMPLETA = `v${VERSION}${BUILD ? ` · ${BUILD}` : ""}${FECH
 // escrito para quien usa la herramienta (no para programadores).
 export const NOVEDADES = [
   {
+    version: "1.6.9", fecha: "02/10/2026",
+    cambios: [
+      "Se arregló que la herramienta se quedara «calculando» para siempre. Pedir una sugerencia, o volver a calcular, mientras otro cálculo seguía vivo dejaba los dos corriendo a la vez: se peleaban el procesador (por eso parecía trabada), los dos escribían el mismo porcentaje de avance (el encabezado decía 21% y la tarjeta otra cosa) y, al terminar el viejo, apagaba el botón de Cancelar del nuevo. Ahora arrancar un cálculo cancela el anterior, y uno que ya no es el vigente no toca la pantalla.",
+      "Si una sugerencia falla, ya no se cierra la tarjeta con la sugerencia anterior. Antes, darle a «Rehacer rápido (nivel 1)» podía dejarte sin la propuesta que ya estaba calculada y sin poder aplicarla, que son minutos de cálculo perdidos.",
+      "«Llenar con pedido sugerido» ya no propone llenar dos vehículos cuando tienes uno. La búsqueda corre sin rehacer la apertura de Bundles (si no, cada intento tardaría minutos), así que su cálculo de referencia a veces sale en un vehículo más que el que estás viendo, y contra esa referencia proponía llenar ese vehículo de más. Ahora el tope son los vehículos que tienes en pantalla, y se comprueba contra el resultado final.",
+      "Arreglado el «se encontró espacio, pero al recalcular la carga ya no cupo igual». El relleno contaba también las cajas que caían en un vehículo nuevo que la propia corrida de relleno abría: en un pedido real de 32 SKUs proponía 24,428 cajas, de las cuales 23,896 estaban en un segundo vehículo inventado, y por eso la comprobación nunca pasaba. Ahora solo cuenta lo que cae en los vehículos que ya iban.",
+      "Y cuando la cantidad propuesta no se comprueba, en vez de bajarla 20% cuatro veces y rendirse, se busca por bisección la cantidad más grande que sí se comprueba. La escalera vieja nunca probaba por debajo del 51%, así que decía «no cabe nada» en casos donde el 30% sí cabía.",
+    ],
+  },
+  {
     version: "1.6.8", fecha: "02/10/2026",
     cambios: [
       "Cuando se abren Bundles para ahorrar un vehículo, ahora se cierran de vuelta los que no hacía falta abrir. Antes la búsqueda repartía los Bundles abiertos en proporción entre los SKUs y se quedaba con el primer total que ahorraba el vehículo, así que casi siempre abría de más: en un caso del andén desarmó los 10 Bundles de un SKU cuando con 4 bastaba para completar la hilera contra la pared y los otros 6 ocupaban exactamente lo mismo enteros. Al final de la búsqueda se prueba, SKU por SKU, cerrar los que se pueda sin perder el ahorro, y el aviso dice cuántos quedaron enteros y por qué. Cada Bundle que no se abre es tiempo de andén que no se gasta.",

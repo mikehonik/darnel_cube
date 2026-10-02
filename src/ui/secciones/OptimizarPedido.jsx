@@ -159,6 +159,7 @@ export function OptimizarPedido({ reporte, items, optim, progreso, onCalcular, o
     const mensaje = pr.tipo === "reacomodo" ? `Sin cambiar cantidades, reacomodando la carga cabe en ${nVeh(pr.despues.n)} (${pcts(pr.despues.ocupaciones)}).`
       : sinCambio ? (pr.tipo === "llenar"
         ? (pr.motivo === "sinCandidatos" ? "No hay líneas que se puedan aumentar: todas están fijas con el candado."
+          : pr.motivo === "sumabaVehiculo" ? "Lo que cabía en los huecos solo entraba sumando otro vehículo, así que no se propone: llenar no puede costar un camión."
           : pr.motivo === "noSeComprobo" ? "Se encontró espacio, pero al recalcular el pedido completo la carga ya no cupo igual. Prueba soltando algún candado o agregando tú la cantidad."
           : "No cabe ni una caja más de los SKUs del pedido sin sumar un vehículo.")
         : "No se encontró una disminución que quite un vehículo sin tocar las líneas fijas.")

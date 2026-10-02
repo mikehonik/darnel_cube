@@ -32,6 +32,8 @@ const resumen = (c) => {
   const v = c.carga.vehiculo, volV = v.L * v.W * v.H;
   return { n: c.resultado.contenedores.length, sinCargar: c.resultado.sinCargar, ocupaciones: c.resultado.contenedores.map((k) => (volV ? (k.vol / volV) * 100 : 0)) };
 };
+// Cuántas corridas se gastan comprobando la sugerencia. Cada una cuesta hasta medio minuto en nivel 4.
+const INTENTOS_COMPROBAR = 5;
 const cabeIgual = (c, ref) => c.resultado.contenedores.length <= ref.resultado.contenedores.length && c.resultado.sinCargar <= ref.resultado.sinCargar;
 
 // Suma cantidades al pedido. Lo extra de una línea paletizada entra como línea suelta aparte (el relleno se
@@ -61,9 +63,15 @@ const cambiosEntre = (antes, despues) => {
 // Primero se agranda el pedido completo en la misma proporción (se conserva el mix que pidió el cliente) hasta
 // donde quepa sin sumar vehículos; después, los huecos que queden se llenan con lo que mejor entre.
 // correrRapido (opcional) se usa para esa búsqueda de proporción; el resultado siempre se comprueba con correrPedido.
-export async function sugerirLlenado({ items, correrPedido, correrCarga, correrRapido = correrPedido, correrFinal = correrPedido, fijas = new Set(), onFase }) {
+// nActual: los vehículos que el usuario tiene EN PANTALLA. No es lo mismo que los de `ref`: la búsqueda
+// corre con abrirBundles "nunca" (rehacer la apertura en cada corrida costaría minutos), así que su
+// referencia puede salir en 2 vehículos cuando la pantalla muestra 1 porque allá sí se abrieron Bundles.
+// Sin este tope, llenar se comparaba contra su propia referencia y proponía llenar DOS vehículos cuando
+// el usuario tenía uno: para él eso no es llenar, es sumar un camión.
+export async function sugerirLlenado({ items, nActual = Infinity, correrPedido, correrCarga, correrRapido = correrPedido, correrFinal = correrPedido, fijas = new Set(), onFase }) {
   onFase?.("Calculando el pedido actual en nivel máximo…");
   const ref = await correrPedido(items);
+  const tope = Math.min(nActual, ref.resultado.contenedores.length);
   const candidatos = items.filter((it) => it.qty > 0 && !fijas.has(it.id) && !it.fijo && !it.extraDe);
   if (!candidatos.length) return { tipo: "llenar", cambios: [], antes: resumen(ref), despues: resumen(ref), corrida: ref, items, motivo: "sinCandidatos" };
   const esCandidato = new Set(candidatos.map((it) => it.id));
@@ -102,23 +110,48 @@ export async function sugerirLlenado({ items, correrPedido, correrCarga, correrR
   });
   const conRelleno = await correrCarga([...base, ...relleno]);
   const deltas = new Map();
-  conRelleno.resultado.contenedores.forEach((_, i) => cajasPorLinea(conRelleno, i, true).forEach((n, id) => deltas.set(id, (deltas.get(id) || 0) + n)));
+  // Solo cuenta el relleno que cayó en los vehículos QUE YA IBAN. La corrida de relleno no tiene tope de
+  // vehículos, así que con un hueco chico se desborda y abre uno nuevo para el relleno sobrante; ese
+  // sobrante no es «lo que cabe», es un vehículo más. Contarlo era el origen de «se encontró espacio, pero
+  // al recalcular la carga ya no cupo igual»: en un pedido real de 32 SKUs proponía 24,428 cajas, de las
+  // cuales 23,896 estaban en un segundo vehículo inventado. Ningún factor de la comprobación podía salvar eso.
+  const nVehiculos = refProp.resultado.contenedores.length;
+  conRelleno.resultado.contenedores.forEach((_, i) => { if (i >= nVehiculos) return; cajasPorLinea(conRelleno, i, true).forEach((n, id) => deltas.set(id, (deltas.get(id) || 0) + n)); });
   proporcional.forEach((it) => { const o = items.find((x) => x.id === it.id); if (o && it.qty > o.qty) deltas.set(it.id, (deltas.get(it.id) || 0) + it.qty - o.qty); });
   if (!deltas.size) return { tipo: "llenar", cambios: [], antes: resumen(ref), despues: resumen(ref), corrida: ref, items, motivo: "noCabeMas" };
-  // Se comprueba con el pedido real; si el acomodo no reproduce el relleno, se baja un poco y se vuelve a probar.
-  let factor = 1;
-  for (let intento = 0; intento < 4; intento++) {
-    onFase?.(intento ? "Ajustando la sugerencia para que quepa…" : "Comprobando la sugerencia…");
-    const porId = new Map(items.map((it) => [it.id, it]));
+  // Se comprueba con el pedido real. Si el acomodo no reproduce el relleno, se busca por bisección la
+  // cantidad más grande que SÍ se comprueba, en vez de bajar 20% cuatro veces y rendirse: esa escalera
+  // nunca probaba por debajo del 51%, así que devolvía «no cabe nada» cuando el 30% sí cabía. Y el cero
+  // siempre cabe, así que la bisección tiene piso: la respuesta puede ser pequeña, pero nunca es vacía
+  // por habérsele acabado los intentos.
+  const porId = new Map(items.map((it) => [it.id, it]));
+  const listaCon = (factor) => {
     const escalado = new Map([...deltas].map(([id, n]) => [id, aPaso(porId.get(id) || {}, Math.floor(n * factor))]).filter(([, n]) => n > 0));
-    if (!escalado.size) break;
-    const nuevos = sumarAlPedido(items, escalado), c = await correrPedido(nuevos);
-    if (cabeIgual(c, ref)) {
-      onFase?.("Calculando el resultado final…");
-      const f = await correrFinal(nuevos);
-      return { tipo: "llenar", cambios: cambiosEntre(items, nuevos), antes: resumen(ref), despues: resumen(f), corrida: f, items: nuevos };
+    return escalado.size ? sumarAlPedido(items, escalado) : null;
+  };
+  let lo2 = 0, hi2 = 1, mejor = null;
+  for (let intento = 0; intento < INTENTOS_COMPROBAR && hi2 - lo2 > 0.06; intento++) {
+    const f = intento === 0 ? 1 : (lo2 + hi2) / 2;
+    const nuevos = listaCon(f);
+    if (!nuevos) break;
+    onFase?.(intento ? "Ajustando la sugerencia para que quepa…" : "Comprobando la sugerencia…");
+    const c = await correrPedido(nuevos);
+    if (cabeIgual(c, ref)) { mejor = nuevos; lo2 = f; if (f === 1) break; } else hi2 = f;
+  }
+  if (mejor) {
+    onFase?.("Calculando el resultado final…");
+    let f = await correrFinal(mejor);
+    // El de verdad es el resultado final, no la corrida de búsqueda: si ahí se pasa del tope, se recorta.
+    for (let i = 0; i < 3 && f.resultado.contenedores.length > tope; i++) {
+      hi2 = lo2; lo2 = lo2 / 2;
+      const menos = listaCon(lo2);
+      if (!menos) { mejor = null; break; }
+      onFase?.("Ajustando la sugerencia para que no sume un vehículo…");
+      mejor = menos; f = await correrFinal(menos);
     }
-    factor *= 0.8;
+    if (mejor && f.resultado.contenedores.length <= tope)
+      return { tipo: "llenar", cambios: cambiosEntre(items, mejor), antes: resumen(ref), despues: resumen(f), corrida: f, items: mejor };
+    return { tipo: "llenar", cambios: [], antes: resumen(ref), despues: resumen(ref), corrida: ref, items, motivo: "sumabaVehiculo" };
   }
   return { tipo: "llenar", cambios: [], antes: resumen(ref), despues: resumen(ref), corrida: ref, items, motivo: "noSeComprobo" };
 }
