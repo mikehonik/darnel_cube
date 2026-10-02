@@ -69,6 +69,26 @@ Términos del dominio tal como se usan en el código. Un término, un significad
 - **Optimizar el pedido** (`motor/optimizarPedido.js`, `ui/secciones/OptimizarPedido.jsx`): tarjeta abajo a la izquierda del 3D. «Llenar con pedido sugerido» agranda el pedido en la misma proporción (búsqueda en nivel 1) y llena los huecos con relleno (`esRelleno`), todo comprobado en nivel 4. «Sugerir disminución» primero reacomoda en nivel 4 (con Bundles) y, si no alcanza, resta lo que quedó en el último vehículo hasta 4 veces. Vista previa con candado por línea, «Aplicar» deja el resultado ya calculado, «Deshacer» regresa. Reemplazan «¿Qué más cabe?» e «Intentar consolidar».
 - **Herramientas de capacidad**: el cálculo completo corre en nivel ≤ 2 (antes tardaba hasta 40 s) y en pallets completos se alterna «Vehículo / Pallet armado» (`vistaHerr.palDef`).
 
+## v1.6.6: el remate de Bundles se repite, y no se le cree al nivel rápido
+
+- **`rematar()`** (`motor/corrida.js`): el atajo de la v1.6.5 miraba SOLO el cálculo base. Si en ese momento el último vehículo llevaba una caja suelta, `soloBundles` era false y no se intentaba nunca; y la fase «llenar» volvía a dejar un último vehículo con dos o tres Bundles que ya nadie revisaba. Ahora es una función que se aplica al resultado de cada rama (base, fase A y fase B) y se repite hasta `MAX_REMATES` mientras siga bajando el número de vehículos.
+- **Comprobación a fondo**: la búsqueda corre en nivel 1 porque son decenas de corridas, pero el nivel 1 empaca peor y puede concluir «ni abriendo todos se ahorra un vehículo» cuando al nivel configurado sí. Si el rápido dice que no y el último vehículo va por debajo de `COLA_QUE_VALE_COMPROBAR` (45%), se comprueba una vez al nivel real; si ahí sí ahorra, la búsqueda del mínimo también pasa a correr al nivel real (`memoReal`).
+
+### Diagnóstico del caso BDL_7.1 (reproducido con su maestro real)
+Carga: 11 SKUs, 95.2 m³ de caja en un 53FT-DryVan de 112.3 m³ (84.7%), con 13 pallets y 23 Bundles.
+
+| Configuración | Vehículos | Ocupación |
+|---|---|---|
+| Sin abrir ningún Bundle | 2 | 80.0% + 11.8% |
+| Política «llenar» (abre 9 de 23) | 2 | 85.4% + 6.4% |
+| Abriendo los 23, pallets como están | 2 | 90.3% + 1.5% |
+| Sin Bundles y sin pallets | **1** | 84.7% |
+| Todo paletizado | 2 | 66.4% + 48.1% |
+
+Conclusión: con los 13 pallets la carga NO entra en un vehículo por más Bundles que se abran (abrir los 23 solo baja el segundo a 1.5%). Lo que cuesta el vehículo son los pallets: el deck y el aire sobre cada torre. Es una decisión de paletizado, igual que en «Reparto semana 37».
+
+Dato del maestro que conviene revisar: el peso del Bundle está por debajo del peso de su contenido (DU4061101: Bundle 75.3 kg contra 20 cajas × 6.4 = 128 kg; DU401199: 147.1 contra 32 × 7.6 = 243). No estorba mientras el peso no sea el límite, pero falsea cualquier planeación por peso.
+
 ## v1.6.5: el Bundle que se queda solo, el orden del andén y la altura del pallet
 
 - **Bundles varados** (`motor/corrida.js: correrConBundles`): antes de la búsqueda general se prueba un caso concreto y barato — si el ÚLTIMO vehículo lleva solo Bundles, abrir exactamente esos. La búsqueda general reparte `k` proporcionalmente entre todas las líneas y se evalúa en nivel 1, así que el caso «el segundo contenedor lleva un solo Bundle y al primero le sobran 11 m³» se le escapaba. Una corrida, al nivel configurado.

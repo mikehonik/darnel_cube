@@ -16,6 +16,13 @@ export const VERSION_COMPLETA = `v${VERSION}${BUILD ? ` · ${BUILD}` : ""}${FECH
 // escrito para quien usa la herramienta (no para programadores).
 export const NOVEDADES = [
   {
+    version: "1.6.6", fecha: "02/10/2026",
+    cambios: [
+      "El remate de los Bundles que quedan solos en el último vehículo ahora se repite. Antes solo se miraba el primer cálculo, así que si en ese momento el último vehículo llevaba aunque fuera una caja suelta, el atajo no se intentaba nunca; y después de abrir Bundles para llenar volvía a quedar un último vehículo con dos o tres Bundles que ya nadie revisaba.",
+      "Si la búsqueda en nivel rápido concluye que ni abriendo todos los Bundles se ahorra un vehículo, pero el último va por debajo del 45%, se comprueba una vez al nivel configurado antes de rendirse. El nivel rápido empaca peor y puede descartar un ahorro que sí existe; vale la corrida de más, porque lo que está en juego es un camión.",
+    ],
+  },
+  {
     version: "1.6.5", fecha: "30/09/2026",
     cambios: [
       "Cuando el último vehículo se va llevando solo Bundles, ahora se prueba abriendo exactamente esos antes que cualquier otra cosa. Pasaba que un pedido salía con un segundo contenedor cargando UN solo Bundle mientras al primero le sobraban 11 m³: la búsqueda general reparte los Bundles abiertos entre todas las líneas y se evalúa en nivel rápido, así que ese caso se le escapaba.",

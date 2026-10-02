@@ -75,3 +75,27 @@ describe("Bundles que quedan solos en el último vehículo", () => {
     if (c.resultado.bundles) expect(c.resultado.bundles.abiertos).toBeLessThan(39);
   }, 300000);
 });
+
+// El remate se repite: cada pasada puede dejar OTRA vez un último vehículo con un par de Bundles.
+// Antes solo se miraba el resultado sin abrir nada, así que si el último vehículo de ese primer cálculo
+// llevaba aunque fuera una caja suelta, el atajo no se intentaba nunca (caso BDL_7.1).
+describe("el remate se repite hasta que deja de ganar", () => {
+  const veh = { L: 12032, W: 2352, H: 2698, tara: 3900, maxKg: 30480, maxVolPct: 0, maxSkus: 0, maxPiezas: 0 };
+  const l = (d) => ({ id: 1, nombre: "DU1", desc: "", color: null, L: 300, W: 250, H: 220, peso: 3, qty: 0,
+    oris: [true, true, false, false, false, false], volteoPiso: false, maxNiveles: 0, valorApilar: 0, pesoMaxEncima: 0,
+    piso: "libre", soportaEncima: true, grupo: "", orden: 0, piezas: 1, paletizar: false, palletId: 0, porPallet: 0,
+    porCapa: 0, capasPallet: 0, resto: "parcial", aceptaCajas: true, aceptaPallet: false,
+    enBundle: true, bundleCantidadEstandar: 30, bundleL: 1100, bundleW: 950, bundleH: 1900, bundlePeso: 0, ...d });
+  const r = { nivel: 1, limitarPeso: true, soporteMin: 75, usarOrden: true, agrupar: false, juntos: true, apilamiento: "ninguna" };
+
+  it("con una caja suelta en el último vehículo el remate igual llega a actuar", async () => {
+    const items = [
+      l({ id: 1, nombre: "DU1", qty: 30 * 25 }),
+      l({ id: 2, nombre: "DU2", qty: 30 * 13 + 7 }),   // deja 7 cajas sueltas que antes bloqueaban el atajo
+    ];
+    const c = await correrConBundles({ items, vehiculo: veh, tarimas: [], reglas: r }, { ejecutor });
+    expect(c.resultado.sinCargar || 0).toBe(0);
+    const cajas = c.carga.items.reduce((a, it) => a + (it.esBundle ? it.qty * it.cantidadPorBundle : it.qty), 0);
+    expect(cajas).toBe(30 * 38 + 7);
+  }, 300000);
+});
