@@ -69,7 +69,44 @@ Términos del dominio tal como se usan en el código. Un término, un significad
 - **Optimizar el pedido** (`motor/optimizarPedido.js`, `ui/secciones/OptimizarPedido.jsx`): tarjeta abajo a la izquierda del 3D. «Llenar con pedido sugerido» agranda el pedido en la misma proporción (búsqueda en nivel 1) y llena los huecos con relleno (`esRelleno`), todo comprobado en nivel 4. «Sugerir disminución» primero reacomoda en nivel 4 (con Bundles) y, si no alcanza, resta lo que quedó en el último vehículo hasta 4 veces. Vista previa con candado por línea, «Aplicar» deja el resultado ya calculado, «Deshacer» regresa. Reemplazan «¿Qué más cabe?» e «Intentar consolidar».
 - **Herramientas de capacidad**: el cálculo completo corre en nivel ≤ 2 (antes tardaba hasta 40 s) y en pallets completos se alterna «Vehículo / Pallet armado» (`vistaHerr.palDef`).
 
-## v1.6.7: tres palancas más cuando sobra un vehículo
+## v1.6.8: los Bundles que no hacía falta abrir, y optimizar sin simular
+
+### Cerrar de vuelta (`motor/corrida.js: cerrarDeVuelta`)
+Reporte del andén sobre DU4063101 (Bundles de 20 cajas): *«en el escenario sugerido desarmó todos los bundles, debió haber dejado 6 bundles armados ya que ocupan el mismo espacio en bdl que en caja suelta y haber desarmado 4 para completar la hilera que va contra la pared»*. Tiene razón y la causa es `repartirAbiertos`: la búsqueda reparte los abiertos **en proporción** entre todas las líneas y se queda con el primer total que ahorra el vehículo, así que abre de más en las líneas que no lo necesitaban. Y cuando el `k` de la bisección falla al nivel bueno, el último recurso del bucle es `total`, o sea abrir todos.
+
+Arreglo: después de cada rama que gana (ahorrar vehículo y llenar mejor), `cerrarDeVuelta` recorre las líneas de más abiertos a menos y por bisección cierra el máximo que se pueda sin perder el ahorro (`sirve`: mismo número de vehículos, no más `sinCargar`, y en la rama de «llenar mejor» tampoco empeorar la cola). Presupuesto de `MAX_CORRIDAS_CIERRE = 12` corridas, porque lo que se gana es tiempo de andén, no un camión. El aviso dice cuántos quedaron enteros y por qué.
+
+Medido en el caso sintético de `motor/bundles.test.js` («cerrar de vuelta…»): un SKU cuyo Bundle embaldosa el contenedor exacto (1200 × 1176 × 1349 → 10 × 2 × 2, abrirlo no gana un milímetro) más uno incómodo (1100 × 950 × 1900). Antes abría **8**, ahora **6**, mismo vehículo único. No cierra nada cuando cerrar cuesta el vehículo (segundo caso del test).
+
+Lo que `cerrarDeVuelta` **no** hace: mover abiertos de una línea a otra. Solo baja dentro de cada línea. Un reparto no proporcional tendría que entrar en la bisección misma, y eso multiplica las corridas.
+
+### Optimizar sin simular (`App.jsx: optimizarPedido`, `extra.sinSimular`)
+Dos cosas distintas que antes se confundían:
+- **«Ver sin simular»** (`medirCostoReal` + `AvisoCargaReal`, v1.6.2): muestra **la misma carga** sin el interruptor. Solo dice cuánto cuesta la simulación.
+- **«Optimizar sin simular»** (nuevo): rehace **la búsqueda entera** con `compresionAuto: false`, o sea sin compresión, sin holgura entre bloques y sin bultos de pie. Contesta otra pregunta: el vehículo de más, ¿lo decide el acomodo o lo decide la simulación? Son dos conversaciones distintas con el andén.
+
+`extra.sinSimular` fuerza `compresionAuto: false` en todas las corridas de esa búsqueda (`reglasOpt`), se guarda en `optim.sinSimular` y se muestra en la tarjeta mientras calcula y en el resultado. Al aplicar, `aplicarOptimizacion` apaga también la regla, porque si no las reglas en pantalla dirían una cosa y el resultado otra; `deshacerOptimizacion` restaura `anterior.reglas`. Con `sinSimular` no se corre `medirCostoReal` (comparar el óptimo sin simular contra sí mismo no dice nada).
+
+En la interfaz: mensaje con botón «Optimizar sin simular» en la tarjeta de ofrecimiento cuando hay más de un vehículo y la simulación está prendida, y en la tarjeta de resultado de disminución/reacomodo un botón que alterna «Probar sin simular» / «Probar con la simulación» conservando el nivel.
+
+## v1.6.7: pérdida por variedad medida, tres palancas más y búsqueda rápida
+
+### Pérdida por variedad (`motor/corrida.js: techoPorVariedad`)
+Estudio sobre los 3,267 contenedores de exportación del histórico de México. Se cruzaron contra el maestro, se convirtieron las UM con la hoja Conversiones y se descartaron los que traen algún SKU que no pasa la auditoría y los de volumen imposible: quedan **2,098 contenedores limpios**. La ocupación lograda cae con la variedad, y la caída es logarítmica:
+
+| SKUs | 1 | 2-4 | 5-9 | 10-14 | 15-19 | 20-24 | 25-34 |
+|---|---|---|---|---|---|---|---|
+| p90 de ocupación | 98.4% | 96.3% | 94.2% | 93.3% | 92.8% | 92.1% | 90.8% |
+
+Ajuste: `techo(n) = 98.4 − 2.1·ln(n)`, con menos de medio punto de error. Se aplica como `veh.maxVolPct` dentro de «Simular la carga real», respetando un tope menor puesto a mano, y el motor lo dice en los avisos (si no, se ve hueco en el 3D sin explicación).
+
+**Por qué NO como holgura**: se midió. Para reproducir esa caída con holgura entre bloques harían falta 55 a 85 mm, y aun así solo se llega a la mitad o tres cuartos. La holgura solo muerde en las juntas, y en un contenedor no hay tantas. La pérdida por variedad es otra cosa: bloques parciales, sobrantes raros, separar producto para descargar por cliente. La holgura física se queda en 6 mm, que es lo que es.
+
+**Lo que el techo NO es**: es el p90, lo que alcanza el mejor 10% de los cargues reales, no el promedio. Y parte de la brecha real son medidas mal capturadas (1,415 SKUs del maestro tienen algún problema, 659 de ellos en 10×10×10) y decisiones del andén que la herramienta no pretende reproducir. Se verificó que excluir los SKUs sucios no mueve la curva.
+
+Pruebas: `motor/variedad.test.js`.
+
+### Tres palancas más cuando sobra un vehículo
 
 Las tres salen del mismo hallazgo repetido en los casos reales de Darnel: cuando sobra un vehículo, muchas veces no lo decide el acomodo sino cómo se decidió paletizar o abrir Bundles. Van como tres mensajes separados en la tarjeta de sugerencias (decisión del usuario), no como un panel único.
 
@@ -77,6 +114,7 @@ Las tres salen del mismo hallazgo repetido en los casos reales de Darnel: cuando
 - **`sugerirPalletMixto`**: `palletsPobres()` marca los pallets de un SKU con `utilVol < 0.5` (van a menos de la mitad); si hay dos o más, prueba pasarlos a `paletizar: "mixto"`.
 - **`sugerirAbrirBundles`** + `reglas._abiertos` (`motor/corrida.js`): apertura impuesta a mano. Con `_abiertos` el motor NO busca nada, usa el mapa que le den. La UI es una lista por SKU con + y −, y cada cambio recalcula.
 - Las tres solo se ofrecen con `n >= 2`, y solo cuando pueden aplicar (hay SKUs paletizados, hay dos o más pallets pobres, hay Bundles).
+- **Nivel de la búsqueda** (`App.jsx: optimizarPedido`, `extra.nivel`): la sugerencia corre en nivel 4 y cada corrida tarda hasta medio minuto, así que con un pedido grande la búsqueda se vuelve eterna. El botón «Rehacer rápido (nivel 1)» repite la misma búsqueda en nivel 1 (segundos). Sale mientras calcula y también cuando no encontró nada: en nivel 1 a veces sí encuentra, porque la corrida de referencia también acomoda peor y queda más hueco por llenar. El resultado avisa que es aproximado.
 - **`pctProgreso`** (`ui/referencia.js`): el avance pasa de «intento 3 de 7» a porcentaje con barra. El total cambia durante la búsqueda y el ancho del texto movía el botón y la tarjeta.
 
 ## v1.6.6: el remate de Bundles se repite, y no se le cree al nivel rápido

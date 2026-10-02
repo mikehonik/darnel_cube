@@ -3,7 +3,7 @@
 // «Llenar con pedido sugerido» y «Sugerir disminución del pedido». Los dos calculan en nivel 4, muestran una
 // vista previa (qué cambia y cómo queda la ocupación) y solo al aplicar cambian el pedido. Ver motor/optimizarPedido.js.
 import { useEffect, useState } from "react";
-import { PackagePlus, PackageMinus, PackageOpen, Layers, Loader2, X, Lock, Unlock, Undo2, CheckCircle2, Info } from "lucide-react";
+import { PackagePlus, PackageMinus, PackageOpen, Layers, Loader2, X, Lock, Unlock, Undo2, CheckCircle2, Info, Zap, Maximize2 } from "lucide-react";
 import { T } from "../tema.js";
 import { pctProgreso } from "../referencia.js";
 import { NotaCargaReal } from "./AvisoCargaReal.jsx";
@@ -16,7 +16,7 @@ const Boton = ({ onClick, children, primario, titulo }) => (
     style={primario ? { background: T.nav, color: "#fff" } : { border: `1px solid ${T.linea}`, background: T.sup, color: T.tinta }}>{children}</button>
 );
 
-export function OptimizarPedido({ reporte, items, optim, progreso, onCalcular, onAplicar, onDeshacer, onCerrar, onCancelar, onFijarLinea, costoReal, onQuitarSimulacion }) {
+export function OptimizarPedido({ reporte, items, optim, progreso, onCalcular, onAplicar, onDeshacer, onCerrar, onCancelar, onFijarLinea, costoReal, onQuitarSimulacion, cargaReal }) {
   const [oculto, setOculto] = useState(false);
   useEffect(() => { setOculto(false); }, [reporte]);
   // El candado es el mismo de la tabla del pedido (it.fijo): lo que se fija aquí queda fijo allá.
@@ -39,13 +39,24 @@ export function OptimizarPedido({ reporte, items, optim, progreso, onCalcular, o
     <div className="px-3 py-2.5">
       <div className="flex items-center gap-2 font-semibold"><Loader2 size={15} className="animate-spin" />{optim.tipo === "llenar" ? "Buscando qué más cabe" : "Buscando cómo usar un vehículo menos"}</div>
       <p className="text-xs mt-1" style={{ color: T.suave }}>{progreso?.fase || "Calculando en nivel 4…"}</p>
+      {optim.sinSimular && <p className="text-xs mt-0.5" style={{ color: T.aviso }}>Sin simular la carga real: maximizando el espacio geométrico.</p>}
       {/* Barra y porcentaje en vez de «intento 3 de 7»: el total cambia durante la búsqueda y el texto
           cambiaba de ancho, así que la tarjeta se movía sola mientras calculaba. */}
       <div className="mt-1.5 rounded-full overflow-hidden" style={{ height: 4, background: T.linea }}>
         <div style={{ width: `${pctProgreso(progreso)}%`, height: "100%", background: T.nav, transition: "width .3s" }} />
       </div>
-      <p className="text-xs mt-1" style={{ color: T.suave }}>En nivel 4 cada cálculo tarda hasta medio minuto.</p>
-      <div className="mt-2"><Boton onClick={onCancelar}><X size={13} />Cancelar</Boton></div>
+      <p className="text-xs mt-1" style={{ color: T.suave }}>
+        {optim.nivel === 1 ? "En nivel 1 sale en segundos, pero sugiere menos: acomoda peor que el cálculo bueno."
+          : "En nivel 4 cada cálculo tarda hasta medio minuto, y la búsqueda hace varios."}
+      </p>
+      <div className="flex flex-wrap gap-1.5 mt-2">
+        {optim.nivel !== 1 && (
+          <Boton primario onClick={() => onCalcular(optim.tipo, fijas, { nivel: 1 })} titulo="Repite la búsqueda en nivel 1: sale en segundos, aunque sugiera menos">
+            <Zap size={13} />Rehacer rápido (nivel 1)
+          </Boton>
+        )}
+        <Boton onClick={onCancelar}><X size={13} />Cancelar</Boton>
+      </div>
     </div>
   );
 
@@ -161,6 +172,12 @@ export function OptimizarPedido({ reporte, items, optim, progreso, onCalcular, o
           <button onClick={onCerrar} aria-label="Cerrar"><X size={14} color={T.suave} /></button>
         </div>
         <p className="text-xs mt-1" style={{ color: sinCambio ? T.suave : T.tinta }}>{mensaje}</p>
+        {optim.nivel === 1 && <p className="mt-1" style={{ fontSize: 10, color: T.aviso }}>Calculado en nivel 1 (rápido): es aproximado. El cálculo bueno puede meter un poco más.</p>}
+        {/* Con o sin la simulación de cargue son dos conversaciones distintas con el andén: una dice qué va
+            a pasar de verdad y la otra, cuánto espacio hay en el contenedor. Conviene poder ver las dos. */}
+        {optim.sinSimular && <p className="mt-1" style={{ fontSize: 10, color: T.aviso }}>
+          Calculado sin simular la carga real: es el óptimo geométrico, sin compresión, sin holgura entre bloques y sin bultos de pie. Es más optimista que el andén. Al aplicarlo queda apagada la simulación en Reglas.
+        </p>}
         {pr.cambios.length > 0 && (
           <table className="w-full text-xs mt-2">
             <thead><tr style={{ color: T.suave }}><th className="text-left font-normal">SKU</th><th className="text-right font-normal">Actual</th><th className="text-right font-normal">Cambio</th><th className="text-right font-normal">Nuevo</th><th /></tr></thead>
@@ -186,6 +203,15 @@ export function OptimizarPedido({ reporte, items, optim, progreso, onCalcular, o
           {cambiaron
             ? <Boton primario onClick={() => onCalcular(optim.tipo, fijas)}>Recalcular sin tocar las fijas</Boton>
             : !sinCambio && <Boton primario onClick={onAplicar}><CheckCircle2 size={13} />Aplicar</Boton>}
+          {/* Si no encontró nada en nivel 4, en nivel 1 a veces sí: el cálculo de referencia también
+              acomoda peor, así que queda más hueco por llenar. Y sale en segundos. */}
+          {sinCambio && optim.nivel !== 1 && (
+            <Boton onClick={() => onCalcular(optim.tipo, fijas, { nivel: 1 })} titulo="Repite la búsqueda en nivel 1: sale en segundos y a veces encuentra lo que el nivel 4 descartó"><Zap size={13} />Probar rápido (nivel 1)</Boton>
+          )}
+          {/* Correr la misma búsqueda con o sin la simulación de cargue */}
+          {optim.sinSimular
+            ? <Boton onClick={() => onCalcular(optim.tipo, fijas, { nivel: optim.nivel })} titulo="Repite la misma búsqueda simulando la carga real: compresión, holgura entre bloques y bultos de pie, como en el andén">Probar con la simulación</Boton>
+            : cargaReal && <Boton onClick={() => onCalcular(optim.tipo, fijas, { nivel: optim.nivel, sinSimular: true })} titulo="Repite la misma búsqueda sin simular la carga real: maximiza el espacio geométrico. Sirve para saber si el vehículo de más lo decide el acomodo o la simulación."><Maximize2 size={13} />Probar sin simular</Boton>}
           <Boton onClick={onCerrar}>{sinCambio ? "Cerrar" : "Cancelar"}</Boton>
         </div>
         <NotaCargaReal costo={costoReal} onQuitarSimulacion={onQuitarSimulacion} />
@@ -226,6 +252,23 @@ export function OptimizarPedido({ reporte, items, optim, progreso, onCalcular, o
         {mixtos && <Boton onClick={() => onCalcular("palletMixto", fijas)} titulo="Hay pallets de un solo SKU que van medio vacíos. Prueba armarlos como pallets mixtos para liberar piso."><Layers size={13} />Juntar pallets medio vacíos</Boton>}
         {bundles && <Boton onClick={() => onCalcular("abrirBundles", fijas)} titulo="Elige a mano cuántos Bundles se abren de cada SKU y recalcula."><PackageOpen size={13} />Elegir qué Bundles abrir</Boton>}
       </div>
+      {/* Más de un vehículo y con la simulación prendida: se propone, con su mensaje, buscar el acomodo sin
+          la simulación. No es lo mismo que «Ver sin simular» (ese solo muestra la misma carga sin el flag):
+          esto rehace la búsqueda entera maximizando el espacio, y así se ve si el vehículo de más lo decide
+          el acomodo o lo decide la simulación. */}
+      {reducir && cargaReal && (
+        <div className="mt-2 pt-2" style={{ borderTop: `1px solid ${T.linea}` }}>
+          <p className="flex items-start gap-1.5" style={{ fontSize: 11 }}>
+            <Info size={12} color={T.aviso} className="flex-none mt-px" />
+            <span>Esto salió en {nVeh(n)} simulando la carga real. También puedes buscar el acomodo <b>sin la simulación</b>, maximizando el espacio: sale más optimista que el andén, pero dice si el vehículo de más lo decide el acomodo o lo decide la simulación.</span>
+          </p>
+          <div className="mt-1.5">
+            <Boton onClick={() => onCalcular("reducir", fijas, { sinSimular: true })} titulo="Rehace la búsqueda sin compresión, sin holgura entre bloques y sin bultos de pie">
+              <Maximize2 size={13} />Optimizar sin simular
+            </Boton>
+          </div>
+        </div>
+      )}
       <NotaCargaReal costo={costoReal} onQuitarSimulacion={onQuitarSimulacion} />
     </div>
   );

@@ -89,7 +89,34 @@ export const COMPRESION_POR_OMISION = { BL: 4, PQ: 2, CJ: 0, CS: 0, CJM: 0, PAC:
 // El dibujo y el volumen siempre usan la medida real.
 export const holguraPorMezcla = (nSkus) => Math.min(6, 2 * Math.max(0, nSkus - 1));
 
+// ---------- Pérdida por variedad ----------
+// Medido sobre 2,098 contenedores de exportación reales de Darnel (los 3,267 del histórico, menos los
+// que traen algún SKU que no pasa la auditoría del maestro y los de volumen imposible). La ocupación que
+// de verdad se alcanza cae conforme sube la variedad, y la caída es logarítmica, no lineal:
+//     1 SKU 98.4% · 2-4 96.3% · 5-9 94.2% · 10-14 93.3% · 15-19 92.8% · 20-24 92.1% · 25-34 90.8%
+// Ajuste: techo(n) = 98.4 − 2.1·ln(n), que reproduce la tabla con menos de medio punto de error.
+//
+// Por qué NO se modela como holgura entre bultos: se midió. Para reproducir esa pérdida con holgura
+// harían falta entre 55 y 85 mm entre bloques, y aun así solo se llega a la mitad o tres cuartos de la
+// caída. No es un espacio entre cajas: es que con 25 SKUs quedan muchos bloques parciales, muchos
+// sobrantes raros y el estibador separa producto para poder descargar por cliente. Así que se aplica
+// donde corresponde, como un techo de ocupación, y se dice en los avisos cuánto se descontó.
+//
+// Ojo con lo que esto NO es: parte de esa brecha real son medidas mal capturadas en el maestro y
+// decisiones del andén que la herramienta no pretende reproducir. El techo es el que alcanza el mejor
+// 10% de los cargues reales, no el promedio: es lo que un buen estibador logra, no lo que sale siempre.
+export const TECHO_UN_SKU = 98.4, CAIDA_POR_VARIEDAD = 2.1, TECHO_MINIMO = 88;
+export const techoPorVariedad = (nSkus) =>
+  nSkus < 2 ? 100 : Math.max(TECHO_MINIMO, Math.round((TECHO_UN_SKU - CAIDA_POR_VARIEDAD * Math.log(nSkus)) * 10) / 10);
+
 export function prepararEntrada({ items, vehiculo, tarimas, reglas }) {
+  const nSkus = new Set(items.map((i) => String(i.nombre || "").trim().toUpperCase())).size;
+  // «Simular la carga real» también descuenta la pérdida por variedad (ver techoPorVariedad). Se aplica
+  // como techo de ocupación del vehículo, respetando el que el usuario haya puesto a mano si es menor.
+  const techo = reglas.compresionAuto === false ? 0 : techoPorVariedad(nSkus);
+  const veh = techo > 0 && techo < 100
+    ? { ...vehiculo, maxVolPct: vehiculo.maxVolPct > 0 ? Math.min(vehiculo.maxVolPct, techo) : techo, _techoVariedad: techo, _nSkus: nSkus }
+    : vehiculo;
   return {
     // El motor identifica cada caja por su posición en este arreglo (idx). Se quitan los campos que solo son de UI.
     // Compresión por omisión: a un SKU que no la tenga capturada se le aplica la de su empaque
@@ -102,10 +129,10 @@ export function prepararEntrada({ items, vehiculo, tarimas, reglas }) {
       if (!(x.compresion > 0)) y.compresion = COMPRESION_POR_OMISION[um] ?? COMPRESION_POR_OMISION.CJ;
       return y;
     }),
-    veh: vehiculo,
+    veh,
     // "Simular la carga real" gobierna las tres cosas: cómo se rota, cuánto cede el producto y la holgura.
     reglas: { ...reglas, soporteMin: reglas.soporteMin / 100, cargaReal: reglas.compresionAuto !== false, rotarAlFinal: reglas.compresionAuto !== false,
-      holgura: reglas.compresionAuto === false ? 0 : holguraPorMezcla(new Set(items.map((i) => String(i.nombre || "").trim().toUpperCase())).size) },
+      holgura: reglas.compresionAuto === false ? 0 : holguraPorMezcla(nSkus) },
     pallets: tarimas || [],
   };
 }
@@ -241,6 +268,50 @@ export async function correrConBundles(carga, { ejecutor, signal, onProgreso, on
     if (r.gano) return conInfo(r.c, r.abiertos, n0 - r.c.resultado.contenedores.length);
   }
 
+  // ----- Cerrar de vuelta los Bundles que no hacía falta abrir -----
+  // Abrir un Bundle solo gana algo si sus cajas van a parar a huecos donde el Bundle entero no cabía.
+  // Cuando el hueco es del tamaño del Bundle, abrirlo no gana ni un milímetro y sí cuesta mano de obra en
+  // el andén: alguien tiene que cortar el fleje y acomodar caja por caja. La búsqueda no lo ve, porque
+  // reparte los abiertos en proporción entre todas las líneas (repartirAbiertos) y se queda con el primer k
+  // que ahorra el vehículo, así que casi siempre abre de más. Caso real: un SKU de 10 Bundles de 20 cajas
+  // salió con los 10 abiertos, cuando 4 bastaban para completar la hilera contra la pared y los otros 6
+  // ocupaban lo mismo enteros.
+  // Así que al final se cierran de vuelta, línea por línea y por bisección, los que se puedan sin perder el
+  // ahorro. Se empieza por la línea con más abiertos, que es donde está la mano de obra. Con presupuesto de
+  // corridas, porque cada una cuesta segundos y lo que se gana es tiempo de andén, no un camión.
+  const MAX_CORRIDAS_CIERRE = 12;
+  // colaMax: en la rama de «llenar mejor» lo que se busca no es el conteo de vehículos sino que el último
+  // quede vacío, así que cerrar de vuelta tampoco puede deshacer eso.
+  const cerrarDeVuelta = async (c0, abiertos0, colaMax = Infinity) => {
+    const nMeta = c0.resultado.contenedores.length, sinRef = c0.resultado.sinCargar || 0;
+    const sirve = (x) => x.resultado.contenedores.length <= nMeta && (x.resultado.sinCargar || 0) <= sinRef && ultimo(x) <= colaMax;
+    let c = c0, abiertos = { ...abiertos0 }, corridas = 0, cerrados = 0;
+    const orden = lineas.filter((l) => abiertos[l.id] > 0).sort((a, b) => abiertos[b.id] - abiertos[a.id]);
+    for (const l of orden) {
+      if (corridas >= MAX_CORRIDAS_CIERRE) break;
+      if (corridas === 0) onFase?.("Probando dejar enteros los Bundles que ocupan lo mismo…");
+      // Máximo que se puede cerrar de esta línea: cerrar menos nunca puede ser peor, así que bisección.
+      const tenia = abiertos[l.id];
+      let lo = 0, hi = tenia, mejorC = null;
+      while (lo < hi && corridas < MAX_CORRIDAS_CIERRE) {
+        const m = Math.ceil((lo + hi) / 2);
+        const prueba = { ...abiertos };
+        if (tenia - m > 0) prueba[l.id] = tenia - m; else delete prueba[l.id];
+        const x = await con(prueba); corridas++;
+        if (sirve(x)) { lo = m; mejorC = x; } else hi = m - 1;
+      }
+      if (lo > 0) {
+        if (tenia - lo > 0) abiertos[l.id] = tenia - lo; else delete abiertos[l.id];
+        c = mejorC; cerrados += lo;
+      }
+    }
+    return { c, abiertos, cerrados };
+  };
+  const notaCierre = (cerrados) => (cerrados
+    ? ` Otros ${cerrados} se dejan enteros: abrirlos no gana espacio porque sus cajas ocuparían lo mismo, y cada Bundle que no se abre es tiempo de andén.`
+    : "");
+
+
   // ----- Usar un vehículo menos -----
   // La búsqueda se hace en nivel rápido porque son decenas de corridas. El riesgo es que el nivel rápido
   // empaca peor: puede decir «ni abriendo todos se ahorra un vehículo» cuando en el nivel de verdad sí.
@@ -272,10 +343,11 @@ export async function correrConBundles(carga, { ejecutor, signal, onProgreso, on
     for (const k of [...new Set([hi, Math.min(total, Math.ceil(hi * 1.25)), total])]) {
       const abiertos = repartirAbiertos(lineas, k), c = await con(abiertos);
       if (usados(c) < n0) {
-        const n = c.resultado.contenedores.length;
-        c.resultado.avisos = [...(c.resultado.avisos || []), `Para usar ${n} ${n === 1 ? "vehículo" : "vehículos"} en lugar de ${n0} se abren ${k} ${k === 1 ? "Bundle" : "Bundles"} (${detalle(abiertos)}); sus cajas van sueltas en los huecos.`];
         const r = await rematar(c, abiertos);
-        return conInfo(r.c, r.abiertos, n0 - r.c.resultado.contenedores.length);
+        const z = await cerrarDeVuelta(r.c, r.abiertos);
+        const kf = Object.values(z.abiertos).reduce((a, b) => a + b, 0), n = z.c.resultado.contenedores.length;
+        z.c.resultado.avisos = [...(z.c.resultado.avisos || []), `Para usar ${n} ${n === 1 ? "vehículo" : "vehículos"} en lugar de ${n0} se abren ${kf} ${kf === 1 ? "Bundle" : "Bundles"} (${detalle(z.abiertos)}); sus cajas van sueltas en los huecos.` + notaCierre(z.cerrados)];
+        return conInfo(z.c, z.abiertos, n0 - n);
       }
     }
   }
@@ -299,9 +371,12 @@ export async function correrConBundles(carga, { ejecutor, signal, onProgreso, on
   const abiertos = repartirAbiertos(lineas, hi), c = await con(abiertos);
   if (usados(c) > n0 || ultimo(c) >= colaBase * MEJORA_MINIMA) return conInfo(base, {});
   const pct = (1 - ultimo(c) / colaBase) * 100;
-  c.resultado.avisos = [...(c.resultado.avisos || []), `Se abren ${hi} ${hi === 1 ? "Bundle" : "Bundles"} (${detalle(abiertos)}) para aprovechar los huecos: el último vehículo queda ${pct.toFixed(0)}% más vacío y los demás van más llenos.`];
   // Llenar deja muchas veces un último vehículo con dos o tres Bundles sueltos: ese es el caso que se
   // remata, y es el que hacía que una carga de 85% saliera en dos vehículos por un par de bultos.
   const fin = await rematar(c, abiertos);
-  return conInfo(fin.c, fin.abiertos, n0 - fin.c.resultado.contenedores.length);
+  const z = await cerrarDeVuelta(fin.c, fin.abiertos, Math.max(ultimo(fin.c), colaBase * MEJORA_MINIMA));
+  const kf = Object.values(z.abiertos).reduce((a, b) => a + b, 0);
+  const pctZ = z.c.resultado.contenedores.length < n0 ? pct : (1 - ultimo(z.c) / colaBase) * 100;
+  z.c.resultado.avisos = [...(z.c.resultado.avisos || []), `Se abren ${kf} ${kf === 1 ? "Bundle" : "Bundles"} (${detalle(z.abiertos)}) para aprovechar los huecos: el último vehículo queda ${pctZ.toFixed(0)}% más vacío y los demás van más llenos.` + notaCierre(z.cerrados)];
+  return conInfo(z.c, z.abiertos, n0 - z.c.resultado.contenedores.length);
 }

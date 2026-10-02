@@ -802,25 +802,36 @@ export default function Estiba3D({ usuario }) {
     const ctrl = new AbortController(); corridaRef.current = ctrl;
     // Durante la búsqueda no se rehace la apertura de Bundles (cada corrida cuesta segundos y se hacen decenas);
     // la corrida que se muestra al final sí usa la política configurada.
-    const reglas4 = { ...reglas, nivel: NIVEL_OPTIMIZAR, abrirBundles: "nunca" };
+    // Nivel de la búsqueda. El 4 es el bueno pero cada corrida tarda hasta medio minuto y la búsqueda hace
+    // varias; con un pedido grande se vuelve eterno. Con `extra.nivel` el usuario la repite en nivel 1: es
+    // aproximada (empaca peor, así que sugiere menos) pero sale en segundos.
+    const nivelOpt = extra?.nivel || NIVEL_OPTIMIZAR;
+    // Con extra.sinSimular toda la búsqueda corre sin «Simular la carga real»: sin compresión, sin holgura
+    // y sin acomodar los bultos de pie, o sea maximizando el espacio geométrico. Sirve para saber si el
+    // vehículo de más lo decide el acomodo o lo decide la simulación, que son dos conversaciones distintas
+    // con el andén. Al aplicar una propuesta así, la simulación queda apagada en Reglas (ver aplicarOptimizacion).
+    const sinSimular = !!extra?.sinSimular;
+    const reglasOpt = sinSimular ? { ...reglas, compresionAuto: false } : reglas;
+    const reglas4 = { ...reglasOpt, nivel: nivelOpt, abrirBundles: "nunca" };
     const op = { ejecutor, signal: ctrl.signal, onProgreso: (i, n) => setProgreso((x) => ({ ...x, i, n })) };
     const correrPedido = (lista) => correrConBundles(cargaPara(lista, reglas4), op);
-    const correrCarga = (lista) => correr({ ...corrida.carga, items: lista, reglas: { ...corrida.carga.reglas, nivel: NIVEL_OPTIMIZAR } }, op);
-    const correrRapido = (lista) => correrConBundles(cargaPara(lista, { ...reglas, nivel: 1, abrirBundles: "nunca" }), op);   // solo para buscar la proporción
-    const correrFinal = (lista) => correrConBundles(cargaPara(lista, { ...reglas, nivel: NIVEL_OPTIMIZAR }), op);
+    const correrCarga = (lista) => correr({ ...corrida.carga, items: lista, reglas: { ...corrida.carga.reglas, nivel: nivelOpt, ...(sinSimular ? { compresionAuto: false } : {}) } }, op);
+    const correrRapido = (lista) => correrConBundles(cargaPara(lista, { ...reglasOpt, nivel: 1, abrirBundles: "nunca" }), op);   // solo para buscar la proporción
+    const correrFinal = (lista) => correrConBundles(cargaPara(lista, { ...reglasOpt, nivel: nivelOpt }), op);
     const onFase = (fase) => setProgreso((x) => ({ ...(x || { i: 0, n: 1 }), fase }));
-    setError(""); setOptim({ tipo, calculando: true, fijas }); setProgreso({ i: 0, n: 1 });
+    setError(""); setOptim({ tipo, calculando: true, fijas, nivel: nivelOpt, sinSimular }); setProgreso({ i: 0, n: 1 });
     try {
-      const conAbiertos = (lista, abiertos) => correrConBundles(cargaPara(lista, { ...reglas, nivel: NIVEL_OPTIMIZAR, _abiertos: abiertos }), op);
+      const conAbiertos = (lista, abiertos) => correrConBundles(cargaPara(lista, { ...reglasOpt, nivel: nivelOpt, _abiertos: abiertos }), op);
       const r = tipo === "llenar" ? await sugerirLlenado({ items, correrPedido, correrCarga, correrRapido, correrFinal, fijas, onFase })
         : tipo === "sinPaletizar" ? await sugerirSinPaletizar({ items, correrPedido, correrFinal, fijas, onFase })
         : tipo === "palletMixto" ? await sugerirPalletMixto({ items, correrPedido, correrFinal, fijas, onFase })
         : tipo === "abrirBundles" ? await sugerirAbrirBundles({ items, correrPedido, correrFinal: (l, a) => (a ? conAbiertos(l, a) : correrFinal(l)), abiertos: extra?.abiertos || null, onFase })
         : await sugerirDisminucion({ items, nActual: res.contenedores.length, correrPedido, correrFinal, fijas, onFase });
       if (token !== intentoRef.current) return;
-      setOptim({ tipo, propuesta: r, fijas });
-      // En el llenado sugerido el acomodo es más delicado: unos milímetros deciden si entra otra caja
-      if (tipo === "llenar" || tipo === "reducir") medirCostoReal(res, items);
+      setOptim({ tipo, propuesta: r, fijas, nivel: nivelOpt, sinSimular });
+      // En el llenado sugerido el acomodo es más delicado: unos milímetros deciden si entra otra caja.
+      // Si la búsqueda ya fue sin simular, comparar contra el óptimo sin simular no dice nada.
+      if (!sinSimular && (tipo === "llenar" || tipo === "reducir")) medirCostoReal(res, items);
     } catch (e) {
       if (token !== intentoRef.current) return;
       setOptim(null);
@@ -834,22 +845,27 @@ export default function Estiba3D({ usuario }) {
   const aplicarOptimizacion = () => {
     const pr = optim?.propuesta; if (!pr) return;
     intentoRef.current++;
-    const anterior = { items, corrida };
+    const anterior = { items, corrida, reglas };
     setItems(pr.items); mostrarCorrida(pr.corrida);
+    // La propuesta se calculó sin la simulación, así que las reglas tienen que quedar igual que el
+    // resultado que se está mostrando; si no, el siguiente cálculo daría otra cosa sin explicación.
+    if (optim.sinSimular) setReglas((p) => ({ ...p, compresionAuto: false }));
     setOptim({ tipo: optim.tipo, aplicado: true, anterior });
     const n = pr.despues.n;
     const enN = `${n} ${n === 1 ? "vehículo" : "vehículos"}`;
-    setAviso(pr.tipo === "llenar" ? `Pedido completado: ${pr.cambios.reduce((a, c) => a + c.delta, 0).toLocaleString("es-MX")} cajas más, en ${enN}.`
+    setAviso((pr.tipo === "llenar" ? `Pedido completado: ${pr.cambios.reduce((a, c) => a + c.delta, 0).toLocaleString("es-MX")} cajas más, en ${enN}.`
       : pr.tipo === "reacomodo" ? `Reacomodado sin cambiar cantidades: la carga queda en ${enN}.`
       : pr.tipo === "sinPaletizar" ? `${pr.elegido} ahora va suelto, sin paletizar: la carga queda en ${enN}. Se vuelve a paletizar en su línea del pedido.`
       : pr.tipo === "palletMixto" ? `${pr.pobres.length} SKUs pasaron a pallet mixto: la carga queda en ${enN}.`
       : pr.tipo === "abrirBundles" ? `Apertura de Bundles aplicada: la carga queda en ${enN}.`
-      : `Pedido ajustado: la carga queda en ${enN}.`);
+      : `Pedido ajustado: la carga queda en ${enN}.`)
+      + (optim.sinSimular ? " Queda apagado «Simular la carga real»: es el óptimo geométrico, más optimista que el andén. Se prende otra vez en Reglas." : ""));
   };
   const deshacerOptimizacion = () => {
     const a = optim?.anterior; if (!a) return;
     intentoRef.current++;
     setItems(a.items); mostrarCorrida(a.corrida); setOptim(null);
+    if (a.reglas) setReglas(a.reglas);   // si se aplicó una propuesta sin simular, vuelve también la regla
     setAviso("Se regresó al pedido anterior.");
   };
 
@@ -1534,7 +1550,7 @@ export default function Estiba3D({ usuario }) {
               <OptimizarPedido reporte={reporte} items={items} optim={optim} progreso={progreso} onCalcular={optimizarPedido} onAplicar={aplicarOptimizacion}
                 onDeshacer={deshacerOptimizacion} onCerrar={() => setOptim(null)} onCancelar={() => { cancelarCorrida(); setOptim(null); }}
                 onFijarLinea={(id) => editarItem(id, "fijo", !items.find((x) => x.id === id)?.fijo)}
-                costoReal={costoReal} onQuitarSimulacion={calcularSinSimular} />
+                costoReal={costoReal} onQuitarSimulacion={calcularSinSimular} cargaReal={reglas.compresionAuto !== false} />
             )}
             {edicion && cont && validacion && (
               <PanelEdicion edicion={edicion} setEdicion={setEdicion} cont={cont} validacion={validacion} items={corrida.carga.items} pallets={res.pallets} vehNum={sel + 1}

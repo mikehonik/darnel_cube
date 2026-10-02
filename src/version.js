@@ -16,10 +16,20 @@ export const VERSION_COMPLETA = `v${VERSION}${BUILD ? ` · ${BUILD}` : ""}${FECH
 // escrito para quien usa la herramienta (no para programadores).
 export const NOVEDADES = [
   {
+    version: "1.6.8", fecha: "02/10/2026",
+    cambios: [
+      "Cuando se abren Bundles para ahorrar un vehículo, ahora se cierran de vuelta los que no hacía falta abrir. Antes la búsqueda repartía los Bundles abiertos en proporción entre los SKUs y se quedaba con el primer total que ahorraba el vehículo, así que casi siempre abría de más: en un caso del andén desarmó los 10 Bundles de un SKU cuando con 4 bastaba para completar la hilera contra la pared y los otros 6 ocupaban exactamente lo mismo enteros. Al final de la búsqueda se prueba, SKU por SKU, cerrar los que se pueda sin perder el ahorro, y el aviso dice cuántos quedaron enteros y por qué. Cada Bundle que no se abre es tiempo de andén que no se gasta.",
+      "Cuando sale más de un vehículo simulando la carga real, aparece un mensaje con el botón «Optimizar sin simular»: rehace la búsqueda entera sin compresión, sin holgura entre bloques y sin bultos de pie, o sea maximizando el espacio del contenedor. No es lo mismo que «Ver sin simular» (ese solo muestra la misma carga sin el interruptor): esto vuelve a buscar el acomodo, y sirve para saber si el vehículo de más lo decide el acomodo o lo decide la simulación, que son dos conversaciones distintas con el andén.",
+      "En la disminución sugerida, y en «Cabe reacomodando», se puede correr la misma búsqueda con o sin la simulación de cargue, con un botón que la alterna sin perder lo demás. La propuesta avisa en la tarjeta cuando se calculó sin simular, y si se aplica queda apagado «Simular la carga real» en Reglas para que las reglas digan lo mismo que el resultado que está en pantalla; con «Deshacer» vuelve como estaba.",
+    ],
+  },
+  {
     version: "1.6.7", fecha: "02/10/2026",
     cambios: [
       "Cuando sale más de un vehículo hay tres botones nuevos, porque muchas veces el vehículo de más no lo decide el acomodo sino cómo se decidió paletizar o abrir Bundles. «¿Y si un SKU va suelto?» prueba uno por uno los SKUs paletizados y te dice cuál, yendo suelto, ahorra el vehículo (un pallet cobra su tarima y el aire de arriba; suelto, ese SKU rellena los huecos de los demás). «Juntar pallets medio vacíos» prueba armar en pallets mixtos los SKUs cuyo pallet va a menos de la mitad. «Elegir qué Bundles abrir» te deja decidir a mano, SKU por SKU, cuántos se abren.",
       "En «Elegir qué Bundles abrir» aparece la lista con cuántos Bundles tiene cada SKU y cuántos se abren, con + y − para subirlo o bajarlo; cada cambio recalcula y dice en cuántos vehículos queda. Así se pueden dejar enteros los Bundles que ocupan lo mismo abiertos que cerrados y abrir solo los que de verdad completan una hilera.",
+      "«Simular la carga real» ahora descuenta la pérdida por variedad de SKUs, calibrada con 2,098 contenedores de exportación reales. Entre más SKUs distintos lleva el contenedor, menos ocupación se alcanza, y la caída no para a los 4 SKUs como suponía la holgura vieja: sigue bajando hasta pasados los 30. El techo va de 97% con 2 SKUs a 93% con 10, 92% con 20 y 91% con 30, y se avisa en cada cálculo cuánto se descontó. Se apaga con el mismo interruptor en Reglas.",
+      "Mientras busca una sugerencia aparece «Rehacer rápido (nivel 1)»: la misma búsqueda en el nivel rápido, que sale en segundos en lugar de minutos. Sugiere un poco menos (acomoda peor), y queda avisado en el resultado. También sale cuando la búsqueda en nivel 4 no encontró nada, porque en nivel 1 a veces sí encuentra: el cálculo de referencia también acomoda peor y queda más hueco por llenar.",
       "El avance ya no dice «intento 3 de 7» sino un porcentaje con su barra. El número de intentos cambia durante la búsqueda y con él el ancho del texto, así que el botón y la tarjeta se movían solos mientras calculaba.",
     ],
   },

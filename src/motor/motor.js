@@ -913,6 +913,12 @@ function optimizar(items, veh, reglas, alProgreso, pallets) {
   // "entrega" es la parada que ve el usuario; "orden" puede traer además el desempate de la lista
   items.forEach(function (it, i) { ordenDe[i] = it.entrega > 0 ? it.entrega : it.orden > 0 ? it.orden : 0; });
   mejor.contenedores.forEach(function (c) { marcarEntregas(c, ordenDe); });
+  // Pérdida por variedad (ver corrida.js: techoPorVariedad). Se dice siempre que se aplique: si no, el
+  // usuario ve hueco en el 3D y no entiende por qué el motor no lo llenó.
+  if (veh._techoVariedad > 0 && veh._techoVariedad < 100) {
+    avisos.push("Con " + veh._nSkus + " SKUs distintos, «Simular la carga real» topa la ocupación en " + veh._techoVariedad +
+      "%: es lo que alcanza el mejor 10% de los cargues reales con esa variedad. Apágalo en Reglas para ver el óptimo geométrico.");
+  }
   mejor.pallets = defs; mejor.noCaben = noCaben; mejor.avisos = avisos;
   return mejor;
 }

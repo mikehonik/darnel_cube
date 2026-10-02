@@ -99,3 +99,42 @@ describe("el remate se repite hasta que deja de ganar", () => {
     expect(cajas).toBe(30 * 38 + 7);
   }, 300000);
 });
+
+// Reporte del andén (DU4063101, Bundles de 20 cajas): el escenario sugerido desarmó todos los Bundles,
+// cuando varios ocupaban exactamente lo mismo enteros que sus cajas sueltas y solo hacían falta unos pocos
+// para completar la hilera contra la pared. La búsqueda reparte los abiertos en proporción entre las líneas
+// (repartirAbiertos) y se queda con el primer total que ahorra el vehículo, así que abre de más. Ahora, al
+// final, se cierran de vuelta los que se puedan sin perder el ahorro.
+describe("cerrar de vuelta los Bundles que no hacía falta abrir", () => {
+  const veh = { L: 12032, W: 2352, H: 2698, tara: 3900, maxKg: 60000, maxVolPct: 0, maxSkus: 0, maxPiezas: 0 };
+  const base = { desc: "", color: null, peso: 2, oris: [true, true, false, false, false, false],
+    volteoPiso: false, maxNiveles: 0, valorApilar: 0, pesoMaxEncima: 0, piso: "libre", soportaEncima: true,
+    grupo: "", orden: 0, piezas: 1, paletizar: false, palletId: 0, porPallet: 0, porCapa: 0, capasPallet: 0,
+    resto: "parcial", aceptaCajas: true, aceptaPallet: false, bundlePeso: 0, enBundle: true };
+  // Bundle que embaldosa el contenedor exacto (1200 × 1176 × 1349 → 10 × 2 × 2): abrirlo no gana un milímetro
+  const perfecto = (qty) => ({ ...base, id: 1, nombre: "DU-PERFECTO", L: 300, W: 294, H: 337, qty,
+    bundleCantidadEstandar: 16, bundleL: 1200, bundleW: 1176, bundleH: 1349 });
+  // Bundle incómodo: ese sí hay que abrirlo para aprovechar el hueco
+  const incomodo = (qty) => ({ ...base, id: 2, nombre: "DU-INCOMODO", L: 275, W: 316, H: 380, qty,
+    bundleCantidadEstandar: 20, bundleL: 1100, bundleW: 950, bundleH: 1900 });
+  const r = { nivel: 1, limitarPeso: true, soporteMin: 75, usarOrden: true, agrupar: false, juntos: true, apilamiento: "ninguna" };
+
+  it("deja enteros los que ocupan lo mismo y sigue ahorrando el vehículo", async () => {
+    const items = [perfecto(16 * 20), incomodo(20 * 16)];
+    const c = await correrConBundles({ items, vehiculo: veh, tarimas: [], reglas: r }, { ejecutor });
+    expect(c.resultado.contenedores).toHaveLength(1);   // el ahorro se conserva
+    expect(c.resultado.sinCargar || 0).toBe(0);
+    // antes de cerrar de vuelta abría 8; ahora 6, y lo dice en el aviso
+    expect(c.resultado.bundles.abiertos).toBeLessThan(8);
+    expect(c.resultado.avisos.join(" ")).toMatch(/se dejan enteros/);
+    const cajas = c.carga.items.reduce((a, it) => a + (it.esBundle ? it.qty * it.cantidadPorBundle : it.qty), 0);
+    expect(cajas).toBe(16 * 20 + 20 * 16);
+  }, 300000);
+
+  it("no cierra nada si cerrar cuesta el vehículo", async () => {
+    const items = [perfecto(16 * 24), incomodo(20 * 12)];
+    const c = await correrConBundles({ items, vehiculo: veh, tarimas: [], reglas: r }, { ejecutor });
+    expect(c.resultado.contenedores).toHaveLength(1);
+    expect(c.resultado.bundles.abiertos).toBeGreaterThan(0);
+  }, 300000);
+});
