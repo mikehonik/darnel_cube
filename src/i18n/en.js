@@ -2,6 +2,11 @@
 // Llave: el texto en español tal como sale en pantalla ({0}, {1}… marcan los datos). Valor: su traducción.
 // Si una frase no está aquí, la pantalla la deja en español. Al agregar texto nuevo a la interfaz, agrega aquí su traducción.
 export const EN = {
+ "Revisando si todavía cabe algo…": "Checking whether anything still fits…",
+ "Está lleno: se comprobó referencia por referencia que no cabe ni una caja más sin sumar un vehículo.": "It's full: checked reference by reference, not one more box fits without adding a vehicle.",
+ "Comprobar a fondo": "Check thoroughly",
+ "Comprueba una por una todas las referencias del pedido, no solo la más chica. Tarda, pero es la palabra final.": "Checks every reference in the order one by one, not just the smallest. It takes longer, but it's the final word.",
+ "Lleno": "Full",
  "Buscar a fondo": "Search thoroughly",
  "Ya se comprobó: no cabe ni una caja más de estos SKUs sin sumar un vehículo.": "Already checked: not one more box of these SKUs fits without adding a vehicle.",
  "Es la búsqueda rápida. «Buscar a fondo» usa el nivel bueno y comprueba referencia por referencia; tarda, pero es la palabra final.": "This is the quick search. “Search thoroughly” uses the good level and checks reference by reference; it takes longer, but it's the final word.",

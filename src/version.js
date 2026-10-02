@@ -16,6 +16,14 @@ export const VERSION_COMPLETA = `v${VERSION}${BUILD ? ` · ${BUILD}` : ""}${FECH
 // escrito para quien usa la herramienta (no para programadores).
 export const NOVEDADES = [
   {
+    version: "1.6.14", fecha: "02/10/2026",
+    cambios: [
+      "«Lleno» ahora es un estado del vehículo, no el resultado de una búsqueda que hay que pedir y esperar. Después de cada cálculo la herramienta comprueba sola, en segundo plano, si entra una caja más de la referencia más chica del pedido. Si no entra, la etiqueta del vehículo dice «Lleno» (por ejemplo «Vehículo 1 · 74% vol · 27% peso · Lleno») y deja de ofrecer llenarlo. Antes decía que había espacio solo porque sobraba volumen, uno daba Llenar, esperaba, y le contestaban que no cabe nada.",
+      "La tarjeta explica el porqué en los términos del andén: «Está lleno: ni una caja más de Vaso 8oz entra sin sumar un vehículo. El volumen que sobra no da para otro bulto.» Y si de todos modos se quiere la palabra final, queda «Comprobar a fondo», que prueba una por una todas las referencias y no solo la más chica.",
+      "La comprobación de fondo corre al mismo nivel que el resultado que estás viendo, porque un «no cabe» del nivel rápido no prueba nada sobre el nivel bueno. No bloquea nada: la etiqueta aparece cuando termina.",
+    ],
+  },
+  {
     version: "1.6.13", fecha: "02/10/2026",
     cambios: [
       "La tarjeta ya no promete espacio que no existe. Decía «Hay espacio para más de los SKUs de este pedido» con solo ver que sobraba volumen, y eso no es lo mismo: un SKU de 600×400×400 en un tráiler de 2,700 de alto llega al 85% y ahí se acabó, porque los 300 mm que quedan arriba no dan para otra capa de 400. Uno daba Llenar y le contestaban que no cabe nada. Ahora dice el dato («queda 15% de volumen sin usar, aunque no siempre se puede aprovechar») y ofrece buscar, sin prometer.",

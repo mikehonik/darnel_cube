@@ -16,7 +16,7 @@ const Boton = ({ onClick, children, primario, titulo }) => (
     style={primario ? { background: T.nav, color: "#fff" } : { border: `1px solid ${T.linea}`, background: T.sup, color: T.tinta }}>{children}</button>
 );
 
-export function OptimizarPedido({ reporte, items, optim, progreso, onCalcular, onAplicar, onDeshacer, onCerrar, onCancelar, onFijarLinea, costoReal, onQuitarSimulacion, cargaReal, yaLleno }) {
+export function OptimizarPedido({ reporte, items, optim, progreso, onCalcular, onAplicar, onDeshacer, onCerrar, onCancelar, onFijarLinea, costoReal, onQuitarSimulacion, cargaReal, lleno }) {
   const [oculto, setOculto] = useState(false);
   useEffect(() => { setOculto(false); }, [reporte]);
   // El candado es el mismo de la tabla del pedido (it.fijo): lo que se fija aquí queda fijo allá.
@@ -259,6 +259,7 @@ export function OptimizarPedido({ reporte, items, optim, progreso, onCalcular, o
   // Ofrecimiento: aparece solo si hay algo que hacer
   if (oculto) return null;
   const n = reporte.contenedores.length, ult = reporte.contenedores[n - 1];
+  const yaLleno = !!lleno?.lleno, midiendoLleno = !!lleno?.midiendo;
   const sinCargar = reporte.avisos.some((a) => a.tipo === "sinCargar" || a.tipo === "noCaben");
   // Siempre se ofrece llenar mientras quede algo de espacio: si al final no cabe ni una caja más, la
   // sugerencia lo dice en una línea. Un tope de ocupación dejaba fuera cargas al 91% donde sí cabía más.
@@ -272,7 +273,7 @@ export function OptimizarPedido({ reporte, items, optim, progreso, onCalcular, o
   const sinPaletizar = n >= 2 && paletizados > 0;
   const mixtos = n >= 2 && items.filter((it) => it.paletizar === true && it.qty > 0 && !it.fijo).length >= 2;
   const bundles = n >= 2 && hayBundles;
-  if ((!llenar || yaLleno) && !reducir) return null;
+  if ((!llenar || (yaLleno && lleno.comprobado)) && !reducir && !yaLleno && !midiendoLleno) return null;
   return caja(
     <div className="px-3 py-2.5">
       <div className="flex items-start gap-2">
@@ -284,14 +285,18 @@ export function OptimizarPedido({ reporte, items, optim, progreso, onCalcular, o
               contestaran que no cabe nada. Ahora se dice el dato (cuánto va ocupado) y se ofrece buscar. */}
           {reducir && llenar ? "Puedes bajar el pedido para usar un vehículo menos, o buscar si cabe algo más."
             : reducir ? "Puedes bajar el pedido para usar un vehículo menos."
-            : yaLleno ? "Ya se comprobó: no cabe ni una caja más de estos SKUs sin sumar un vehículo."
+            : yaLleno ? (lleno.comprobado
+                ? "Está lleno: se comprobó referencia por referencia que no cabe ni una caja más sin sumar un vehículo."
+                : `Está lleno: ni una caja más de ${lleno.sku || "la referencia más chica"} entra sin sumar un vehículo. El volumen que sobra no da para otro bulto.`)
+            : midiendoLleno ? "Revisando si todavía cabe algo…"
             : `Queda ${(100 - ult.ocupacion).toFixed(0)}% de volumen sin usar, aunque no siempre se puede aprovechar: puedo buscar si cabe algo más.`}
         </span>
         <button onClick={() => setOculto(true)} aria-label="Ocultar sugerencias"><X size={14} color={T.suave} /></button>
       </div>
       <div className="flex flex-wrap gap-1.5 mt-2">
         {reducir && <Boton primario onClick={() => onCalcular("reducir", fijas)} titulo="Primero prueba reacomodar sin cambiar cantidades; si no alcanza, sugiere qué bajar. Calcula en nivel 4."><PackageMinus size={13} />Sugerir disminución del pedido</Boton>}
-        {llenar && !yaLleno && <Boton primario={!reducir} onClick={() => onCalcular("llenar", fijas)} titulo="Busca cuántas cajas más de los SKUs de este pedido caben sin sumar vehículos. Da una base en segundos."><PackagePlus size={13} />{n === 1 ? "Llenar con pedido sugerido" : `Llenar el vehículo ${n}`}</Boton>}
+        {llenar && !yaLleno && !midiendoLleno && <Boton primario={!reducir} onClick={() => onCalcular("llenar", fijas)} titulo="Busca cuántas cajas más de los SKUs de este pedido caben sin sumar vehículos. Da una base en segundos."><PackagePlus size={13} />{n === 1 ? "Llenar con pedido sugerido" : `Llenar el vehículo ${n}`}</Boton>}
+        {yaLleno && !lleno.comprobado && llenar && <Boton onClick={() => onCalcular("llenar", fijas, { saturar: true })} titulo="Comprueba una por una todas las referencias del pedido, no solo la más chica. Tarda, pero es la palabra final."><PackagePlus size={13} />Comprobar a fondo</Boton>}
         {sinPaletizar && <Boton onClick={() => onCalcular("sinPaletizar", fijas)} titulo="Prueba uno por uno los SKUs paletizados: un pallet cobra su tarima y el aire de arriba, y suelto ese SKU rellena los huecos de los demás."><PackageMinus size={13} />¿Y si un SKU va suelto?</Boton>}
         {mixtos && <Boton onClick={() => onCalcular("palletMixto", fijas)} titulo="Hay pallets de un solo SKU que van medio vacíos. Prueba armarlos como pallets mixtos para liberar piso."><Layers size={13} />Juntar pallets medio vacíos</Boton>}
         {bundles && <Boton onClick={() => onCalcular("abrirBundles", fijas)} titulo="Elige a mano cuántos Bundles se abren de cada SKU y recalcula."><PackageOpen size={13} />Elegir qué Bundles abrir</Boton>}

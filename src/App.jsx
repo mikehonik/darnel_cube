@@ -7,7 +7,7 @@ import { armarReporte } from "./motor/reporte.js";
 import { rotar, mover, pegar as pegarBulto, quitar, colocar, validar, recalcularContenedor } from "./motor/edicion.js";
 import { clave, claveSku, indiceSku, buscarSku, conversionDe, numero } from "./archivos/celdas.js";
 import { ARCHIVO_MAESTRO, ARCHIVO_RESPALDO, productoVacio, leerMaestro, libroMaestro, leerCubeMaster, plantillaDimensiones, plantillaBundles, actualizarDimensiones, leerBundleMaestro } from "./archivos/maestro.js";
-import { tieneBundle } from "./archivos/bundle.js";
+import { tieneBundle, cajasPorBundle } from "./archivos/bundle.js";
 import { esDeManufactura } from "./motor/herramientas.js";
 import { leerVehiculos, libroVehiculos, plantillaVehiculos, vehiculoVacio } from "./archivos/vehiculos.js";
 import { leerPedido, libroPlantilla } from "./archivos/pedido.js";
@@ -114,9 +114,14 @@ export default function Estiba3D({ usuario }) {
   // Cotas del espacio libre en el 3D: apagadas por omisión, se prenden con el botón «Medidas»
   const [verCotas, setVerCotas] = useState(false);
   const [costoReal, setCostoReal] = useState(null);
-  // Cuando una búsqueda A FONDO concluye que no cabe ni una caja más, se recuerda: volver a ofrecer
-  // «Llenar» sobre la misma carga sería mandar al usuario a esperar para que le repitan el mismo no.
-  const [yaLleno, setYaLleno] = useState(false);
+  // ¿El vehículo quedó LLENO? No es lo mismo que «no sobra volumen»: lleno quiere decir que no cabe otra
+  // caja, y eso solo lo sabe el motor. Se mide solo, en segundo plano, después de cada cálculo, para que
+  // el usuario lo vea en la etiqueta del vehículo sin tener que pedir una sugerencia y esperarla.
+  //   null = no se sabe · { midiendo: true } · { lleno: bool, comprobado: bool }
+  // `comprobado` es true cuando lo confirmó una búsqueda a fondo (todas las referencias, una por una);
+  // la medición de fondo solo prueba la referencia más chica, que es la que más probable es que quepa.
+  const [lleno, setLleno] = useState(null);
+  const yaLleno = !!lleno?.lleno;
   const [paleta, setPaleta] = useState("vivos");
   const [maestro, setMaestro] = useState({ productos: [], origen: null, sucio: false, guardado: null, errores: [], conversiones: null });
   const [reconectar, setReconectar] = useState(null);
@@ -191,7 +196,7 @@ export default function Estiba3D({ usuario }) {
   const invalidar = () => {
     setEdicion(null);
     setRecomendacion(null); setRes(null); setCorrida(null); setResaltado(null); setVista(null);
-    setOptim(null); setYaLleno(false); intentoRef.current++; };
+    setOptim(null); setLleno(null); intentoRef.current++; };
   // La carga tal como la recibe el motor en una corrida normal. Con «orden de la lista», la posición de la
   // fila manda (la de arriba entra primero, al fondo); si además hay entregas, la parada sigue mandando y
   // la lista solo desempata dentro de cada parada.
@@ -699,7 +704,7 @@ export default function Estiba3D({ usuario }) {
   };
 
   const calcular = async () => {
-    setVistaHerr(null); setEdicion(null); setError(""); setProgreso({ i: 0, n: 1, faseN: 0, pct: 0 }); setResaltado(null); setVista(null); setOptim(null); setYaLleno(false); intentoRef.current++;
+    setVistaHerr(null); setEdicion(null); setError(""); setProgreso({ i: 0, n: 1, faseN: 0, pct: 0 }); setResaltado(null); setVista(null); setOptim(null); setLleno(null); intentoRef.current++;
     const ctrl = empezar();
     try {
       const c = await correrConBundles(cargaPara(items, reglas), { ejecutor, signal: ctrl.signal, onProgreso: (i, n) => setProgreso((x) => avanzarProgreso(x, { i, n })), onFase: (fase) => setProgreso((x) => avanzarProgreso(x, { fase, faseN: (x?.faseN || 0) + 1, i: 0 })) });
@@ -708,6 +713,8 @@ export default function Estiba3D({ usuario }) {
       setCostoReal(null);
       // Solo si sobró un vehículo: ahí es donde saber qué cuesta la simulación cambia la decisión
       if (r.contenedores.length >= 2) medirCostoReal(r, items);
+      // Y siempre: ¿quedó lleno? El usuario lo ve en la etiqueta del vehículo sin pedir nada.
+      if (!r.sinCargar && !r.noCaben.length) medirLleno(items); else setLleno(null);
     } catch (e) {
       if (e instanceof ErrorCorrida && e.tipo === "cancelada") { /* el usuario canceló: sin mensaje */ }
       else if (e instanceof ErrorCorrida && e.tipo === "entrada_invalida") setError("Revisa estos datos: " + e.detalle.problemas.map((p) => p.mensaje).join(" "));
@@ -740,6 +747,29 @@ export default function Estiba3D({ usuario }) {
       setCostoReal({ nCon, nSin, pp, corrida: c, vale: valida && (nSin < nCon || pp >= DIFERENCIA_QUE_IMPORTA) });
     } catch { setCostoReal(null); }
     finally { if (costoRef.current === ctrl) costoRef.current = null; }
+  };
+  // ---------- ¿Quedó lleno? ----------
+  // Una corrida más, en segundo plano, con UNA caja más de la referencia más chica del pedido (un Bundle
+  // en las líneas que van en Bundle). Si esa no entra, ninguna va a entrar: la carga está llena y la
+  // herramienta deja de ofrecer llenarla. Va al mismo nivel que el resultado en pantalla, porque un «no
+  // cabe» de nivel 1 no prueba nada sobre el nivel 4. No bloquea: la etiqueta aparece cuando termina.
+  const llenoRef = useRef(null);
+  const medirLleno = async (lista) => {
+    llenoRef.current?.abort();
+    const crecibles = lista.filter((it) => it.qty > 0 && !it.fijo && !it.extraDe);
+    if (!crecibles.length) { setLleno(null); return; }
+    const mas = crecibles.reduce((a, b) => (a.L * a.W * a.H <= b.L * b.W * b.H ? a : b));
+    const paso = mas.enBundle && tieneBundle(mas) ? cajasPorBundle(mas) : 1;
+    const ctrl = new AbortController(); llenoRef.current = ctrl;
+    setLleno({ midiendo: true });
+    try {
+      const antes = await correrConBundles(cargaPara(lista, reglas), { ejecutor, signal: ctrl.signal });
+      const conUna = lista.map((it) => (it.id === mas.id ? { ...it, qty: it.qty + paso } : it));
+      const c = await correrConBundles(cargaPara(conUna, reglas), { ejecutor, signal: ctrl.signal });
+      const cabe = c.resultado.contenedores.length <= antes.resultado.contenedores.length && (c.resultado.sinCargar || 0) <= (antes.resultado.sinCargar || 0);
+      if (llenoRef.current === ctrl) setLleno({ lleno: !cabe, comprobado: false, sku: mas.nombre });
+    } catch { if (llenoRef.current === ctrl) setLleno(null); }
+    finally { if (llenoRef.current === ctrl) llenoRef.current = null; }
   };
   const calcularSinSimular = () => {
     const c = costoReal?.corrida; if (!c) return;
@@ -848,7 +878,7 @@ export default function Estiba3D({ usuario }) {
         : await sugerirDisminucion({ items, nActual: res.contenedores.length, correrPedido, correrFinal, fijas, onFase });
       if (token !== intentoRef.current) return;
       setOptim({ tipo, propuesta: r, fijas, nivel: nivelOpt, sinSimular, saturar });
-      if (tipo === "llenar" && saturar && !r.cambios.length) setYaLleno(true);
+      if (tipo === "llenar" && saturar) setLleno({ lleno: !r.cambios.length, comprobado: !r.cambios.length });
       // En el llenado sugerido el acomodo es más delicado: unos milímetros deciden si entra otra caja.
       // Si la búsqueda ya fue sin simular, comparar contra el óptimo sin simular no dice nada.
       if (!sinSimular && (tipo === "llenar" || tipo === "reducir")) medirCostoReal(res, items);
@@ -1034,7 +1064,9 @@ export default function Estiba3D({ usuario }) {
         cajas: palVista.cajas.map((k) => ({ ...k, x: k.x + palVista.ovL - palVista.baseX, y: k.y + palVista.ovW - palVista.baseY, pal: -1 })), total: palVista.cajas.length }
     : { veh: vehCalc, base: palSel ? { esp: palSel.esp, x: palSel.ovL, y: palSel.ovW, l: palSel.L, w: palSel.W } : null, cajas: cont?.cajas || [], total: cont?.cajas.length || 0 };
 
-  const etiquetaVeh = (i) => `${modoPallet ? "Pallet" : "Vehículo"} ${i + 1} · ${reporte.contenedores[i].ocupacion.toFixed(0)}% vol${reporte.contenedores[i].utilPeso != null ? ` · ${reporte.contenedores[i].utilPeso.toFixed(0)}% peso` : ""}`;
+  // «Lleno» solo se pone en el último vehículo, que es el que tiene hueco; los anteriores ya van llenos
+  // por definición. Con un solo vehículo, ese es el último.
+  const etiquetaVeh = (i) => `${modoPallet ? "Pallet" : "Vehículo"} ${i + 1} · ${reporte.contenedores[i].ocupacion.toFixed(0)}% vol${reporte.contenedores[i].utilPeso != null ? ` · ${reporte.contenedores[i].utilPeso.toFixed(0)}% peso` : ""}${!modoPallet && yaLleno && i === reporte.contenedores.length - 1 ? " · Lleno" : ""}`;
   const calculando = progreso !== null;
   const reglasActivas = [reglas.usarOrden && items.some((i) => i.orden > 0), reglas.agrupar, reglas.juntos, reglas.apilamiento !== "ninguna"].filter(Boolean).length;
 
@@ -1570,7 +1602,7 @@ export default function Estiba3D({ usuario }) {
               <OptimizarPedido reporte={reporte} items={items} optim={optim} progreso={progreso} onCalcular={optimizarPedido} onAplicar={aplicarOptimizacion}
                 onDeshacer={deshacerOptimizacion} onCerrar={() => setOptim(null)} onCancelar={() => { cancelarCorrida(); setOptim(null); }}
                 onFijarLinea={(id) => editarItem(id, "fijo", !items.find((x) => x.id === id)?.fijo)}
-                costoReal={costoReal} onQuitarSimulacion={calcularSinSimular} cargaReal={reglas.compresionAuto !== false} yaLleno={yaLleno} />
+                costoReal={costoReal} onQuitarSimulacion={calcularSinSimular} cargaReal={reglas.compresionAuto !== false} lleno={lleno} />
             )}
             {edicion && cont && validacion && (
               <PanelEdicion edicion={edicion} setEdicion={setEdicion} cont={cont} validacion={validacion} items={corrida.carga.items} pallets={res.pallets} vehNum={sel + 1}
