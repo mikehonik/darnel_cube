@@ -16,7 +16,7 @@ const Boton = ({ onClick, children, primario, titulo }) => (
     style={primario ? { background: T.nav, color: "#fff" } : { border: `1px solid ${T.linea}`, background: T.sup, color: T.tinta }}>{children}</button>
 );
 
-export function OptimizarPedido({ reporte, items, optim, progreso, onCalcular, onAplicar, onDeshacer, onCerrar, onCancelar, onFijarLinea, costoReal, onQuitarSimulacion, cargaReal }) {
+export function OptimizarPedido({ reporte, items, optim, progreso, onCalcular, onAplicar, onDeshacer, onCerrar, onCancelar, onFijarLinea, costoReal, onQuitarSimulacion, cargaReal, yaLleno }) {
   const [oculto, setOculto] = useState(false);
   useEffect(() => { setOculto(false); }, [reporte]);
   // El candado es el mismo de la tabla del pedido (it.fijo): lo que se fija aquí queda fijo allá.
@@ -188,7 +188,16 @@ export function OptimizarPedido({ reporte, items, optim, progreso, onCalcular, o
               ? <p className="mt-1" style={{ fontSize: 10, color: T.suave }}>Base rápida: cabe seguro, pero no es el máximo. Ajusta las cantidades que quieras y, si buscas exprimirlo, dale a «Llenar hasta el tope».</p>
               : <p className="mt-1" style={{ fontSize: 10, color: T.aviso }}>No alcanzó a comprobarse que quede lleno del todo: puede que todavía entre alguna caja más.</p>
         )}
-        {optim.nivel === 1 && !(pr.tipo === "llenar" && pr.rapido) && <p className="mt-1" style={{ fontSize: 10, color: T.aviso }}>Calculado en nivel 1 (rápido): es aproximado. El cálculo bueno puede meter un poco más.</p>}
+        {optim.nivel === 1 && !(pr.tipo === "llenar" && (pr.rapido || sinCambio)) && <p className="mt-1" style={{ fontSize: 10, color: T.aviso }}>Calculado en nivel 1 (rápido): es aproximado. El cálculo bueno puede meter un poco más.</p>}
+        {/* Que sobre volumen no quiere decir que quepa otra caja: decir en qué eje se quedó corto
+            convierte el «no» en algo que el comercial puede usar. */}
+        {pr.motivo === "noCabeMas" && pr.porQue?.ejes?.length > 0 && (
+          <p className="mt-1" style={{ fontSize: 10, color: T.suave }}>
+            Al acomodo le sobran {pr.porQue.ejes.map(([eje, mm]) => `${Math.round(mm)} mm ${eje}`).join(" y ")}
+            {pr.porQue.menor > 0 ? `, y la caja más chica del pedido mide ${Math.round(pr.porQue.menor)} mm por su lado menor.` : "."} Ese espacio existe pero no da para otro bulto.
+          </p>
+        )}
+        {sinCambio && pr.tipo === "llenar" && !optim.saturar && <p className="mt-1" style={{ fontSize: 10, color: T.suave }}>Es la búsqueda rápida. «Buscar a fondo» usa el nivel bueno y comprueba referencia por referencia; tarda, pero es la palabra final.</p>}
         {/* Con o sin la simulación de cargue son dos conversaciones distintas con el andén: una dice qué va
             a pasar de verdad y la otra, cuánto espacio hay en el contenedor. Conviene poder ver las dos. */}
         {optim.sinSimular && <p className="mt-1" style={{ fontSize: 10, color: T.aviso }}>
@@ -228,6 +237,11 @@ export function OptimizarPedido({ reporte, items, optim, progreso, onCalcular, o
               <PackagePlus size={13} />Llenar hasta el tope
             </Boton>
           )}
+          {/* La base rápida va en nivel 1 y no exprime, así que su «no cabe nada» es un primer veredicto,
+              no el último: queda el botón para buscar a fondo antes de darlo por cerrado. */}
+          {sinCambio && pr.tipo === "llenar" && !optim.saturar && (
+            <Boton primario onClick={() => onCalcular("llenar", fijas, { saturar: true })} titulo="Repite la búsqueda en el nivel bueno y comprobando referencia por referencia. Tarda, pero es la palabra final."><PackagePlus size={13} />Buscar a fondo</Boton>
+          )}
           {sinCambio && optim.nivel !== 1 && (
             <Boton onClick={() => onCalcular(optim.tipo, fijas, { nivel: 1 })} titulo="Repite la búsqueda en nivel 1: sale en segundos y a veces encuentra lo que el nivel 4 descartó"><Zap size={13} />Probar rápido (nivel 1)</Boton>
           )}
@@ -258,19 +272,26 @@ export function OptimizarPedido({ reporte, items, optim, progreso, onCalcular, o
   const sinPaletizar = n >= 2 && paletizados > 0;
   const mixtos = n >= 2 && items.filter((it) => it.paletizar === true && it.qty > 0 && !it.fijo).length >= 2;
   const bundles = n >= 2 && hayBundles;
-  if (!llenar && !reducir) return null;
+  if ((!llenar || yaLleno) && !reducir) return null;
   return caja(
     <div className="px-3 py-2.5">
       <div className="flex items-start gap-2">
         <span className="flex-1 text-xs">
           <b>{n === 1 ? `El vehículo va al ${ult.ocupacion.toFixed(0)}%.` : `El vehículo ${n} va al ${ult.ocupacion.toFixed(0)}%.`}</b>{" "}
-          {reducir && llenar ? "Puedes bajar el pedido para usar un vehículo menos, o completar el último." : reducir ? "Puedes bajar el pedido para usar un vehículo menos." : "Hay espacio para más de los SKUs de este pedido."}
+          {/* Antes decía «Hay espacio para más de los SKUs de este pedido», y eso es una promesa que la
+              tarjeta no puede hacer: que sobre volumen no quiere decir que quepa otra caja. Con un solo SKU
+              que embaldosa mal el vehículo, el 85% ES el máximo, y el usuario daba Llenar para que le
+              contestaran que no cabe nada. Ahora se dice el dato (cuánto va ocupado) y se ofrece buscar. */}
+          {reducir && llenar ? "Puedes bajar el pedido para usar un vehículo menos, o buscar si cabe algo más."
+            : reducir ? "Puedes bajar el pedido para usar un vehículo menos."
+            : yaLleno ? "Ya se comprobó: no cabe ni una caja más de estos SKUs sin sumar un vehículo."
+            : `Queda ${(100 - ult.ocupacion).toFixed(0)}% de volumen sin usar, aunque no siempre se puede aprovechar: puedo buscar si cabe algo más.`}
         </span>
         <button onClick={() => setOculto(true)} aria-label="Ocultar sugerencias"><X size={14} color={T.suave} /></button>
       </div>
       <div className="flex flex-wrap gap-1.5 mt-2">
         {reducir && <Boton primario onClick={() => onCalcular("reducir", fijas)} titulo="Primero prueba reacomodar sin cambiar cantidades; si no alcanza, sugiere qué bajar. Calcula en nivel 4."><PackageMinus size={13} />Sugerir disminución del pedido</Boton>}
-        {llenar && <Boton primario={!reducir} onClick={() => onCalcular("llenar", fijas)} titulo="Sugiere más cajas de los SKUs de este pedido sin sumar vehículos. Calcula en nivel 4."><PackagePlus size={13} />{n === 1 ? "Llenar con pedido sugerido" : `Llenar el vehículo ${n}`}</Boton>}
+        {llenar && !yaLleno && <Boton primario={!reducir} onClick={() => onCalcular("llenar", fijas)} titulo="Busca cuántas cajas más de los SKUs de este pedido caben sin sumar vehículos. Da una base en segundos."><PackagePlus size={13} />{n === 1 ? "Llenar con pedido sugerido" : `Llenar el vehículo ${n}`}</Boton>}
         {sinPaletizar && <Boton onClick={() => onCalcular("sinPaletizar", fijas)} titulo="Prueba uno por uno los SKUs paletizados: un pallet cobra su tarima y el aire de arriba, y suelto ese SKU rellena los huecos de los demás."><PackageMinus size={13} />¿Y si un SKU va suelto?</Boton>}
         {mixtos && <Boton onClick={() => onCalcular("palletMixto", fijas)} titulo="Hay pallets de un solo SKU que van medio vacíos. Prueba armarlos como pallets mixtos para liberar piso."><Layers size={13} />Juntar pallets medio vacíos</Boton>}
         {bundles && <Boton onClick={() => onCalcular("abrirBundles", fijas)} titulo="Elige a mano cuántos Bundles se abren de cada SKU y recalcula."><PackageOpen size={13} />Elegir qué Bundles abrir</Boton>}

@@ -16,6 +16,15 @@ export const VERSION_COMPLETA = `v${VERSION}${BUILD ? ` · ${BUILD}` : ""}${FECH
 // escrito para quien usa la herramienta (no para programadores).
 export const NOVEDADES = [
   {
+    version: "1.6.13", fecha: "02/10/2026",
+    cambios: [
+      "La tarjeta ya no promete espacio que no existe. Decía «Hay espacio para más de los SKUs de este pedido» con solo ver que sobraba volumen, y eso no es lo mismo: un SKU de 600×400×400 en un tráiler de 2,700 de alto llega al 85% y ahí se acabó, porque los 300 mm que quedan arriba no dan para otra capa de 400. Uno daba Llenar y le contestaban que no cabe nada. Ahora dice el dato («queda 15% de volumen sin usar, aunque no siempre se puede aprovechar») y ofrece buscar, sin prometer.",
+      "Y cuando no cabe nada, explica por qué: en qué eje se quedó corto el acomodo y cuánto mide la caja más chica del pedido. «Al acomodo le sobran 300 mm de alto y 100 mm de ancho, y la caja más chica mide 400 mm por su lado menor.» Con eso se decide si vale cambiar de empaque, de vehículo, o aceptar el número.",
+      "Si una búsqueda a fondo ya concluyó que no cabe nada, deja de ofrecer «Llenar» sobre esa misma carga: lo dice en una línea en vez de mandarte a esperar para repetir el mismo no.",
+      "Cuando la búsqueda rápida no encuentra nada, aparece «Buscar a fondo»: el nivel bueno y la comprobación referencia por referencia. La rápida es un primer veredicto, no el último.",
+    ],
+  },
+  {
     version: "1.6.12", fecha: "02/10/2026",
     cambios: [
       "El llenado ahora son dos pasos, para no hacer esperar a nadie. «Llenar con pedido sugerido» da en segundos una base que cabe seguro, y sobre esa el comercial ya puede mover cantidades. Si quiere exprimir el vehículo, le da a «Llenar hasta el tope», que es el que mete más hasta que no quepa ni una caja de ninguna referencia y se toma su tiempo porque lo comprueba una por una.",

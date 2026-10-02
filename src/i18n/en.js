@@ -2,6 +2,12 @@
 // Llave: el texto en español tal como sale en pantalla ({0}, {1}… marcan los datos). Valor: su traducción.
 // Si una frase no está aquí, la pantalla la deja en español. Al agregar texto nuevo a la interfaz, agrega aquí su traducción.
 export const EN = {
+ "Buscar a fondo": "Search thoroughly",
+ "Ya se comprobó: no cabe ni una caja más de estos SKUs sin sumar un vehículo.": "Already checked: not one more box of these SKUs fits without adding a vehicle.",
+ "Es la búsqueda rápida. «Buscar a fondo» usa el nivel bueno y comprueba referencia por referencia; tarda, pero es la palabra final.": "This is the quick search. “Search thoroughly” uses the good level and checks reference by reference; it takes longer, but it's the final word.",
+ "Repite la búsqueda en el nivel bueno y comprobando referencia por referencia. Tarda, pero es la palabra final.": "Repeats the search at the good level, checking reference by reference. It takes longer, but it's the final word.",
+ "Busca cuántas cajas más de los SKUs de este pedido caben sin sumar vehículos. Da una base en segundos.": "Finds how many more boxes of this order's SKUs fit without adding vehicles. Gives a baseline in seconds.",
+ "Puedes bajar el pedido para usar un vehículo menos, o buscar si cabe algo más.": "You can lower the order to use one vehicle less, or look for whether anything else fits.",
  "Llenar hasta el tope": "Fill to the brim",
  "Base rápida: cabe seguro, pero no es el máximo. Ajusta las cantidades que quieras y, si buscas exprimirlo, dale a «Llenar hasta el tope».": "Quick baseline: it fits for sure, but it isn't the maximum. Adjust any quantities you like and, if you want to squeeze it, hit “Fill to the brim”.",
  "Exprime la carga: mete más hasta que no quepa ni una caja de ninguna referencia. Tarda más, porque lo comprueba una por una.": "Squeezes the load: adds more until not one box of any reference fits. It takes longer, because it checks them one by one.",

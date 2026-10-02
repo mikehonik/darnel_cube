@@ -114,6 +114,9 @@ export default function Estiba3D({ usuario }) {
   // Cotas del espacio libre en el 3D: apagadas por omisión, se prenden con el botón «Medidas»
   const [verCotas, setVerCotas] = useState(false);
   const [costoReal, setCostoReal] = useState(null);
+  // Cuando una búsqueda A FONDO concluye que no cabe ni una caja más, se recuerda: volver a ofrecer
+  // «Llenar» sobre la misma carga sería mandar al usuario a esperar para que le repitan el mismo no.
+  const [yaLleno, setYaLleno] = useState(false);
   const [paleta, setPaleta] = useState("vivos");
   const [maestro, setMaestro] = useState({ productos: [], origen: null, sucio: false, guardado: null, errores: [], conversiones: null });
   const [reconectar, setReconectar] = useState(null);
@@ -188,7 +191,7 @@ export default function Estiba3D({ usuario }) {
   const invalidar = () => {
     setEdicion(null);
     setRecomendacion(null); setRes(null); setCorrida(null); setResaltado(null); setVista(null);
-    setOptim(null); intentoRef.current++; };
+    setOptim(null); setYaLleno(false); intentoRef.current++; };
   // La carga tal como la recibe el motor en una corrida normal. Con «orden de la lista», la posición de la
   // fila manda (la de arriba entra primero, al fondo); si además hay entregas, la parada sigue mandando y
   // la lista solo desempata dentro de cada parada.
@@ -696,7 +699,7 @@ export default function Estiba3D({ usuario }) {
   };
 
   const calcular = async () => {
-    setVistaHerr(null); setEdicion(null); setError(""); setProgreso({ i: 0, n: 1, faseN: 0, pct: 0 }); setResaltado(null); setVista(null); setOptim(null); intentoRef.current++;
+    setVistaHerr(null); setEdicion(null); setError(""); setProgreso({ i: 0, n: 1, faseN: 0, pct: 0 }); setResaltado(null); setVista(null); setOptim(null); setYaLleno(false); intentoRef.current++;
     const ctrl = empezar();
     try {
       const c = await correrConBundles(cargaPara(items, reglas), { ejecutor, signal: ctrl.signal, onProgreso: (i, n) => setProgreso((x) => avanzarProgreso(x, { i, n })), onFase: (fase) => setProgreso((x) => avanzarProgreso(x, { fase, faseN: (x?.faseN || 0) + 1, i: 0 })) });
@@ -845,6 +848,7 @@ export default function Estiba3D({ usuario }) {
         : await sugerirDisminucion({ items, nActual: res.contenedores.length, correrPedido, correrFinal, fijas, onFase });
       if (token !== intentoRef.current) return;
       setOptim({ tipo, propuesta: r, fijas, nivel: nivelOpt, sinSimular, saturar });
+      if (tipo === "llenar" && saturar && !r.cambios.length) setYaLleno(true);
       // En el llenado sugerido el acomodo es más delicado: unos milímetros deciden si entra otra caja.
       // Si la búsqueda ya fue sin simular, comparar contra el óptimo sin simular no dice nada.
       if (!sinSimular && (tipo === "llenar" || tipo === "reducir")) medirCostoReal(res, items);
@@ -1566,7 +1570,7 @@ export default function Estiba3D({ usuario }) {
               <OptimizarPedido reporte={reporte} items={items} optim={optim} progreso={progreso} onCalcular={optimizarPedido} onAplicar={aplicarOptimizacion}
                 onDeshacer={deshacerOptimizacion} onCerrar={() => setOptim(null)} onCancelar={() => { cancelarCorrida(); setOptim(null); }}
                 onFijarLinea={(id) => editarItem(id, "fijo", !items.find((x) => x.id === id)?.fijo)}
-                costoReal={costoReal} onQuitarSimulacion={calcularSinSimular} cargaReal={reglas.compresionAuto !== false} />
+                costoReal={costoReal} onQuitarSimulacion={calcularSinSimular} cargaReal={reglas.compresionAuto !== false} yaLleno={yaLleno} />
             )}
             {edicion && cont && validacion && (
               <PanelEdicion edicion={edicion} setEdicion={setEdicion} cont={cont} validacion={validacion} items={corrida.carga.items} pallets={res.pallets} vehNum={sel + 1}

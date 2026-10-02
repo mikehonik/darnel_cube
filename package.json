@@ -1,7 +1,7 @@
 {
   "name": "darnelcube3d",
   "private": true,
-  "version": "1.6.12",
+  "version": "1.6.13",
   "type": "module",
   "scripts": {
     "dev": "vite",

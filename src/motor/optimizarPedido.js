@@ -53,6 +53,26 @@ export const _setReparto = (f) => { REPARTO_RELLENO = f; };
 const PRESUPUESTO_SATURAR = 60, MS_SATURAR = 180000, RONDAS_RELLENO = 4, PASADAS_FINAS = 4;
 const HUECO_QUE_VALE_OTRA_RONDA = 0.10;   // 10% del vehículo libre
 const porIdItem = (items, id) => items.find((x) => x.id === id);
+
+// Por qué no cabe nada. Que sobre volumen no quiere decir que quepa otra caja: una caja de 400 mm de alto
+// en un vehículo de 2,700 deja 300 mm muertos arriba, y eso solo son ya 11 puntos de ocupación que nunca
+// se van a usar. Decirlo convierte un «no» en información que el comercial puede usar (cambiar de empaque,
+// pedir otro vehículo, aceptar el número). Se mide el sobrante de la envolvente de la carga en cada eje y
+// se compara con la medida más chica de las cajas del pedido.
+export function porQueNoCabe(corrida, candidatos) {
+  const v = corrida.carga.vehiculo, r = corrida.resultado;
+  const defs = r.pallets || [];
+  let mx = 0, my = 0, mz = 0;
+  r.contenedores.forEach((k) => k.cajas.forEach((c) => {
+    const d = c.pal >= 0 ? defs[c.pal] : null;
+    const l = d ? (c.rot ? d.palW : d.palL) : c.l, w = d ? (c.rot ? d.palL : d.palW) : c.w, h = d ? d.alto : c.h;
+    mx = Math.max(mx, c.x + l); my = Math.max(my, c.y + w); mz = Math.max(mz, c.z + h);
+  }));
+  const menor = candidatos.reduce((a, it) => Math.min(a, it.L, it.W, it.H), Infinity);
+  const sobra = { L: Math.max(0, v.L - mx), W: Math.max(0, v.W - my), H: Math.max(0, v.H - mz) };
+  const ejes = [["de fondo", sobra.L], ["de ancho", sobra.W], ["de alto", sobra.H]].filter(([, x]) => x >= 1);
+  return { sobra, menor: Number.isFinite(menor) ? menor : 0, ejes: ejes.sort((a, b) => b[1] - a[1]) };
+}
 const cabeIgual = (c, ref) => c.resultado.contenedores.length <= ref.resultado.contenedores.length && c.resultado.sinCargar <= ref.resultado.sinCargar;
 
 // Suma cantidades al pedido. Lo extra de una línea paletizada entra como línea suelta aparte (el relleno se
@@ -158,7 +178,7 @@ export async function sugerirLlenado({ items, nActual = Infinity, saturar = fals
   const nVehiculos = refProp.resultado.contenedores.length;
   conRelleno.resultado.contenedores.forEach((_, i) => { if (i >= nVehiculos) return; cajasPorLinea(conRelleno, i, true).forEach((n, id) => deltas.set(id, (deltas.get(id) || 0) + n)); });
   proporcional.forEach((it) => { const o = items.find((x) => x.id === it.id); if (o && it.qty > o.qty) deltas.set(it.id, (deltas.get(it.id) || 0) + it.qty - o.qty); });
-  if (!deltas.size) return { tipo: "llenar", cambios: [], antes: resumen(ref), despues: resumen(ref), corrida: ref, items, motivo: "noCabeMas" };
+  if (!deltas.size) return { tipo: "llenar", cambios: [], antes: resumen(ref), despues: resumen(ref), corrida: ref, items, motivo: "noCabeMas", porQue: porQueNoCabe(ref, candidatos) };
   // Se comprueba con el pedido real. Si el acomodo no reproduce el relleno, se busca por bisección la
   // cantidad más grande que SÍ se comprueba, en vez de bajar 20% cuatro veces y rendirse: esa escalera
   // nunca probaba por debajo del 51%, así que devolvía «no cabe nada» cuando el 30% sí cabía. Y el cero

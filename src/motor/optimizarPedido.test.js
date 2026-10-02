@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { correr, correrConBundles, ejecutorEnProceso } from "./corrida.js";
 import { optimizar } from "./motor.js";
-import { sugerirLlenado, sugerirDisminucion, sumarAlPedido, restarAlPedido } from "./optimizarPedido.js";
+import { sugerirLlenado, sugerirDisminucion, sumarAlPedido, restarAlPedido, porQueNoCabe } from "./optimizarPedido.js";
 
 const caja = (d = {}) => ({ id: 1, nombre: "SKU-A", desc: "", color: null, L: 600, W: 400, H: 400, peso: 10, qty: 20, oris: [true, true, false, false, false, false],
   volteoPiso: false, maxNiveles: 0, valorApilar: 0, pesoMaxEncima: 0, piso: "libre", soportaEncima: true, grupo: "", orden: 0, piezas: 1, paletizar: false, palletId: 0,
@@ -60,6 +60,19 @@ describe("sugerirLlenado", () => {
     expect(r.despues.n).toBe(1);
     expect(r.rapido).toBe(true);
     expect(r.saturado).toBe(false);
+  }, 120000);
+  // Caso del andén: un SKU que no embaldosa el vehículo. Va al 85% y no cabe una caja más, porque los
+  // 300 mm que sobran de alto no dan para otra capa. El «no» tiene que venir con el porqué.
+  it("cuando no cabe nada dice en qué eje se quedó corto", async () => {
+    const uno = [caja({ L: 600, W: 400, H: 400, qty: 960 })];
+    const veh = { L: 16000, W: 2500, H: 2700, tara: 6500, maxKg: 36500, maxVolPct: 0, maxSkus: 0, maxPiezas: 0 };
+    const cp = (items) => correrConBundles({ items, vehiculo: veh, tarimas: [], reglas }, { ejecutor });
+    const c = await cp(uno);
+    expect(c.resultado.contenedores).toHaveLength(1);
+    const q = porQueNoCabe(c, uno);
+    expect(q.sobra.H).toBeGreaterThan(250);   // 2700 − 6 capas de 400 = 300
+    expect(q.menor).toBe(400);                 // y la caja más chica mide 400 por su lado menor
+    expect(q.ejes[0][0]).toBe("de alto");
   }, 120000);
   // No llenar a costa de un camión: lo que solo entra sumando vehículo no se propone
   it("nunca propone un llenado que sume un vehículo", async () => {
