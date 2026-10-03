@@ -821,8 +821,8 @@ function optimizar(items, veh, reglas, alProgreso, pallets) {
         var m1 = Math.floor(def.n / def.porCapa) * def.porCapa, m2 = m1 + def.porCapa;
         motivo = "su pallet de " + def.n + " cajas (" + def.porCapa + " por nivel) termina con un nivel incompleto y no queda plano arriba. Con " +
           (m1 > 0 ? m1 + " o " + m2 : String(m2)) + " cajas por pallet sí se puede apilar";
-      } else motivo = "su pallet no queda plano arriba (las cajas no cubren el pallet), así que no puede recibir otro pallet";
-    } else if (def.alto * 2 > veh.H) motivo = "no cabe un segundo pallet igual encima por la altura del vehículo";
+      } else motivo = "su pallet no queda plano arriba, así que no puede recibir otro";
+    } else if (def.alto * 2 > veh.H) motivo = "no cabe otro pallet igual encima por la altura del vehículo";
     if (!motivo || avisadosApilar[nombre + "|" + motivo]) return;
     avisadosApilar[nombre + "|" + motivo] = 1;
     avisos.push(def.nombre + ": marcaste que acepta otro pallet encima, pero " + motivo + ".");
@@ -862,7 +862,7 @@ function optimizar(items, veh, reglas, alProgreso, pallets) {
           var libre = sinTope(), masAlto = armarPalletUniforme(it, libre, obj0, reglas);
           if (masAlto && masAlto.cajas.length > conTope.cajas.length) {
             avisos.push(it.nombre + ": su estándar de " + (it.porPallet > 0 ? it.porPallet + " cajas" : it.capasPallet + " niveles") +
-              " no cabe en la altura máxima de " + pal.nombre + ", así que el pallet se arma hasta el techo del vehículo. Se apaga en Paletizado.");
+              " no cabe en la altura de " + pal.nombre + "; el pallet se arma hasta el techo del vehículo. Se apaga en Paletizado.");
             pal = libre;
           }
         }
@@ -881,7 +881,7 @@ function optimizar(items, veh, reglas, alProgreso, pallets) {
     var porPal = arm.cajas.length;
     if (it.porPallet > 0 && porPal < Math.min(it.porPallet, it.qty)) avisos.push("En " + pal.nombre + " solo caben " + porPal + " cajas de " + it.nombre + " (pediste " + it.porPallet + "). Se usan pallets de " + porPal + ".");
     if (it.porCapa > 0 && arm.porCapa < it.porCapa) avisos.push("En " + pal.nombre + " solo caben " + arm.porCapa + " cajas de " + it.nombre + " por nivel (pediste " + it.porCapa + ").");
-    if (it.capasPallet > 0 && arm.capas < it.capasPallet) avisos.push("Solo caben " + arm.capas + " niveles de " + it.nombre + " en " + pal.nombre + " (pediste " + it.capasPallet + "); revisa la altura máxima de la tarima.");
+    if (it.capasPallet > 0 && arm.capas < it.capasPallet) avisos.push("Solo caben " + arm.capas + " niveles de " + it.nombre + " en " + pal.nombre + " (pediste " + it.capasPallet + ").");
     var llenos = Math.floor(it.qty / porPal), resto = it.qty - llenos * porPal, info = { aceptaCajas: !!it.aceptaCajas, aceptaPallet: !!it.aceptaPallet };
     if (llenos > 0) agregarPallet(definirPallet(arm.cajas, pal, { nombre: it.nombre, mixto: false, alternado: arm.alternado, capas: arm.capas, porCapa: arm.porCapa }), llenos, it, idx, info);
     if (resto > 0) {
@@ -913,11 +913,19 @@ function optimizar(items, veh, reglas, alProgreso, pallets) {
   // "entrega" es la parada que ve el usuario; "orden" puede traer además el desempate de la lista
   items.forEach(function (it, i) { ordenDe[i] = it.entrega > 0 ? it.entrega : it.orden > 0 ? it.orden : 0; });
   mejor.contenedores.forEach(function (c) { marcarEntregas(c, ordenDe); });
-  // Pérdida por variedad (ver corrida.js: techoPorVariedad). Se dice siempre que se aplique: si no, el
-  // usuario ve hueco en el 3D y no entiende por qué el motor no lo llenó.
+  // Pérdida por variedad (ver corrida.js: techoPorVariedad). El techo frena el acomodo por bloques, pero
+  // el relleno final NO lo respeta, y está bien que así sea: apretarlo hasta el último milímetro convertía
+  // una carga de un vehículo en dos por 2.7 m³, y un camión de más que nadie va a mandar es peor que un
+  // punto de ocupación optimista. El techo es una expectativa estadística, no una pared.
+  // Por eso el aviso solo sale cuando el acomodo QUEDA POR ENCIMA de lo que logran los cargues reales:
+  // ahí el planeador puede estar prometiendo algo que en el andén no cierra, y eso sí cambia su decisión.
+  // Cuando queda por debajo no se dice nada: de dónde salió el número no le sirve para decidir.
   if (veh._techoVariedad > 0 && veh._techoVariedad < 100) {
-    avisos.push("Con " + veh._nSkus + " SKUs, «Simular la carga real» topa la ocupación en " + veh._techoVariedad +
-      "%, que es lo que logra el mejor 10% de los cargues reales. Se apaga en Reglas.");
+    var pico = 0;
+    mejor.contenedores.forEach(function (k) { pico = Math.max(pico, k.vol / (veh.L * veh.W * veh.H) * 100); });
+    if (pico > veh._techoVariedad + 0.5)
+      avisos.push("Este acomodo llega al " + pico.toFixed(0) + "%, por encima de lo que suelen lograr los cargues reales con " +
+        veh._nSkus + " SKUs (" + veh._techoVariedad + "%). Cuenta con que en el andén puede no cerrar.");
   }
   mejor.pallets = defs; mejor.noCaben = noCaben; mejor.avisos = avisos;
   return mejor;

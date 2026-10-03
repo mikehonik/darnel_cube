@@ -41,13 +41,14 @@ describe("armarReporte", () => {
 
   it("tipifica los avisos: lo que no cabe se nombra, lo que sobra se cuenta", async () => {
     const R = armarReporte(await correrReal([caja({ nombre: "Enorme", L: 7000, qty: 2 }), caja({ nombre: "Normal", qty: 5 })]));
-    // Con 2 SKUs «Simular la carga real» ya descuenta la pérdida por variedad y lo dice, así que ese
-    // aviso también viene (ver corrida.js: techoPorVariedad).
     expect(R.avisos.map((a) => a.tipo)).toContain("noCaben");
     const noCaben = R.avisos.find((a) => a.tipo === "noCaben");
     expect(noCaben.nombres).toEqual(["Enorme"]);
     expect(noCaben.texto).toContain("Enorme");
-    expect(R.avisos.some((a) => /variedad|Simular la carga real/i.test(a.texto))).toBe(true);
+    // Lo de la pérdida por variedad NO se avisa aquí: solo se dice cuando el acomodo queda por encima de
+    // lo que logran los cargues reales, que es cuando el planeador puede estar prometiendo de más.
+    // Avisarlo siempre era ruido (ver motor.js: _techoVariedad).
+    expect(R.avisos.some((a) => /cargues reales/i.test(a.texto))).toBe(false);
   });
 
   it("sin problemas no hay avisos", async () => {

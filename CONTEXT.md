@@ -106,6 +106,11 @@ Ajuste: `techo(n) = 98.4 − 2.1·ln(n)`, con menos de medio punto de error. Se 
 
 Pruebas: `motor/variedad.test.js`.
 
+### El techo de variedad es blando, y solo se avisa cuando se pasa (v1.6.19)
+El techo frena el acomodo por bloques (`veh.maxVolPct`), pero el **relleno final no lo respeta**. Eso no es un descuido: apretarlo hasta el último milímetro convertía una carga de un vehículo en dos por 2.7 m³, y un camión de más que nadie va a mandar es peor que un punto de ocupación optimista. El techo es una expectativa estadística, no una pared.
+
+Por eso el aviso cambió de sentido. Antes se decía siempre («topa la ocupación en 94.6%») y se contradecía con la pantalla, que mostraba 97%. Ahora solo sale cuando el acomodo **queda por encima** de lo que logran los cargues reales, que es el único caso en que le cambia la decisión al planeador: puede estar prometiendo algo que en el andén no cierra. Por debajo del techo no se dice nada.
+
 ### Tres palancas más cuando sobra un vehículo
 
 Las tres salen del mismo hallazgo repetido en los casos reales de Darnel: cuando sobra un vehículo, muchas veces no lo decide el acomodo sino cómo se decidió paletizar o abrir Bundles. Van como tres mensajes separados en la tarjeta de sugerencias (decisión del usuario), no como un panel único.

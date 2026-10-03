@@ -16,6 +16,14 @@ export const VERSION_COMPLETA = `v${VERSION}${BUILD ? ` · ${BUILD}` : ""}${FECH
 // escrito para quien usa la herramienta (no para programadores).
 export const NOVEDADES = [
   {
+    version: "1.6.19", fecha: "02/10/2026",
+    cambios: [
+      "El aviso de la pérdida por variedad se contradecía con la pantalla: decía que la ocupación se topaba en 94.6% y el vehículo iba al 97%. El techo frena el acomodo por bloques pero el relleno final no lo respeta, y está bien que así sea (apretarlo hasta el último milímetro convertía una carga de un vehículo en dos por 2.7 m³, y un camión de más es peor que un punto de ocupación optimista).",
+      "Así que el aviso ahora solo sale cuando sirve para decidir: cuando el acomodo queda POR ENCIMA de lo que logran los cargues reales. «Este acomodo llega al 97%, por encima de lo que suelen lograr los cargues reales con 6 SKUs (94.6%). Cuenta con que en el andén puede no cerrar.» Si queda por debajo, no se dice nada: de dónde salió el número no le sirve a nadie para decidir.",
+      "Y los demás avisos quedaron más cortos. Se quitó lo que explicaba el método en vez de decir qué hacer.",
+    ],
+  },
+  {
     version: "1.6.18", fecha: "02/10/2026",
     cambios: [
       "«Lleno» se marca en todos los vehículos de la carga, no solo en el último. Se veía un vehículo 2 al 91% marcado «Lleno» al lado de un vehículo 1 al 90% sin marcar, y eso no se sostiene: la comprobación mete una caja más al pedido y mira si se suma un vehículo, o sea que lleno es la carga entera, no un vehículo.",
