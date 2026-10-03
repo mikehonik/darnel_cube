@@ -16,6 +16,15 @@ export const VERSION_COMPLETA = `v${VERSION}${BUILD ? ` · ${BUILD}` : ""}${FECH
 // escrito para quien usa la herramienta (no para programadores).
 export const NOVEDADES = [
   {
+    version: "1.6.17", fecha: "02/10/2026",
+    cambios: [
+      "Textos más cortos en toda la herramienta. Los mensajes dan el dato y se callan: «Lleno: comprobado SKU por SKU, no cabe otra caja» en lugar de tres renglones explicando lo mismo. Y ya no se nombra el SKU que no cupo, que con 30 referencias no decía nada útil.",
+      "«Llenar con pedido sugerido» ahora va al tope desde el primer clic. Llenar quiere decir que no quepa ni una caja más de ninguna referencia, y una base a medias no es una respuesta: el planeador la aplicaba y seguía viendo hueco. En el ejemplo de referencia de 3 SKUs, un clic lleva el tercer vehículo del 34% al 90% y lo marca «Lleno», comprobado referencia por referencia.",
+      "La herramienta decide sola si le alcanza el tiempo, midiendo lo que tardó tu último cálculo en vez de contar SKUs (lo que pesa son los bultos tanto como la variedad). Si exprimir se va a pasar de minuto y medio, que es lo que pasa con pedidos de 30 SKUs donde cada corrida tarda media hora de reloj entre todas, primero da una base en segundos y deja el botón «Llenar hasta el tope» para cuando quieras el máximo. Ese es el único caso en que el llenado viene en dos pasos, y la tarjeta explica por qué.",
+      "Y si la cuenta falla y se pasa del tiempo igual, se corta y lo dice («no alcanzó a comprobarse que quede lleno del todo») en lugar de dejarte esperando sin final. Siempre con barra de avance y botón de cancelar.",
+    ],
+  },
+  {
     version: "1.6.16", fecha: "02/10/2026",
     cambios: [
       "Se acabó la rueda de hámster del llenado. Uno aplicaba el pedido sugerido, cerraba, y la tarjeta volvía a ofrecer llenar el mismo vehículo, con un número distinto cada vez: había que darle cuatro o cinco veces. Pasaban dos cosas. Una, al aplicar no se volvía a revisar si el vehículo había quedado lleno, así que la tarjeta seguía ofreciendo llenar a ciegas. Dos, la base se rendía en el primer intento que no se comprobaba, y se quedaba muy corta.",

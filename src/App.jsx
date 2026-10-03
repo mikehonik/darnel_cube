@@ -648,6 +648,10 @@ export default function Estiba3D({ usuario }) {
     return q ? maestro.productos.filter((p) => clave(p.sku).includes(q) || clave(p.idProducto).includes(q) || clave(p.desc).includes(q)) : maestro.productos;
   }, [maestro.productos, busqueda]);
 
+  // Cuánto tardó el último cálculo. Es la mejor estimación de lo que cuesta UNA corrida de este pedido en
+  // este vehículo, y con eso se decide si el llenado puede ir al tope de una o tiene que dar una base
+  // primero. Medir es mejor que contar SKUs: lo que pesa es el número de bultos tanto como la variedad.
+  const msCalculo = useRef(0);
   // Una corrida a la vez. El AbortController permite cancelarla desde el botón o al desmontar.
   // `empezar` es obligatorio para arrancar cualquier corrida: CANCELA la anterior antes de tomar el turno.
   // Sin esto, pedir una sugerencia o recalcular mientras otra corrida seguía viva dejaba las dos corriendo:
@@ -711,7 +715,9 @@ export default function Estiba3D({ usuario }) {
     setVistaHerr(null); setEdicion(null); setError(""); setProgreso({ i: 0, n: 1, faseN: 0, pct: 0 }); setResaltado(null); setVista(null); setOptim(null); setLleno(null); setBaseAplicada(false); intentoRef.current++;
     const ctrl = empezar();
     try {
+      const t0Calc = Date.now();
       const c = await correrConBundles(cargaPara(items, reglas), { ejecutor, signal: ctrl.signal, onProgreso: (i, n) => setProgreso((x) => avanzarProgreso(x, { i, n })), onFase: (fase) => setProgreso((x) => avanzarProgreso(x, { fase, faseN: (x?.faseN || 0) + 1, i: 0 })) });
+      msCalculo.current = Date.now() - t0Calc;
       const r = c.resultado; setCorrida(c); setRes(r); setSel(0); setPaso(r.contenedores[0]?.cajas.length || 0);
       setPestana(r.avisos.length || r.sinCargar || r.noCaben.length ? "avisos" : "resumen");
       setCostoReal(null);
@@ -841,6 +847,11 @@ export default function Estiba3D({ usuario }) {
   // Ambas corren en nivel 4 y se comprueban antes de proponerse (ver motor/optimizarPedido.js). La vista
   // previa muestra qué cambia; «Aplicar» deja puesto el resultado ya calculado y «Deshacer» regresa al anterior.
   const NIVEL_OPTIMIZAR = 4;
+  // Hasta aquí se exprime de entrada. Noventa segundos con barra de avance y botón de cancelar es lo que
+  // alguien aguanta por una respuesta que de verdad sirve; más que eso conviene dar algo antes.
+  const MS_LLENADO_AL_TOPE = 90000;
+  // Cuando lo pide a mano con «Llenar hasta el tope» ya sabe que va a tardar, así que se le da más margen.
+  const MS_EXPRIMIR_A_MANO = 240000;
   const optimizarPedido = async (tipo, fijas = new Set(items.filter((it) => it.fijo).map((it) => it.id)), extra = null) => {
     if (!res || !corrida) return;
     const token = ++intentoRef.current;
@@ -853,7 +864,16 @@ export default function Estiba3D({ usuario }) {
     // El llenado sale rápido por omisión: nivel 1 y sin exprimir. Da una base en segundos sobre la que el
     // comercial ya puede decidir, y si quiere el máximo pide «Llenar hasta el tope», que sí va en nivel 4
     // y comprueba referencia por referencia. Las demás búsquedas siguen en el nivel configurado.
-    const saturar = !!extra?.saturar;
+    // Llenar quiere decir llenar: lo que el usuario busca es que no quepa ni una caja más, y una base a
+    // medias no es una respuesta. Así que el llenado va al tope DE ENTRADA siempre que el tiempo alcance.
+    // Lo que cuesta exprimir es, a grandes rasgos, una corrida por referencia por pasada, más las rondas
+    // de relleno; se estima con lo que tardó el último cálculo y se compara contra lo que es razonable
+    // hacer esperar a alguien mirando una barra. Si no alcanza (pedidos de 30 SKUs, donde cada corrida son
+    // 25 segundos), se da la base rápida y queda el botón para exprimir, que es el único caso donde tiene
+    // sentido partirlo en dos.
+    const crecibles = items.filter((it) => it.qty > 0 && !it.fijo && !it.extraDe).length;
+    const costoExprimir = (msCalculo.current || 1500) * (crecibles * 2.5 + 8);
+    const saturar = tipo === "llenar" && (!!extra?.saturar || (!extra?.nivel && costoExprimir <= MS_LLENADO_AL_TOPE));
     const nivelOpt = extra?.nivel || (tipo === "llenar" && !saturar ? 1 : NIVEL_OPTIMIZAR);
     // Con extra.sinSimular toda la búsqueda corre sin «Simular la carga real»: sin compresión, sin holgura
     // y sin acomodar los bultos de pie, o sea maximizando el espacio geométrico. Sirve para saber si el
@@ -875,7 +895,7 @@ export default function Estiba3D({ usuario }) {
     setError(""); setOptim({ tipo, calculando: true, fijas, nivel: nivelOpt, sinSimular, saturar }); setProgreso({ i: 0, n: 1, faseN: 0, pct: 0 });
     try {
       const conAbiertos = (lista, abiertos) => correrConBundles(cargaPara(lista, { ...reglasOpt, nivel: nivelOpt, _abiertos: abiertos }), op);
-      const r = tipo === "llenar" ? await sugerirLlenado({ items, nActual: res.contenedores.length, saturar, correrPedido, correrCarga, correrRapido, correrFinal, fijas, onFase })
+      const r = tipo === "llenar" ? await sugerirLlenado({ items, nActual: res.contenedores.length, saturar, msSaturar: extra?.saturar ? MS_EXPRIMIR_A_MANO : MS_LLENADO_AL_TOPE, correrPedido, correrCarga, correrRapido, correrFinal, fijas, onFase })
         : tipo === "sinPaletizar" ? await sugerirSinPaletizar({ items, correrPedido, correrFinal, fijas, onFase })
         : tipo === "palletMixto" ? await sugerirPalletMixto({ items, correrPedido, correrFinal, fijas, onFase })
         : tipo === "abrirBundles" ? await sugerirAbrirBundles({ items, correrPedido, correrFinal: (l, a) => (a ? conAbiertos(l, a) : correrFinal(l)), abiertos: extra?.abiertos || null, onFase })

@@ -212,7 +212,7 @@ export async function correrConBundles(carga, { ejecutor, signal, onProgreso, on
     lineas.forEach((l) => { const k = Math.max(0, Math.min(l.bundles, Math.round(carga.reglas._abiertos[l.id] || 0))); if (k) fijos[l.id] = k; });
     const c = await con(fijos);
     const k = Object.values(fijos).reduce((a, b) => a + b, 0);
-    if (k) c.resultado.avisos = [...(c.resultado.avisos || []), `Se abren ${k} ${k === 1 ? "Bundle" : "Bundles"} (${detalle(fijos)}) porque así se pidió; sus cajas van sueltas y se cargan antes que los Bundles enteros.`];
+    if (k) c.resultado.avisos = [...(c.resultado.avisos || []), `Se abren ${k} ${k === 1 ? "Bundle" : "Bundles"} (${detalle(fijos)}) porque así se pidió. Sus cajas van antes que los Bundles enteros.`];
     return conInfo(c, fijos);
   }
   const base = await con({});
@@ -253,11 +253,11 @@ export async function correrConBundles(carga, { ejecutor, signal, onProgreso, on
       if (!solo || !Object.keys(extra).length) break;
       const prueba = { ...abiertos };
       Object.entries(extra).forEach(([id, k]) => { prueba[id] = (prueba[id] || 0) + k; });
-      if (!i) onFase?.("Probando abrir los Bundles que quedaron solos en el último vehículo…");
+      if (!i) onFase?.("Probando abrir los Bundles que van solos en el último vehículo…");
       const c2 = await con(prueba);
       if (c2.resultado.contenedores.length >= n || (c2.resultado.sinCargar || 0) > (c.resultado.sinCargar || 0)) break;
       const k2 = Object.values(extra).reduce((a, b) => a + b, 0), n2 = c2.resultado.contenedores.length;
-      aviso = `El último vehículo llevaba solo ${k2} ${k2 === 1 ? "Bundle" : "Bundles"} (${detalle(extra)}). Abriéndolos la carga entra en ${n2} ${n2 === 1 ? "vehículo" : "vehículos"}: sus cajas van sueltas en los huecos.`;
+      aviso = `El último vehículo llevaba solo ${k2} ${k2 === 1 ? "Bundle" : "Bundles"} (${detalle(extra)}). Abriéndolos la carga entra en ${n2} ${n2 === 1 ? "vehículo" : "vehículos"}.`;
       c = c2; abiertos = prueba;
     }
     if (aviso) c.resultado.avisos = [...(c.resultado.avisos || []), aviso];
@@ -308,7 +308,7 @@ export async function correrConBundles(carga, { ejecutor, signal, onProgreso, on
     return { c, abiertos, cerrados };
   };
   const notaCierre = (cerrados) => (cerrados
-    ? ` Otros ${cerrados} se dejan enteros: abrirlos no gana espacio porque sus cajas ocuparían lo mismo, y cada Bundle que no se abre es tiempo de andén.`
+    ? ` Otros ${cerrados} se dejan enteros: abiertos ocuparían lo mismo.`
     : "");
 
 
@@ -324,7 +324,7 @@ export async function correrConBundles(carga, { ejecutor, signal, onProgreso, on
   if (!valeBuscar && carga.reglas.nivel > 1) {
     const volVeh = carga.vehiculo.L * carga.vehiculo.W * carga.vehiculo.H;
     if (base.resultado.contenedores[n0 - 1].vol / volVeh < COLA_QUE_VALE_COMPROBAR) {
-      onFase?.("Comprobando a fondo si abriendo Bundles se ahorra un vehículo…");
+      onFase?.("Comprobando a fondo si abrir Bundles ahorra un vehículo…");
       const todo = await con(repartirAbiertos(lineas, total));
       if (usados(todo) < n0) { valeBuscar = true; enSerio = true; memoReal.set(total, usados(todo)); }
     }
@@ -346,7 +346,7 @@ export async function correrConBundles(carga, { ejecutor, signal, onProgreso, on
         const r = await rematar(c, abiertos);
         const z = await cerrarDeVuelta(r.c, r.abiertos);
         const kf = Object.values(z.abiertos).reduce((a, b) => a + b, 0), n = z.c.resultado.contenedores.length;
-        z.c.resultado.avisos = [...(z.c.resultado.avisos || []), `Para usar ${n} ${n === 1 ? "vehículo" : "vehículos"} en lugar de ${n0} se abren ${kf} ${kf === 1 ? "Bundle" : "Bundles"} (${detalle(z.abiertos)}); sus cajas van sueltas en los huecos.` + notaCierre(z.cerrados)];
+        z.c.resultado.avisos = [...(z.c.resultado.avisos || []), `Para usar ${n} en lugar de ${n0} ${n0 === 1 ? "vehículo" : "vehículos"} se abren ${kf} ${kf === 1 ? "Bundle" : "Bundles"} (${detalle(z.abiertos)}).` + notaCierre(z.cerrados)];
         return conInfo(z.c, z.abiertos, n0 - n);
       }
     }
@@ -377,6 +377,6 @@ export async function correrConBundles(carga, { ejecutor, signal, onProgreso, on
   const z = await cerrarDeVuelta(fin.c, fin.abiertos, Math.max(ultimo(fin.c), colaBase * MEJORA_MINIMA));
   const kf = Object.values(z.abiertos).reduce((a, b) => a + b, 0);
   const pctZ = z.c.resultado.contenedores.length < n0 ? pct : (1 - ultimo(z.c) / colaBase) * 100;
-  z.c.resultado.avisos = [...(z.c.resultado.avisos || []), `Se abren ${kf} ${kf === 1 ? "Bundle" : "Bundles"} (${detalle(z.abiertos)}) para aprovechar los huecos: el último vehículo queda ${pctZ.toFixed(0)}% más vacío y los demás van más llenos.` + notaCierre(z.cerrados)];
+  z.c.resultado.avisos = [...(z.c.resultado.avisos || []), `Se abren ${kf} ${kf === 1 ? "Bundle" : "Bundles"} (${detalle(z.abiertos)}): el último vehículo queda ${pctZ.toFixed(0)}% más vacío.` + notaCierre(z.cerrados)];
   return conInfo(z.c, z.abiertos, n0 - z.c.resultado.contenedores.length);
 }

@@ -916,8 +916,8 @@ function optimizar(items, veh, reglas, alProgreso, pallets) {
   // Pérdida por variedad (ver corrida.js: techoPorVariedad). Se dice siempre que se aplique: si no, el
   // usuario ve hueco en el 3D y no entiende por qué el motor no lo llenó.
   if (veh._techoVariedad > 0 && veh._techoVariedad < 100) {
-    avisos.push("Con " + veh._nSkus + " SKUs distintos, «Simular la carga real» topa la ocupación en " + veh._techoVariedad +
-      "%: es lo que alcanza el mejor 10% de los cargues reales con esa variedad. Apágalo en Reglas para ver el óptimo geométrico.");
+    avisos.push("Con " + veh._nSkus + " SKUs, «Simular la carga real» topa la ocupación en " + veh._techoVariedad +
+      "%, que es lo que logra el mejor 10% de los cargues reales. Se apaga en Reglas.");
   }
   mejor.pallets = defs; mejor.noCaben = noCaben; mejor.avisos = avisos;
   return mejor;

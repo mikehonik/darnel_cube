@@ -13,7 +13,7 @@ export function NotaCargaReal({ costo, onQuitarSimulacion }) {
   if (!costo) return null;
   if (costo.midiendo) return (
     <p className="flex items-center gap-1.5 mt-2 pt-2" style={{ fontSize: 11, color: T.suave, borderTop: `1px solid ${T.linea}` }}>
-      <Loader2 size={11} className="animate-spin flex-none" />Comparando contra el óptimo sin simulación…
+      <Loader2 size={11} className="animate-spin flex-none" />Comparando contra el óptimo sin simular…
     </p>
   );
   if (!costo.vale) return null;
@@ -24,7 +24,7 @@ export function NotaCargaReal({ costo, onQuitarSimulacion }) {
         <Info size={12} color={T.aviso} className="flex-none mt-px" />
         <span>
           <b>{nSin < nCon ? `Sin simular la carga real cabría en ${nSin} ${nSin === 1 ? "vehículo" : "vehículos"}.` : `Simular la carga real cuesta ${pp.toFixed(0)} puntos de ocupación.`}</b>{" "}
-          El cálculo aplica compresión, la holgura que de verdad queda y acomoda los bultos como un operario, así que se parece más a lo que va a pasar.
+          El cálculo aplica compresión, holgura y bultos de pie, así que se parece más a lo que va a pasar.
         </span>
       </p>
       <button onClick={onQuitarSimulacion} className="mt-1.5 text-xs px-2.5 py-1 rounded-md font-medium" style={{ border: `1px solid ${T.linea}`, background: T.sup, color: T.tinta }}>

@@ -112,7 +112,7 @@ const cambiosEntre = (antes, despues) => {
 // llenado sale en segundos y es una base sobre la que el comercial ya puede trabajar. Cuando esa base le
 // sirve y quiere exprimirla, se vuelve a pedir con saturar: true («Llenar hasta el tope»). Una propuesta
 // sin saturar nunca dice que está llena: viene marcada con `rapido: true` y la tarjeta lo advierte.
-export async function sugerirLlenado({ items, nActual = Infinity, saturar = false, correrPedido, correrCarga, correrRapido = correrPedido, correrFinal = correrPedido, fijas = new Set(), onFase }) {
+export async function sugerirLlenado({ items, nActual = Infinity, saturar = false, msSaturar = MS_SATURAR, correrPedido, correrCarga, correrRapido = correrPedido, correrFinal = correrPedido, fijas = new Set(), onFase }) {
   onFase?.("Calculando el pedido actual en nivel máximo…");
   const ref = await correrPedido(items);
   const tope = Math.min(nActual, ref.resultado.contenedores.length);
@@ -232,7 +232,9 @@ export async function sugerirLlenado({ items, nActual = Infinity, saturar = fals
   // Con presupuesto de corridas, porque cada una cuesta hasta medio minuto. Si se acaba antes de que el
   // motor diga que no a todas, la sugerencia NO promete estar llena: lo dice (`saturado: false`).
   let corridas = 0, saturadoRondas = true;
-  const hasta = Date.now() + MS_SATURAR;
+  // El reloj manda sobre la estimación: si quien llamó creyó que alcanzaba y no alcanzó, se corta aquí y
+  // la sugerencia dice que no se alcanzó a comprobar, en vez de dejar al usuario esperando sin final.
+  const hasta = Date.now() + msSaturar;
   const presupuesto = () => corridas < PRESUPUESTO_SATURAR && Date.now() < hasta;
   const cabeAsi = async (lista) => { corridas++; return cabeIgual(await correrPedido(lista), ref); };
 
