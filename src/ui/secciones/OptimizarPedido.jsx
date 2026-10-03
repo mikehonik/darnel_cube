@@ -16,7 +16,7 @@ const Boton = ({ onClick, children, primario, titulo }) => (
     style={primario ? { background: T.nav, color: "#fff" } : { border: `1px solid ${T.linea}`, background: T.sup, color: T.tinta }}>{children}</button>
 );
 
-export function OptimizarPedido({ reporte, items, optim, progreso, onCalcular, onAplicar, onDeshacer, onCerrar, onCancelar, onFijarLinea, costoReal, onQuitarSimulacion, cargaReal, lleno, baseAplicada }) {
+export function OptimizarPedido({ reporte, items, optim, progreso, onCalcular, onAplicar, onDeshacer, onCerrar, onCancelar, onFijarLinea, costoReal, onQuitarSimulacion, cargaReal, lleno, baseAplicada, llenoAplicado }) {
   const [oculto, setOculto] = useState(false);
   useEffect(() => { setOculto(false); }, [reporte]);
   // El candado es el mismo de la tabla del pedido (it.fijo): lo que se fija aquí queda fijo allá.
@@ -267,7 +267,8 @@ export function OptimizarPedido({ reporte, items, optim, progreso, onCalcular, o
   // sugerencia lo dice en una línea. Un tope de ocupación dejaba fuera cargas al 91% donde sí cabía más.
   const hayQueAumentar = items.some((it) => it.qty > 0 && !it.fijo);
   const llenar = ult && !sinCargar && hayQueAumentar && ult.ocupacion < 99.5 && (ult.utilPeso == null || ult.utilPeso < 98);
-  const reducir = n >= 2;
+  // Después de llenar no se ofrece bajar el pedido: acabas de pedir lo contrario. Vuelve al recalcular.
+  const reducir = n >= 2 && !llenoAplicado;
   // Con más de un vehículo hay tres palancas más, y las tres cambian la decisión de paletizado o de
   // Bundles, no las cantidades del pedido. Solo se ofrecen cuando pueden aplicar, para no llenar de botones.
   const paletizados = items.filter((it) => it.paletizar && it.qty > 0 && !it.fijo).length;

@@ -16,6 +16,13 @@ export const VERSION_COMPLETA = `v${VERSION}${BUILD ? ` · ${BUILD}` : ""}${FECH
 // escrito para quien usa la herramienta (no para programadores).
 export const NOVEDADES = [
   {
+    version: "1.6.18", fecha: "02/10/2026",
+    cambios: [
+      "«Lleno» se marca en todos los vehículos de la carga, no solo en el último. Se veía un vehículo 2 al 91% marcado «Lleno» al lado de un vehículo 1 al 90% sin marcar, y eso no se sostiene: la comprobación mete una caja más al pedido y mira si se suma un vehículo, o sea que lleno es la carga entera, no un vehículo.",
+      "Y después de llenar ya no se ofrece bajar el pedido. Acabas de pedir lo contrario, así que ofrecerlo en el mismo renglón no tiene sentido. Vuelve a aparecer al recalcular, que es cuando de verdad estás mirando otra vez el tamaño del pedido.",
+    ],
+  },
+  {
     version: "1.6.17", fecha: "02/10/2026",
     cambios: [
       "Textos más cortos en toda la herramienta. Los mensajes dan el dato y se callan: «Lleno: comprobado SKU por SKU, no cabe otra caja» en lugar de tres renglones explicando lo mismo. Y ya no se nombra el SKU que no cupo, que con 30 referencias no decía nada útil.",

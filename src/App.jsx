@@ -126,6 +126,7 @@ export default function Estiba3D({ usuario }) {
   // base: el usuario ya dijo que sí a llenar. Repetirla lo deja en una rueda de hámster, aplicando y
   // volviendo a aplicar con un número distinto cada vez. Lo que sigue es exprimir.
   const [baseAplicada, setBaseAplicada] = useState(false);
+  const [llenoAplicado, setLlenoAplicado] = useState(false);
   const [paleta, setPaleta] = useState("vivos");
   const [maestro, setMaestro] = useState({ productos: [], origen: null, sucio: false, guardado: null, errores: [], conversiones: null });
   const [reconectar, setReconectar] = useState(null);
@@ -200,7 +201,7 @@ export default function Estiba3D({ usuario }) {
   const invalidar = () => {
     setEdicion(null);
     setRecomendacion(null); setRes(null); setCorrida(null); setResaltado(null); setVista(null);
-    setOptim(null); setLleno(null); setBaseAplicada(false); intentoRef.current++; };
+    setOptim(null); setLleno(null); setBaseAplicada(false); setLlenoAplicado(false); intentoRef.current++; };
   // La carga tal como la recibe el motor en una corrida normal. Con «orden de la lista», la posición de la
   // fila manda (la de arriba entra primero, al fondo); si además hay entregas, la parada sigue mandando y
   // la lista solo desempata dentro de cada parada.
@@ -712,7 +713,7 @@ export default function Estiba3D({ usuario }) {
   };
 
   const calcular = async () => {
-    setVistaHerr(null); setEdicion(null); setError(""); setProgreso({ i: 0, n: 1, faseN: 0, pct: 0 }); setResaltado(null); setVista(null); setOptim(null); setLleno(null); setBaseAplicada(false); intentoRef.current++;
+    setVistaHerr(null); setEdicion(null); setError(""); setProgreso({ i: 0, n: 1, faseN: 0, pct: 0 }); setResaltado(null); setVista(null); setOptim(null); setLleno(null); setBaseAplicada(false); setLlenoAplicado(false); intentoRef.current++;
     const ctrl = empezar();
     try {
       const t0Calc = Date.now();
@@ -919,11 +920,14 @@ export default function Estiba3D({ usuario }) {
   const aplicarOptimizacion = () => {
     const pr = optim?.propuesta; if (!pr) return;
     intentoRef.current++;
-    const anterior = { items, corrida, reglas, lleno, baseAplicada };
+    const anterior = { items, corrida, reglas, lleno, baseAplicada, llenoAplicado };
     setItems(pr.items); mostrarCorrida(pr.corrida);
     // Al aplicar cambia la carga, así que lo que se sabía de «lleno» ya no vale: se vuelve a medir sobre
     // el pedido nuevo. Sin esto, la tarjeta volvía a ofrecer llenar un vehículo que ya estaba lleno.
     setBaseAplicada(pr.tipo === "llenar" && !!pr.rapido);
+    // Acabas de llenar: ofrecerte bajar el pedido en el mismo renglón es contradictorio. Vuelve a salir
+    // al recalcular, que es cuando de verdad estás viendo otra vez el tamaño del pedido.
+    if (pr.tipo === "llenar") setLlenoAplicado(true);
     if (pr.tipo === "llenar" && pr.saturado) setLleno({ lleno: true, comprobado: true });
     else medirLleno(pr.items);
     // La propuesta se calculó sin la simulación, así que las reglas tienen que quedar igual que el
@@ -945,7 +949,7 @@ export default function Estiba3D({ usuario }) {
     intentoRef.current++;
     setItems(a.items); mostrarCorrida(a.corrida); setOptim(null);
     if (a.reglas) setReglas(a.reglas);   // si se aplicó una propuesta sin simular, vuelve también la regla
-    setLleno(a.lleno ?? null); setBaseAplicada(!!a.baseAplicada);
+    setLleno(a.lleno ?? null); setBaseAplicada(!!a.baseAplicada); setLlenoAplicado(!!a.llenoAplicado);
     setAviso("Se regresó al pedido anterior.");
   };
 
@@ -1094,9 +1098,10 @@ export default function Estiba3D({ usuario }) {
         cajas: palVista.cajas.map((k) => ({ ...k, x: k.x + palVista.ovL - palVista.baseX, y: k.y + palVista.ovW - palVista.baseY, pal: -1 })), total: palVista.cajas.length }
     : { veh: vehCalc, base: palSel ? { esp: palSel.esp, x: palSel.ovL, y: palSel.ovW, l: palSel.L, w: palSel.W } : null, cajas: cont?.cajas || [], total: cont?.cajas.length || 0 };
 
-  // «Lleno» solo se pone en el último vehículo, que es el que tiene hueco; los anteriores ya van llenos
-  // por definición. Con un solo vehículo, ese es el último.
-  const etiquetaVeh = (i) => `${modoPallet ? "Pallet" : "Vehículo"} ${i + 1} · ${reporte.contenedores[i].ocupacion.toFixed(0)}% vol${reporte.contenedores[i].utilPeso != null ? ` · ${reporte.contenedores[i].utilPeso.toFixed(0)}% peso` : ""}${!modoPallet && yaLleno && i === reporte.contenedores.length - 1 ? " · Lleno" : ""}`;
+  // «Lleno» es de la CARGA, no de un vehículo: la comprobación mete una caja más al pedido y mira si se
+  // suma un vehículo, y el motor reparte todo de nuevo. Marcarlo solo en el último dejaba a la vista un
+  // vehículo 2 al 91% «Lleno» junto a un vehículo 1 al 90% sin marcar, que no se sostiene.
+  const etiquetaVeh = (i) => `${modoPallet ? "Pallet" : "Vehículo"} ${i + 1} · ${reporte.contenedores[i].ocupacion.toFixed(0)}% vol${reporte.contenedores[i].utilPeso != null ? ` · ${reporte.contenedores[i].utilPeso.toFixed(0)}% peso` : ""}${!modoPallet && yaLleno ? " · Lleno" : ""}`;
   const calculando = progreso !== null;
   const reglasActivas = [reglas.usarOrden && items.some((i) => i.orden > 0), reglas.agrupar, reglas.juntos, reglas.apilamiento !== "ninguna"].filter(Boolean).length;
 
@@ -1632,7 +1637,7 @@ export default function Estiba3D({ usuario }) {
               <OptimizarPedido reporte={reporte} items={items} optim={optim} progreso={progreso} onCalcular={optimizarPedido} onAplicar={aplicarOptimizacion}
                 onDeshacer={deshacerOptimizacion} onCerrar={() => setOptim(null)} onCancelar={() => { cancelarCorrida(); setOptim(null); }}
                 onFijarLinea={(id) => editarItem(id, "fijo", !items.find((x) => x.id === id)?.fijo)}
-                costoReal={costoReal} onQuitarSimulacion={calcularSinSimular} cargaReal={reglas.compresionAuto !== false} lleno={lleno} baseAplicada={baseAplicada} />
+                costoReal={costoReal} onQuitarSimulacion={calcularSinSimular} cargaReal={reglas.compresionAuto !== false} lleno={lleno} baseAplicada={baseAplicada} llenoAplicado={llenoAplicado} />
             )}
             {edicion && cont && validacion && (
               <PanelEdicion edicion={edicion} setEdicion={setEdicion} cont={cont} validacion={validacion} items={corrida.carga.items} pallets={res.pallets} vehNum={sel + 1}
