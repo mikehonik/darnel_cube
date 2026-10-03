@@ -44,7 +44,8 @@ export function OptimizarPedido({ reporte, items, optim, progreso, onCalcular, o
           cambiaba de ancho, así que la tarjeta se movía sola mientras calculaba. */}
       <div className="flex items-center gap-2 mt-1.5">
         <div className="flex-1 rounded-full overflow-hidden" style={{ height: 4, background: T.linea }}>
-          <div style={{ width: `${pctProgreso(progreso)}%`, height: "100%", background: T.nav, transition: "width .3s" }} />
+          {/* El azul claro del logo: avanza sobre blanco y se lee mejor que el azul oscuro de la barra */}
+          <div style={{ width: `${pctProgreso(progreso)}%`, height: "100%", background: T.marca, transition: "width .3s" }} />
         </div>
         {/* El mismo número que el botón de arriba: una sola barra para todo el cálculo, que solo sube */}
         <span className="tabular-nums" style={{ fontSize: 11, color: T.suave, minWidth: 30, textAlign: "right" }}>{pctProgreso(progreso)}%</span>

@@ -9,12 +9,20 @@
 export const VERSION = typeof __VERSION__ !== "undefined" ? __VERSION__ : "dev";
 export const BUILD = typeof __BUILD__ !== "undefined" ? __BUILD__ : "";
 export const FECHA_BUILD = typeof __FECHA_BUILD__ !== "undefined" ? __FECHA_BUILD__ : "";
-export const NOMBRE_VERSION = `DarnelCube 3D v${VERSION}`;
+export const NOMBRE_VERSION = `Darnel Cube v${VERSION}`;
 export const VERSION_COMPLETA = `v${VERSION}${BUILD ? ` · ${BUILD}` : ""}${FECHA_BUILD ? ` · ${FECHA_BUILD}` : ""}`;
 
 // Novedades que se muestran en Ayuda. Al subir la versión, agrega arriba una entrada con lo que cambió,
 // escrito para quien usa la herramienta (no para programadores).
 export const NOVEDADES = [
+  {
+    version: "1.6.15", fecha: "02/10/2026",
+    cambios: [
+      "La herramienta se llama Darnel Cube. Sin el «3D», que describía el dibujo y no lo que hace: esto no es un visor, es una herramienta de planeación. El nombre nuevo queda en la pantalla, en los Excel, en los instructivos y en los PDF de pallets.",
+      "Los colores pasan a ser los de Darnel. La barra usa el azul oscuro del logo (#034F8B) y no el claro, porque blanco sobre el oscuro se lee con contraste 8.4 a 1 y sobre el claro apenas 3.9, y esa barra se mira una hora seguida. El azul claro (#0087CD) queda para lo interactivo, como la barra de avance.",
+      "«Calcular carga» sigue en ámbar a propósito: en azul se perdería dentro de la barra azul, y ese botón tiene que gritar. Y el fondo del 3D se queda gris: los colores de las cajas son una paleta por SKU, y con el fondo azul los SKUs azules dejarían de distinguirse.",
+    ],
+  },
   {
     version: "1.6.14", fecha: "02/10/2026",
     cambios: [

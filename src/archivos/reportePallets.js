@@ -1,11 +1,11 @@
 // ================= Reporte PDF de paletizado =================
 // Una hoja por SKU con la imagen del pallet armado, su configuración, medidas, aprovechamiento y el semáforo
 // de estabilidad, centro de gravedad y compresión. Toma como referencia el reporte «Pallet Load» de
-// CubeMaster, con la identidad de DarnelCube. Si son varios SKUs, la primera hoja es un índice con todos.
+// CubeMaster, con la identidad de Darnel Cube. Si son varios SKUs, la primera hoja es un índice con todos.
 // jsPDF se carga solo cuando se genera un reporte, para no hacer más pesada la herramienta al abrirla.
 import { traducir } from "../i18n/index.js";
 
-const COLOR = { nav: [20, 33, 61], acento: [242, 183, 5], tinta: [22, 32, 44], suave: [91, 107, 123], linea: [220, 226, 232], fondo: [246, 248, 251] };
+const COLOR = { nav: [3, 79, 139], acento: [242, 183, 5], tinta: [22, 32, 44], suave: [91, 107, 123], linea: [220, 226, 232], fondo: [246, 248, 251] };
 const SEMAFORO = { verde: [47, 140, 70], amarillo: [226, 160, 0], rojo: [179, 38, 30], gris: [150, 160, 170] };
 const NOMBRES_SEM = { estabilidad: "Estabilidad", cg: "Centro de gravedad", compresion: "Compresión" };
 
@@ -26,13 +26,13 @@ export async function pdfPaletizado({ filas, pallet, opciones, u, version, fecha
   const encabezado = (sub) => {
     doc.setFillColor(...COLOR.nav); doc.rect(0, 0, W, 20, "F");
     doc.setFillColor(...COLOR.acento); doc.rect(0, 20, W, 1.2, "F");
-    doc.setFont("helvetica", "bold"); doc.setFontSize(14); set([255, 255, 255]); doc.text("DarnelCube 3D", M, 12.5);
+    doc.setFont("helvetica", "bold"); doc.setFontSize(14); set([255, 255, 255]); doc.text("Darnel Cube", M, 12.5);
     doc.setFont("helvetica", "normal"); doc.setFontSize(10); set([200, 210, 225]); doc.text(sub, W - M, 12.5, { align: "right" });
   };
   const pie = () => {
     doc.setDrawColor(...COLOR.linea); doc.line(M, H - 12, W - M, H - 12);
     doc.setFontSize(7.5); set(COLOR.suave);
-    doc.text(`Generado el ${fechaTxt} con DarnelCube 3D ${version}`, M, H - 7.5);
+    doc.text(`Generado el ${fechaTxt} con Darnel Cube ${version}`, M, H - 7.5);
     doc.text(`Hoja ${doc.getNumberOfPages()}`, W - M, H - 7.5, { align: "right" });
   };
   const tarjeta = (x, y, w, h, tituloT, colorBorde = COLOR.linea) => {

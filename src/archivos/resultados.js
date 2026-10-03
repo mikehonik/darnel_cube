@@ -92,7 +92,7 @@ ${etapas.map((e, i) => `<div class="etapa"><img src="${imagenes[i]}" alt="Etapa 
 
 const ESTILO_INSTRUCTIVO = `body{font-family:Arial,Helvetica,sans-serif;color:#16202C;margin:24px;font-size:12px}h1{font-size:20px;margin:0}h2{font-size:15px;margin:22px 0 8px;border-bottom:2px solid #F2B705;padding-bottom:3px}
 .sub{color:#5B6B7B;margin:2px 0 14px}.datos{display:flex;gap:10px;flex-wrap:wrap}.dato{background:#EEF1F5;border-radius:6px;padding:6px 10px}.dato b{display:block;font-size:15px}
-table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #DCE2E8;padding:4px 6px;text-align:left;vertical-align:top}th{background:#14213D;color:#fff;font-weight:normal}
+table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #DCE2E8;padding:4px 6px;text-align:left;vertical-align:top}th{background:#034F8B;color:#fff;font-weight:normal}
 .etapa{display:flex;gap:14px;page-break-inside:avoid;margin-bottom:14px}.etapa img{width:46%;border:1px solid #DCE2E8;border-radius:6px}.etapa ol{margin:0;padding-left:18px}.etapa li{margin-bottom:5px}
 .nota{color:#5B6B7B;font-size:11px}.contenedor+.contenedor{page-break-before:always;margin-top:28px}
 @media print{body{margin:10mm}.noimp{display:none}}`;

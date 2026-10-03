@@ -271,7 +271,7 @@ export function libroMaestro(productos, tarimas, conversiones = null, sis = SIST
     wc["!cols"] = [{ wch: 18 }, { wch: 8 }, { wch: 14 }];
     XLSX.utils.book_append_sheet(wb, wc, HOJA_CONVERSIONES);
   }
-  const wi = XLSX.utils.aoa_to_sheet([["Maestro de productos de DarnelCube 3D"], ["Guarda este archivo como maestro_productos.xlsx en la carpeta de la herramienta. Al guardar desde DarnelCube 3D se reemplaza y queda una copia como maestro_productos_respaldo.xlsx."], [],
+  const wi = XLSX.utils.aoa_to_sheet([["Maestro de productos de Darnel Cube"], ["Guarda este archivo como maestro_productos.xlsx en la carpeta de la herramienta. Al guardar desde Darnel Cube se reemplaza y queda una copia como maestro_productos_respaldo.xlsx."], [],
     ["Sección", "Campo", "Qué significa", "Ejemplo", "Si lo dejas vacío"], ...AYUDA]);
   wi["!cols"] = [{ wch: 24 }, { wch: 30 }, { wch: 80 }, { wch: 24 }, { wch: 26 }];
   XLSX.utils.book_append_sheet(wb, wi, "Instrucciones");
@@ -290,13 +290,13 @@ export function plantillaBundles(productos = [], sis = SISTEMAS.metrico) {
   const ws = XLSX.utils.aoa_to_sheet([cols.map((h) => encabezadoEn(h, sis)), ...filas]);
   ws["!cols"] = [{ wch: 16 }, { wch: 40 }, { wch: 16 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 16 }];
   XLSX.utils.book_append_sheet(wb, ws, "Bundles");
-  const wi = XLSX.utils.aoa_to_sheet([["Plantilla de Bundles · DarnelCube 3D"], [],
+  const wi = XLSX.utils.aoa_to_sheet([["Plantilla de Bundles · Darnel Cube"], [],
     ["Una fila por SKU que se carga en Bundle (cajas grandes una encima de otra, sin pallet)."],
     ["Cajas por Bundle: cuántas cajas del SKU forman un Bundle completo. Largo, Ancho y Alto: medidas del Bundle armado."],
     ["Peso Bundle: en 0 se calcula como el peso de la caja × cajas por Bundle. La descripción es solo de referencia."],
     [`La unidad va en el encabezado: si cambias (${sis.l}) por (mm), (cm) o (in), la herramienta convierte sola.`], [],
     ["Cómo subirla:"],
-    ["1. En DarnelCube 3D, sección Maestro, usa «Importar ▾ → Bundle (BDL)» y elige este archivo."],
+    ["1. En Darnel Cube, sección Maestro, usa «Importar ▾ → Bundle (BDL)» y elige este archivo."],
     ["2. Solo se actualizan los SKUs que ya están en el maestro. Presiona Guardar para dejarlo en tu cuenta."],
     ["3. En el pedido, esos SKUs aparecen en Bundle. No se captura porcentaje: el mix Bundle / suelto sale en el resultado."]]);
   wi["!cols"] = [{ wch: 110 }];
@@ -311,14 +311,14 @@ export function plantillaBundles(productos = [], sis = SISTEMAS.metrico) {
 export function plantillaDimensiones(productos = [], sis = SISTEMAS.metrico) {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, hojaDatos(productos, sis), "Datos");
-  const wi = XLSX.utils.aoa_to_sheet([["Plantilla de dimensiones · DarnelCube 3D"], [],
+  const wi = XLSX.utils.aoa_to_sheet([["Plantilla de dimensiones · Darnel Cube"], [],
     [`Solo identidad y medidas: SKU, ID producto, Descripción, Largo, Ancho, Alto (${sis.l}) y Peso (${sis.p}). Volumen se calcula solo.`],
     ["La unidad va en el encabezado de cada columna: si cambias (mm) por (in), (cm) o (m), o (kg) por (lb), la herramienta convierte sola."],
     ["Es lo que en teoría podría entregar un ERP. No lleva ninguna regla de estiba, paletizado ni apilamiento:"],
-    ["esas se configuran aparte, en DarnelCube 3D, y no se pierden cuando actualizas medidas con este archivo."], [],
+    ["esas se configuran aparte, en Darnel Cube, y no se pierden cuando actualizas medidas con este archivo."], [],
     ["Cómo usarla:"],
     ["1. Llena una fila por SKU (o exporta esto mismo desde tu ERP con las mismas columnas)."],
-    ["2. En DarnelCube 3D, sección Maestro, usa «Actualizar dimensiones» y elige este archivo."],
+    ["2. En Darnel Cube, sección Maestro, usa «Actualizar dimensiones» y elige este archivo."],
     ["3. Los SKUs que ya existen actualizan solo su descripción y medidas. Los que no existen se crean"],
     ["   nuevos, con los parámetros por omisión, listos para configurarse."]]);
   wi["!cols"] = [{ wch: 100 }];
