@@ -2,6 +2,8 @@
 // Llave: el texto en español tal como sale en pantalla ({0}, {1}… marcan los datos). Valor: su traducción.
 // Si una frase no está aquí, la pantalla la deja en español. Al agregar texto nuevo a la interfaz, agrega aquí su traducción.
 export const EN = {
+ "Mete más hasta que no quepa ni una caja de ninguna referencia, y lo comprueba una por una. Tarda, pero ahí se acaba.": "Adds more until not one box of any reference fits, checking them one by one. It takes longer, but that's the end of it.",
+ "Puedes bajar el pedido para usar un vehículo menos.": "You can lower the order to use one vehicle less.",
  "Revisando si todavía cabe algo…": "Checking whether anything still fits…",
  "Está lleno: se comprobó referencia por referencia que no cabe ni una caja más sin sumar un vehículo.": "It's full: checked reference by reference, not one more box fits without adding a vehicle.",
  "Comprobar a fondo": "Check thoroughly",

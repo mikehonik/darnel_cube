@@ -122,6 +122,10 @@ export default function Estiba3D({ usuario }) {
   // la medición de fondo solo prueba la referencia más chica, que es la que más probable es que quepa.
   const [lleno, setLleno] = useState(null);
   const yaLleno = !!lleno?.lleno;
+  // Si lo último que se aplicó fue una base rápida de llenado, el siguiente paso no es volver a ofrecer la
+  // base: el usuario ya dijo que sí a llenar. Repetirla lo deja en una rueda de hámster, aplicando y
+  // volviendo a aplicar con un número distinto cada vez. Lo que sigue es exprimir.
+  const [baseAplicada, setBaseAplicada] = useState(false);
   const [paleta, setPaleta] = useState("vivos");
   const [maestro, setMaestro] = useState({ productos: [], origen: null, sucio: false, guardado: null, errores: [], conversiones: null });
   const [reconectar, setReconectar] = useState(null);
@@ -196,7 +200,7 @@ export default function Estiba3D({ usuario }) {
   const invalidar = () => {
     setEdicion(null);
     setRecomendacion(null); setRes(null); setCorrida(null); setResaltado(null); setVista(null);
-    setOptim(null); setLleno(null); intentoRef.current++; };
+    setOptim(null); setLleno(null); setBaseAplicada(false); intentoRef.current++; };
   // La carga tal como la recibe el motor en una corrida normal. Con «orden de la lista», la posición de la
   // fila manda (la de arriba entra primero, al fondo); si además hay entregas, la parada sigue mandando y
   // la lista solo desempata dentro de cada parada.
@@ -704,7 +708,7 @@ export default function Estiba3D({ usuario }) {
   };
 
   const calcular = async () => {
-    setVistaHerr(null); setEdicion(null); setError(""); setProgreso({ i: 0, n: 1, faseN: 0, pct: 0 }); setResaltado(null); setVista(null); setOptim(null); setLleno(null); intentoRef.current++;
+    setVistaHerr(null); setEdicion(null); setError(""); setProgreso({ i: 0, n: 1, faseN: 0, pct: 0 }); setResaltado(null); setVista(null); setOptim(null); setLleno(null); setBaseAplicada(false); intentoRef.current++;
     const ctrl = empezar();
     try {
       const c = await correrConBundles(cargaPara(items, reglas), { ejecutor, signal: ctrl.signal, onProgreso: (i, n) => setProgreso((x) => avanzarProgreso(x, { i, n })), onFase: (fase) => setProgreso((x) => avanzarProgreso(x, { fase, faseN: (x?.faseN || 0) + 1, i: 0 })) });
@@ -895,8 +899,13 @@ export default function Estiba3D({ usuario }) {
   const aplicarOptimizacion = () => {
     const pr = optim?.propuesta; if (!pr) return;
     intentoRef.current++;
-    const anterior = { items, corrida, reglas };
+    const anterior = { items, corrida, reglas, lleno, baseAplicada };
     setItems(pr.items); mostrarCorrida(pr.corrida);
+    // Al aplicar cambia la carga, así que lo que se sabía de «lleno» ya no vale: se vuelve a medir sobre
+    // el pedido nuevo. Sin esto, la tarjeta volvía a ofrecer llenar un vehículo que ya estaba lleno.
+    setBaseAplicada(pr.tipo === "llenar" && !!pr.rapido);
+    if (pr.tipo === "llenar" && pr.saturado) setLleno({ lleno: true, comprobado: true });
+    else medirLleno(pr.items);
     // La propuesta se calculó sin la simulación, así que las reglas tienen que quedar igual que el
     // resultado que se está mostrando; si no, el siguiente cálculo daría otra cosa sin explicación.
     if (optim.sinSimular) setReglas((p) => ({ ...p, compresionAuto: false }));
@@ -916,6 +925,7 @@ export default function Estiba3D({ usuario }) {
     intentoRef.current++;
     setItems(a.items); mostrarCorrida(a.corrida); setOptim(null);
     if (a.reglas) setReglas(a.reglas);   // si se aplicó una propuesta sin simular, vuelve también la regla
+    setLleno(a.lleno ?? null); setBaseAplicada(!!a.baseAplicada);
     setAviso("Se regresó al pedido anterior.");
   };
 
@@ -1602,7 +1612,7 @@ export default function Estiba3D({ usuario }) {
               <OptimizarPedido reporte={reporte} items={items} optim={optim} progreso={progreso} onCalcular={optimizarPedido} onAplicar={aplicarOptimizacion}
                 onDeshacer={deshacerOptimizacion} onCerrar={() => setOptim(null)} onCancelar={() => { cancelarCorrida(); setOptim(null); }}
                 onFijarLinea={(id) => editarItem(id, "fijo", !items.find((x) => x.id === id)?.fijo)}
-                costoReal={costoReal} onQuitarSimulacion={calcularSinSimular} cargaReal={reglas.compresionAuto !== false} lleno={lleno} />
+                costoReal={costoReal} onQuitarSimulacion={calcularSinSimular} cargaReal={reglas.compresionAuto !== false} lleno={lleno} baseAplicada={baseAplicada} />
             )}
             {edicion && cont && validacion && (
               <PanelEdicion edicion={edicion} setEdicion={setEdicion} cont={cont} validacion={validacion} items={corrida.carga.items} pallets={res.pallets} vehNum={sel + 1}

@@ -50,7 +50,7 @@ export const _setReparto = (f) => { REPARTO_RELLENO = f; };
 // El tope real es el reloj, no el número de corridas: en un pedido chico una corrida son 2 segundos y en
 // uno de 32 SKUs son 25, así que un presupuesto fijo de corridas satura el chico y deja a medias el grande.
 // Si se acaba el tiempo, la sugerencia dice que no se alcanzó a comprobar; nunca promete que está llena.
-const PRESUPUESTO_SATURAR = 60, MS_SATURAR = 180000, RONDAS_RELLENO = 4, PASADAS_FINAS = 4;
+const PRESUPUESTO_SATURAR = 60, MS_SATURAR = 180000, RONDAS_RELLENO = 4, RONDAS_RAPIDAS = 3, PASADAS_FINAS = 4;
 const HUECO_QUE_VALE_OTRA_RONDA = 0.10;   // 10% del vehículo libre
 const porIdItem = (items, id) => items.find((x) => x.id === id);
 
@@ -236,10 +236,12 @@ export async function sugerirLlenado({ items, nActual = Infinity, saturar = fals
   const presupuesto = () => corridas < PRESUPUESTO_SATURAR && Date.now() < hasta;
   const cabeAsi = async (lista) => { corridas++; return cabeIgual(await correrPedido(lista), ref); };
 
-  // Una ronda de relleno también en la base rápida: cuesta dos corridas y a veces es la diferencia entre
-  // dejar el vehículo a la mitad o casi lleno, porque el primer relleno se mide sobre un acomodo que
-  // después cambia. Al exprimir se hacen varias; en la base rápida, una.
-  const rondas = saturar ? RONDAS_RELLENO : 1;
+  // Rondas de relleno también en la base rápida. Con una sola, un vehículo que iba al 34% quedaba al 63%
+  // y el usuario tenía que volver a pedir llenado una y otra vez: una rueda de hámster. Cada ronda se
+  // mide sobre el acomodo nuevo, que cambia al meter cajas, y por eso encuentra más. Son corridas de
+  // nivel rápido y además se cortan solas en cuanto el vehículo queda casi lleno (ver
+  // HUECO_QUE_VALE_OTRA_RONDA), así que una carga que ya venía al 86% no paga ninguna.
+  const rondas = saturar ? RONDAS_RELLENO : RONDAS_RAPIDAS;
   for (let ronda = 0; ronda < rondas && presupuesto(); ronda++) {
     onFase?.("Buscando si todavía queda hueco…");
     corridas++;
@@ -259,9 +261,19 @@ export async function sugerirLlenado({ items, nActual = Infinity, saturar = fals
     con2.resultado.contenedores.forEach((_, i) => { if (i >= nAct) return; cajasPorLinea(con2, i, true).forEach((n, id) => extra.set(id, (extra.get(id) || 0) + n)); });
     const porPaso = new Map([...extra].map(([id, n]) => [id, aPaso(porId.get(id) || {}, n)]).filter(([, n]) => n > 0));
     if (!porPaso.size) break;
-    const cand = sumarAlPedido(mejor, porPaso);
     onFase?.("Comprobando lo que todavía cabe…");
-    if (await cabeAsi(cand)) mejor = cand; else break;
+    // Si lo que propuso el relleno no se comprueba, se prueba la mitad antes de rendirse. Rendirse en el
+    // primer no era lo que dejaba la base corta: un vehículo al 34% quedaba al 63% y el usuario tenía que
+    // volver a pedir llenado cuatro o cinco veces. Media ronda cuesta una corrida y casi siempre sí pasa.
+    let puso = false;
+    for (const f of [1, 0.5]) {
+      const esc = new Map([...porPaso].map(([id, k]) => [id, aPaso(porId.get(id) || {}, Math.floor(k * f))]).filter(([, k]) => k > 0));
+      if (!esc.size) continue;
+      const cand = sumarAlPedido(mejor, esc);
+      if (await cabeAsi(cand)) { mejor = cand; puso = true; break; }
+      if (!presupuesto()) break;
+    }
+    if (!puso) break;
     if (!presupuesto()) { saturadoRondas = false; break; }
   }
 

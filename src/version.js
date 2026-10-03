@@ -16,6 +16,15 @@ export const VERSION_COMPLETA = `v${VERSION}${BUILD ? ` · ${BUILD}` : ""}${FECH
 // escrito para quien usa la herramienta (no para programadores).
 export const NOVEDADES = [
   {
+    version: "1.6.16", fecha: "02/10/2026",
+    cambios: [
+      "Se acabó la rueda de hámster del llenado. Uno aplicaba el pedido sugerido, cerraba, y la tarjeta volvía a ofrecer llenar el mismo vehículo, con un número distinto cada vez: había que darle cuatro o cinco veces. Pasaban dos cosas. Una, al aplicar no se volvía a revisar si el vehículo había quedado lleno, así que la tarjeta seguía ofreciendo llenar a ciegas. Dos, la base se rendía en el primer intento que no se comprobaba, y se quedaba muy corta.",
+      "Ahora la base insiste: si lo que encontró no se comprueba, prueba la mitad antes de rendirse, y repite mientras siga quedando hueco de verdad. En el ejemplo de referencia de 3 SKUs el tercer vehículo pasaba del 34% al 63% y había que volver a pedirlo; ahora llega al 86% de una, en una décima de segundo.",
+      "Y después de aplicar, el botón que queda es «Llenar hasta el tope», no otra vez la base: uno ya dijo que sí a llenar. Con eso el vehículo llega al 90% y se marca «Lleno», y ahí la tarjeta deja de ofrecer. Dos clics en lugar de cinco, y el segundo es opcional.",
+      "La tarjeta también dejó de taparse a sí misma: cuando hay más de un vehículo decía solo «puedes bajar el pedido» y se comía el «está lleno» o el «ya aplicaste la base». Ahora dice las dos cosas.",
+    ],
+  },
+  {
     version: "1.6.15", fecha: "02/10/2026",
     cambios: [
       "La herramienta se llama Darnel Cube. Sin el «3D», que describía el dibujo y no lo que hace: esto no es un visor, es una herramienta de planeación. El nombre nuevo queda en la pantalla, en los Excel, en los instructivos y en los PDF de pallets.",
